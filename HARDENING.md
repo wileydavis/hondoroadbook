@@ -26,6 +26,8 @@ was changed. Status: **verified & fixed**, **verified & mitigated** (reduced, wi
 | NAV-06 | Cues cannot identify a pass/lap at a shared coordinate | **open** | Tier 2: optional route-relative offset in the cue waypoint (`<extensions>`), used when present. |
 | REL-02 | No navigation foreground service; process death loses the ride | **open** | Tier 2: foreground service for navigation with a private session checkpoint. The biggest remaining gap for all-day use. |
 | ROUTE-01 | Turn restrictions, barriers and access tags ignored by the router | **open** | Tier 2/3: packer keeps restriction relations and barrier nodes; router checks transitions. Affects planned routes only, not followed roadbooks. |
+| ROUTE-02 | A destination or via snapped to an island (a gated driveway, a trail stub) made the whole route fail | **fixed** | `Router.snapCandidates` + `reachable`; `MultiRouter.snapConnected` takes the nearest candidate that leads somewhere. Used by the routing service and the planner; the phone's ROUTE HERE still uses the plain snap (next release). |
+| NET-01 | Roadbook's network surface grew with the planner (fetch code, publish, browse) | **by design** | Each is a button; none sends an identifier; published files are rewritten server-side to line + cues; park codes expire in 24 h; the routing container sees coordinates only, logs no bodies. |
 | — | "Tolerance = 2 × accuracy is a defect" | **rejected** | Deliberate: canyon fixes at 30–50 m accuracy would otherwise flap off-route. The honest fix is the DEGRADED state (done), not a tighter tolerance. |
 
 Tests: `./gradlew :core:test :packer:test` — 37 tests, 0 failures. The six dataset-dependent tests now report as
