@@ -126,6 +126,7 @@ object MapsDialog {
             AlertDialog.Builder(ctx).setMessage("Delete all $n marks from this phone? There is no undo.").setPositiveButton("Burn") { _, _ -> onBurnMarks(); text = "BURN"; isEnabled = false }.setNegativeButton(R.string.cancel, null).show() } })
         root.addView(row)
         root.addView(TextView(ctx).apply { text = ctx.getString(R.string.credits); textSize = 12f; setPadding(0, ctx.dp(12), 0, 0) })
+        root.addView(TextView(ctx).apply { text = (if (BuildConfig.ROADBOOK) "Roadbook " else "Fold ") + BuildConfig.VERSION_NAME + (if (BuildConfig.ROADBOOK) " · hondoroadbook.com" else ""); textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         root.addView(TextView(ctx).apply { text = if (BuildConfig.ROADBOOK) "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only to fetch packs from the catalog. No accounts, no history." else "Fold stores only your map packs, these settings, and marks you save on purpose. No history, no accounts, no network permission."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
         val b = AlertDialog.Builder(ctx).setTitle("Maps on this phone").setView(scroll)

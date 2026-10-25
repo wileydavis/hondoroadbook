@@ -6,8 +6,10 @@ android {
         applicationId = "fold.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        // every build is a newer version: yyMMddHH, so installing over an older APK is always an update
+        val stamp = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
+        versionCode = stamp.format(java.time.format.DateTimeFormatter.ofPattern("yyMMddHH")).toInt()
+        versionName = "0.1." + stamp.format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd.HHmm"))
         ndk { abiFilters += listOf("arm64-v8a") }
     }
     buildFeatures { buildConfig = true }
@@ -23,7 +25,6 @@ android {
         create("roadbook") {
             dimension = "product"
             applicationId = "com.hondogarage.roadbook"
-            versionName = "0.1"
             resValue("string", "app_name", "Roadbook")
             buildConfigField("boolean", "ROADBOOK", "true")
             buildConfigField("String", "CATALOG_URL", "\"https://hondoroadbook.com/packs/catalog.json\"")
