@@ -11,5 +11,6 @@ export const SCENES = {
   compare: { map: './s3_compare.png', geo: C, bottom: 'compare', rows: ROWS, pins: [{ ll: C.start, color: '#16A34A' }, { ll: C.end }], scaleLabel: '5 mi', scalePx: 60, scaleBottom: 230 },
   packs: { map: './s6_idle.png', geo: { center: [-111.6, 45.9], zoom: 6.6, bearing: 0 }, bottom: 'idle', scaleLabel: '50 mi', scalePx: 58, dialog: { title: 'Download map packs', build: (d, T) => packsDialog(d, T, [['Montana', '471 MB · 2026-10-25 · installed', 'AGAIN'], ['Idaho', '520 MB · 2026-10-25', 'GET'], ['Wyoming', '380 MB · 2026-10-25', 'GET'], ['Utah', '610 MB · 2026-10-25', 'GET'], ['Colorado', '812 MB · 2026-10-25', 'GET']]) } },
   tablet: { map: './s5_tablet.png', w: 1280, h: 800, geo: TB, hud: { turn: 'DANGER', level: 3, progress: 0.4, dist: '500 ft', street: 'Washout, then a cattle guard' }, puck: { ll: TB.pos }, bottom: 'nav', remaining: '9.6 mi · 20 min', speed: '38 mph', navCue: true, scaleLabel: '500 ft', scalePx: 60, insetTop: 8 },
+  terrain: { map: './s7_terrain.png', geo: { center: [-110.98, 45.47], zoom: 11.6, bearing: 0 }, bottom: 'idle', scaleLabel: '1 mi', scalePx: 52 },
   offroute: { map: './s4_rec.png', geo: R, puck: { ll: R.pos }, bottom: 'nav', off: 'OFF TRACK  ↖ 120 m', remaining: '11.2 mi · 23 min', speed: '12 mph', scaleLabel: '200 ft', scalePx: 48 },
 };

@@ -24,7 +24,18 @@ nav.top a { margin-left: 18px; color: var(--soft); text-decoration: none; font-s
 nav.top a:hover { color: var(--ink); }
 .hero { padding: 36px 0 28px; border-bottom: 1px solid var(--rule); text-align: center; }
 .hero p.lead { margin-left: auto; margin-right: auto; }
-.hero .hud { margin-left: auto; margin-right: auto; text-align: left; }
+.hero .ctas { margin: 0 0 30px; }
+.hero .heroimg { width: 100%; height: auto; border-radius: 18px; border: 1px solid var(--rule); box-shadow: 0 18px 50px rgba(0,0,0,.14); display: block; }
+/* every section is centered on desktop; paragraphs keep a readable measure and stay centered */
+section.center { text-align: center; }
+section.center p.sub, section.center p.muted { margin-left: auto; margin-right: auto; max-width: 640px; }
+section.center ol.steps { display: inline-block; text-align: left; margin: 0 auto; }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 10px; }
+.trio figure { margin: 0; }
+.trio img { width: 100%; max-width: 250px; height: auto; display: block; margin: 0 auto 12px; }
+.trio figcaption { font-size: 15px; color: var(--soft); max-width: 260px; margin: 0 auto; }
+.trio figcaption b { color: var(--ink); display: block; margin-bottom: 2px; }
+@media (max-width: 700px) { .trio { grid-template-columns: 1fr; } .trio img { max-width: 220px; } }
 .hero h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -.02em; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero p.lead { font-size: 20px; color: var(--soft); max-width: 640px; margin: 0 0 26px; }
@@ -58,5 +69,5 @@ footer a { color: var(--soft); }
 
 .gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .gallery img { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--rule); display: block; }
-.gallery img:first-child { grid-column: 1 / -1; }
+.gallery + p.muted { margin-top: 16px; }
 @media (max-width: 640px) { .gallery { grid-template-columns: 1fr; } }

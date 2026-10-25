@@ -5,17 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Roadbook · offline motorcycle navigation by Hondo Garage</title>
 <meta name="description" content="Roadbook is a free, open-source, offline navigation app for Android. Follow a GPX roadbook at speed with an arrow, a bar that fills to the turn, and spoken cues. No account, no tracking.">
+<meta property="og:title" content="Roadbook — ride the roadbook, never look down">
+<meta property="og:description" content="Offline turn-by-turn for motorcycles. Record a pre-run, drop cues, ride it at speed. Free, open source, no account.">
+<meta property="og:image" content="https://hondoroadbook.com/img/feat-hero.jpg">
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="/favicon.svg">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="brand" href="/">
-      <span class="logo small" role="img" aria-label="Hondo Garage"></span>
-      <span>Roadbook<small>by Hondo Garage</small></span>
-    </a>
-    <nav class="top"><a href="#how">How it works</a><a href="#packs">Map packs</a><a href="/manual.html">Manual</a><a href="https://github.com/wileydavis/hondoroadbook">Source</a></nav>
+    <a class="brand" href="/"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>by Hondo Garage</small></span></a>
+    <nav class="top"><a href="#packs">Map packs</a><a href="/manual.html">Manual</a><a href="https://github.com/wileydavis/hondoroadbook">Source</a></nav>
   </header>
 
   <div class="hero">
@@ -24,69 +24,50 @@
       <div class="wordmark">Roadbook</div>
     </div>
     <h1>Ride the roadbook.<br><em>Never look down.</em></h1>
-    <p class="lead">Offline turn-by-turn for motorcycles, on Android. Record a pre-run, drop cues and notes where they matter, then ride it at speed: an arrow, a bar that fills exactly to the turn, pips in your helmet, and the cue read aloud. No account. No tracking. No signal needed.</p>
-    <a class="cta" id="dl" href="/download/roadbook.apk">Download roadbook.apk <small>Android 10+</small></a>
-    <a class="cta alt" href="#packs">Get map packs</a>
-
-    <div class="hud" aria-hidden="true">
-      <svg width="86" height="86" viewBox="0 0 100 100"><path d="M68 92V48q0-16-16-16H26" fill="none" stroke="#e5e1d8" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><path d="M68 92V48q0-16-16-16H40" fill="none" stroke="#d8502f" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/><path d="M42 20 22 32l20 12z" fill="#d8502f" stroke="#fff" stroke-width="3"/></svg>
-      <div><div class="d">350 ft</div><div class="s">Left. Gate, then the two-track</div></div>
-    </div>
+    <p class="lead">Offline turn-by-turn for motorcycles. An arrow that fills exactly to the turn, pips in your helmet, the cue read aloud. No signal, no account, no tracking.</p>
+    <p class="ctas"><a class="cta" id="dl" href="/download/roadbook.apk">Download roadbook.apk <small>Android 10+ · free</small></a><a class="cta alt" href="#packs">Get map packs</a></p>
+    <img class="heroimg" src="/img/hero-phones.jpg" alt="Roadbook: recording a pre-run, following a roadbook, terrain under the trails" width="1600" height="1000">
   </div>
 
-  <section id="how">
-    <h2>How it works</h2>
-    <p class="sub">A roadbook is a GPX file: the line you will ride plus cues placed on it. Roadbook follows the line and plays each cue the same way, so a well-built file can be ridden fast without looking at the screen.</p>
-    <div class="grid">
-      <div class="card"><h3>1 · Pre-run and record</h3><p>Tap record, ride the course. Stop at every turn and hazard and tap <b>CUE</b>: pick the arrow, say what it is. The track and its cues are saved as one GPX.</p></div>
-      <div class="card"><h3>2 · Or plan it at the table</h3><p>Route to a destination in any of seven modes (Fast, Towing, Backroads, Dirt, Ride, Quiet, Gravel) and save it. The router's turns are already in the file as cues; open it under <b>TRACK → EDIT CUES</b> and add your own.</p></div>
-      <div class="card"><h3>3 · Ride it</h3><p>About fifteen seconds out the cue is spoken, then pips rise in pitch and quicken as the bar fills; a chime at the turn. Notes are read aloud; hazards get a low buzz. The voice is built into the app (a Piper neural voice running on the phone), so nothing needs installing and nothing leaves the phone.</p></div>
-      <div class="card"><h3>Offline, by design</h3><p>Maps, routing and search live on the phone. The only network use is downloading map packs from this site. GrapheneOS friendly: the app asks for location and nothing else.</p></div>
-      <div class="card"><h3>Built for a glove</h3><p>Round buttons, big HUD, tap the map to cycle whole-route / next-turn / close-up. An orientation lock holds the screen the way your mount sits. Sound goes out as navigation audio, so Bluetooth helmets get it.</p></div>
-      <div class="card"><h3>Open source</h3><p>Apache-licensed Kotlin, voice by <a href="https://github.com/rhasspy/piper">Piper</a> and <a href="https://github.com/k2-fsa/sherpa-onnx">sherpa-onnx</a>. The same code ships as <b>Fold</b>, a stripped-down private version with no network permission at all.</p></div>
+  <section id="how" class="center">
+    <h2>Three things it does</h2>
+    <div class="trio">
+      <figure><img src="/img/phone-compare.png" alt="Three routes compared on one screen" loading="lazy"><figcaption><b>Gets you there.</b> Seven ways to route, side by side. Pick one, go.</figcaption></figure>
+      <figure><img src="/img/phone-hero.png" alt="Following a roadbook with the turn bar" loading="lazy"><figcaption><b>Follows a roadbook at speed.</b> Spoken cue, rising pips, chime at the turn.</figcaption></figure>
+      <figure><img src="/img/phone-cuepick.png" alt="The cue picker: arrows, note, danger" loading="lazy"><figcaption><b>Makes roadbooks.</b> Record a pre-run; stop and tap CUE.</figcaption></figure>
     </div>
   </section>
 
-  <section id="see">
-    <h2>See it</h2>
-    <p class="sub">The screens, as you'll ride them. The maps are real renders from the Montana pack.</p>
+  <section id="see" class="center">
     <div class="gallery">
-      <img src="/img/feat-hero.jpg" alt="Roadbook navigating: the turn as a bar that fills to the turn" loading="lazy">
       <img src="/img/feat-voice.jpg" alt="Night map; spoken cues" loading="lazy">
       <img src="/img/feat-prerun.jpg" alt="Recording a pre-run and picking a cue" loading="lazy">
-      <img src="/img/feat-plan.jpg" alt="Comparing routes and editing cues" loading="lazy">
+      <img src="/img/feat-terrain.jpg" alt="Hillshade terrain under the roads and trails" loading="lazy">
       <img src="/img/feat-tablet.jpg" alt="A danger cue on a tablet in landscape" loading="lazy">
+      <img src="/img/feat-plan.jpg" alt="Comparing routes and editing cues" loading="lazy">
       <img src="/img/feat-packs.jpg" alt="Downloading map packs for whole states" loading="lazy">
     </div>
-    <p class="muted" style="margin-top:14px"><a href="/manual.html">The manual</a> walks through it in eight screens.</p>
+    <p class="muted">Real map renders from the Montana pack. <a href="/manual.html">The manual</a> walks through every screen.</p>
   </section>
 
-  <section id="packs">
+  <section id="packs" class="center">
     <h2>Map packs</h2>
-    <p class="sub">Built from OpenStreetMap, Protomaps and public elevation data, hosted here. In the app, <b>MAPS → DOWNLOAD</b>, pick a region, then the kinds you want: <b>Roads</b> (roads, trails, routing, addresses) and <b>Terrain</b> (hillshade under the roads). Routing works across borders. Or download below and import the file.</p>
+    <p class="sub">Whole states, downloaded inside the app: <b>MAPS → DOWNLOAD</b>, pick a region, then <b>Roads</b> and/or <b>Terrain</b>. After that, no signal needed.</p>
     <table class="packs" id="packTable"><thead><tr><th>Region</th><th>Built</th><th>Size</th><th></th></tr></thead><tbody><tr><td colspan="4" class="muted">Loading catalog…</td></tr></tbody></table>
-    <p class="muted" style="margin-top:14px;font-size:14px">Anything else: build your own pack from any OpenStreetMap extract with the packer in the <a href="https://github.com/wileydavis/hondoroadbook#making-map-packs">repository</a>.</p>
   </section>
 
-  <section id="install">
+  <section id="install" class="center">
     <h2>Install</h2>
     <ol class="steps">
-      <li>On the phone, download <a href="/download/roadbook.apk">roadbook.apk</a>.</li>
-      <li>Open it from the browser's downloads or the Files app. Allow installing from that app when Android asks, then <b>Install</b>.</li>
-      <li>Open Roadbook, allow <b>Precise location</b> (while using the app). Allow notifications if you want the recording indicator while the screen is off.</li>
-      <li><b>MAPS → DOWNLOAD</b> and pick your states. A big rural state is about half a gigabyte.</li>
-      <li>Turn on sound with the speaker button while navigating. The voice ships inside the app; pair a helmet headset or car stereo and the cues arrive as navigation audio.</li>
+      <li>On the phone, open <a href="/download/roadbook.apk">roadbook.apk</a>; allow installs from that app; <b>Install</b>.</li>
+      <li>Allow <b>Precise location</b>. That's the only thing it asks for.</li>
+      <li><b>MAPS → DOWNLOAD</b> your states. Ride.</li>
     </ol>
-    <h3 style="margin-top:28px">The GPX convention</h3>
-    <p class="muted">A cue is a waypoint whose <code>&lt;type&gt;</code> names it; <code>&lt;desc&gt;</code> carries the words. Any GPX editor can write these.</p>
-<pre>&lt;wpt lat="46.0201" lon="-112.0000"&gt;&lt;name&gt;Left&lt;/name&gt;&lt;desc&gt;onto the ranch road&lt;/desc&gt;&lt;type&gt;cue:LEFT&lt;/type&gt;&lt;/wpt&gt;
-&lt;wpt lat="46.0302" lon="-112.0001"&gt;&lt;name&gt;Danger&lt;/name&gt;&lt;desc&gt;washout&lt;/desc&gt;&lt;type&gt;danger:3&lt;/type&gt;&lt;/wpt&gt;
-&lt;wpt lat="46.0403" lon="-112.0000"&gt;&lt;desc&gt;water crossing, usually a foot deep&lt;/desc&gt;&lt;type&gt;note&lt;/type&gt;&lt;/wpt&gt;</pre>
-    <p class="muted">Turn names: STRAIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, LEFT, RIGHT, SHARP_LEFT, SHARP_RIGHT, KEEP_LEFT, KEEP_RIGHT, UTURN, ROUNDABOUT. Danger levels 1–3. Cues more than 150 m from the line are ignored.</p>
+    <p class="muted">Updates: download again and install over it. Settings and packs stay. Works on GrapheneOS.</p>
   </section>
 
   <footer>
-    Roadbook is made by <a href="https://hondogarage.com">Hondo Garage</a>, who build phone mounts for motorcycles. Map data © OpenStreetMap contributors (ODbL); basemap © Protomaps; rendering by MapLibre. The app sends nothing anywhere; this site sets no cookies.
+    Made by <a href="https://hondogarage.com">Hondo Garage</a>, who build phone mounts for motorcycles. Open source (Apache-2.0). Map data © OpenStreetMap contributors; basemap © Protomaps; elevation from AWS Terrain Tiles; rendering by MapLibre; voice by Piper and sherpa-onnx. The app sends nothing anywhere and this site sets no cookies.
   </footer>
 </div>
 <script>
@@ -96,13 +77,23 @@
     const r = await fetch('/packs/catalog.json', { cache: 'no-cache' });
     if (!r.ok) throw new Error(r.status);
     const cat = await r.json();
-    const packs = (cat.packs || []).sort((a, b) => (a.group + a.name + a.kind).localeCompare(b.group + b.name + b.kind));
+    const packs = (cat.packs || []);
     if (!packs.length) throw new Error('empty');
-    tb.innerHTML = packs.map(p => `<tr><td>${esc(p.name)}${p.kind && p.kind !== 'roads' ? `<span class="kind">${esc(p.kind)}</span>` : ''}<br><span class="muted" style="font-size:13px">${esc(p.group || '')}</span></td><td class="sz">${esc(p.built || '')}</td><td class="sz">${mb(p.bytes)}</td><td><a href="${esc(p.url)}">.mappack</a></td></tr>`).join('');
+    const regions = new Map();
+    for (const p of packs) { const k = p.region || p.name; if (!regions.has(k)) regions.set(k, { group: p.group || '', kinds: [] }); regions.get(k).kinds.push(p); }
+    const order = ['roads', 'terrain', 'imagery'];
+    tb.innerHTML = [...regions.entries()].sort((a, b) => (a[1].group + a[0]).localeCompare(b[1].group + b[0])).map(([name, r]) => {
+      const kinds = r.kinds.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+      const built = kinds.map(p => p.built).sort().pop() || '';
+      const size = kinds.map(p => mb(p.bytes)).join(' + ');
+      const links = kinds.map(p => `<a href="${esc(p.url)}">${esc(cap(p.kind))}</a>`).join(' · ');
+      return `<tr><td>${esc(name)}<br><span class="muted" style="font-size:13px">${esc(r.group)}</span></td><td class="sz">${esc(built)}</td><td class="sz">${size}</td><td>${links}</td></tr>`;
+    }).join('');
   } catch (e) {
-    tb.innerHTML = '<tr><td colspan="4" class="muted">The catalog is not published yet. Build packs with the packer in the repository, or check back soon.</td></tr>';
+    tb.innerHTML = '<tr><td colspan="4" class="muted">The catalog is being built. Check back soon.</td></tr>';
   }
   function mb(b) { if (!b) return ''; return b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; }
+  function cap(s) { return s ? s[0].toUpperCase() + s.slice(1) : ''; }
   function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 })();
 </script>

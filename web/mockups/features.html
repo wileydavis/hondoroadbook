@@ -34,6 +34,10 @@ li::before{content:"";width:12px;height:12px;border-radius:6px;background:#D8502
   <div class="footer">hondoroadbook.com</div>
 </div>
 
+<div class="comp" id="c_heroclean" style="justify-content:center;gap:70px">
+  <div class="phones" style="align-items:flex-start"><div id="p_hc1" style="margin-top:120px"></div><div id="p_hc2" style="position:relative;z-index:1"></div><div id="p_hc3" style="margin-top:120px"></div></div>
+</div>
+
 <div class="comp dark" id="c_voice">
   <div class="text"><div class="kicker"><span class="logo"></span>Spoken cues</div>
     <h1>Hear it <em>before</em><br>you see it.</h1>
@@ -69,6 +73,15 @@ li::before{content:"";width:12px;height:12px;border-radius:6px;background:#D8502
   <div class="footer">hondoroadbook.com</div>
 </div>
 
+<div class="comp" id="c_terrain">
+  <div class="text"><div class="kicker"><span class="logo"></span>Terrain</div>
+    <h1>The ground,<br><em>under the roads.</em></h1>
+    <p class="sub">Hillshade from public elevation data, and the two-tracks and trails drawn four zoom levels earlier than other maps show them.</p>
+    <ul><li>Terrain is its own pack: add it to any state</li><li>Trails from zoom 10, tracks from 8</li><li>Night map keeps the relief</li></ul></div>
+  <div class="phones"><div id="p_terrain"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
 <div class="comp" id="c_packs">
   <div class="text"><div class="kicker"><span class="logo"></span>Map packs</div>
     <h1>Whole states.<br><em>Then no signal needed.</em></h1>
@@ -88,4 +101,8 @@ phone(document.getElementById('p_compare'), SCENES.compare, 0.74);
 phone(document.getElementById('p_edit'), SCENES.edit, 0.74);
 phone(document.getElementById('p_tablet'), SCENES.tablet, 0.55);
 phone(document.getElementById('p_packs'), SCENES.packs, 0.92);
+phone(document.getElementById('p_terrain'), SCENES.terrain, 0.92);
+phone(document.getElementById('p_hc1'), SCENES.record, 0.72);
+phone(document.getElementById('p_hc2'), SCENES.hero, 0.86);
+phone(document.getElementById('p_hc3'), SCENES.terrain, 0.72);
 </script></body></html>
