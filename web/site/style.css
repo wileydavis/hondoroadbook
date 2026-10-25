@@ -55,3 +55,8 @@ table.packs td.sz { white-space: nowrap; color: var(--soft); }
 footer { padding: 30px 0 50px; color: var(--soft); font-size: 14px; }
 footer a { color: var(--soft); }
 @media (max-width: 600px) { .cta.alt { margin-left: 0; margin-top: 10px; } nav.top a { margin-left: 12px; } .hud .d { font-size: 34px; } }
+
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.gallery img { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--rule); display: block; }
+.gallery img:first-child { grid-column: 1 / -1; }
+@media (max-width: 640px) { .gallery { grid-template-columns: 1fr; } }

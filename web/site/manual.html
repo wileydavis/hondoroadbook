@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadbook manual</title>
+<meta name="description" content="How to use Roadbook in eight screens: install, maps, routing, the HUD, following a roadbook, recording a pre-run, editing cues, the GPX file.">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg">
+<style>
+.step { display: grid; grid-template-columns: 1fr 260px; gap: 28px; align-items: start; padding: 30px 0; border-bottom: 1px solid var(--rule); }
+.step:last-of-type { border-bottom: 0; }
+.step h2 { font-size: 24px; margin: 0 0 6px; display: flex; align-items: center; gap: 12px; }
+.step h2 b { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 16px; background: var(--accent); color: #fff; font-size: 16px; flex: none; }
+.step ol, .step ul { margin: 8px 0 0; padding-left: 22px; }
+.step li { margin: 6px 0; }
+.step img { width: 100%; height: auto; border-radius: 22px; }
+.step.wide { grid-template-columns: 1fr; }
+.step.wide img { border-radius: 14px; }
+.key { font-family: var(--mono); font-size: 13px; background: var(--card); border: 1px solid var(--rule); border-radius: 6px; padding: 1px 6px; white-space: nowrap; }
+@media (max-width: 640px) { .step { grid-template-columns: 1fr; } .step img { max-width: 240px; margin: 0 auto; display: block; } }
+@media print { nav.top, footer .nav { display: none; } .step { break-inside: avoid; } body { background: #fff; } .hero { padding-top: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>by Hondo Garage</small></span></a>
+    <nav class="top"><a href="/">Home</a><a href="/#packs">Map packs</a><a href="/manual.pdf">PDF</a></nav>
+  </header>
+
+  <div class="hero" style="padding-bottom:10px">
+    <h1 style="font-size:clamp(30px,5vw,46px)">The manual, in eight screens.</h1>
+    <p class="lead">Roadbook has three jobs: get you somewhere, follow a roadbook at speed, and make roadbooks. Everything else is a button you'll find.</p>
+  </div>
+
+  <section class="step">
+    <div>
+      <h2><b>1</b>Install and get maps</h2>
+      <ol>
+        <li>On the phone, open <a href="/download/roadbook.apk">roadbook.apk</a>, allow installs from that app, <b>Install</b>.</li>
+        <li>Open Roadbook, allow <b>Precise location</b>. Allow notifications if you want the recording indicator while the screen is off.</li>
+        <li><span class="key">MAPS</span> → <span class="key">DOWNLOAD</span> → <span class="key">GET</span> the states you ride. Half a gigabyte for a big rural state. Downloads resume if interrupted.</li>
+      </ol>
+      <p class="muted">That is the last time the app needs a signal. Packs overlap and route across state lines.</p>
+    </div>
+    <img src="/img/phone-packs.png" alt="The download map packs list" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>2</b>Go somewhere</h2>
+      <ol>
+        <li><b>Long-press</b> the map → <span class="key">ROUTE HERE</span>. Or <span class="key">🔍</span> and type an address, street or town.</li>
+        <li>Every mode you've ticked under <span class="key">MODES</span> is drawn at once: Fast, Towing, Backroads, Dirt, Ride, Quiet, Gravel. Tap a line or a row to choose it.</li>
+        <li>Long-press elsewhere → <span class="key">VIA</span> to pull all routes through a point. <span class="key">FROM</span> plans from somewhere other than where you are.</li>
+        <li><span class="key">GO</span>. Or <span class="key">SAVE</span> to keep it as a roadbook (the turns go in as cues) — see step 7.</li>
+      </ol>
+    </div>
+    <img src="/img/phone-compare.png" alt="Three routes compared on one screen" loading="lazy">
+  </section>
+
+  <section class="step wide">
+    <div>
+      <h2><b>3</b>The screen while you ride</h2>
+      <p class="muted">Heading-up, you in the lower third, the next cue on top. <b>Tap the map</b> to cycle whole route → next turn → close up; pinch to adjust, drag to look around (the crosshair resumes following).</p>
+    </div>
+    <img src="/img/feat-anatomy.jpg" alt="The navigation screen, labelled" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>4</b>Sound</h2>
+      <ul>
+        <li>Tap the <b>speaker</b> while navigating. Off by default; remembered.</li>
+        <li>About fifteen seconds out the cue is spoken: <i>"Left. Onto Dry Creek Road."</i> Then short pips rise one octave and quicken as the bar fills. A two-note chime at the turn.</li>
+        <li>A note is read in your words. A danger is announced, then a low buzz at the spot.</li>
+        <li>The voice is built into the app. Pair a helmet headset or stereo; the cues go out as navigation audio.</li>
+      </ul>
+    </div>
+    <img src="/img/phone-night.png" alt="Night map while navigating" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>5</b>Off the line</h2>
+      <ul>
+        <li>Leave the route (gas, a look at something) and nothing changes: the banner shows the direction and distance back; one low buzz if sound is on, a short note when you're back.</li>
+        <li>Nothing recomputes by itself. For a planned route, <span class="key">REROUTE</span> asks the router from where you are. A roadbook can't be rerouted — ride back to the line.</li>
+        <li><span class="key">END</span> stops. Tap the bottom card for the written turn list and <span class="key">SAVE / SHARE</span>.</li>
+      </ul>
+    </div>
+    <img src="/img/phone-offroute.png" alt="Off-track banner with the reroute button" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>6</b>Record a pre-run</h2>
+      <ol>
+        <li>Tap <span class="key">●</span>. A strip appears with <span class="key">CUE</span> and <span class="key">STOP</span>. Recording continues with the screen off.</li>
+        <li>At every turn and hazard, stop and tap <span class="key">CUE</span>: pick the arrow, or <b>NOTE</b> / <b>DANGER</b> (severity 1–3), type what to say. One tap on an arrow is a complete cue; words are optional except for a note.</li>
+        <li><span class="key">STOP</span> → <span class="key">SAVE</span> (into your folder) or <span class="key">SHARE</span>. One GPX: the line plus the cues.</li>
+      </ol>
+      <p class="muted">A crash or dead battery loses at most a minute; the app offers the unfinished recording next time it opens.</p>
+    </div>
+    <img src="/img/phone-cuepick.png" alt="The cue picker: arrows, note, danger" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>7</b>Edit cues on any track</h2>
+      <ol>
+        <li><span class="key">TRACK</span> → pick a GPX → <span class="key">EDIT CUES</span>. (<span class="key">FOLLOW</span> rides it straight away.)</li>
+        <li><b>Long-press on the line</b> to add a cue there. <b>Tap a cue</b> to change or delete it. <span class="key">LIST</span> shows the roadbook as text.</li>
+        <li><span class="key">SAVE</span> writes over the file, or <span class="key">SAVE AS</span>. <span class="key">FOLLOW</span> starts riding it.</li>
+        <li>While following, <span class="key">↳</span> adds a cue at your position — for the stop-and-note pass on a route you planned at the table.</li>
+      </ol>
+    </div>
+    <img src="/img/phone-edit.png" alt="Editing cues on a track" loading="lazy">
+  </section>
+
+  <section class="step">
+    <div>
+      <h2><b>8</b>The file</h2>
+      <p>A roadbook is an ordinary GPX. Cues are waypoints whose <code>&lt;type&gt;</code> names them; <code>&lt;desc&gt;</code> carries the words. Any GPX editor can write them, and any map app still opens the file.</p>
+<pre>&lt;wpt lat="46.0201" lon="-112.0000"&gt;&lt;desc&gt;onto the ranch road&lt;/desc&gt;&lt;type&gt;cue:LEFT&lt;/type&gt;&lt;/wpt&gt;
+&lt;wpt lat="46.0302" lon="-112.0001"&gt;&lt;desc&gt;washout&lt;/desc&gt;&lt;type&gt;danger:3&lt;/type&gt;&lt;/wpt&gt;
+&lt;wpt lat="46.0403" lon="-112.0000"&gt;&lt;desc&gt;water crossing&lt;/desc&gt;&lt;type&gt;note&lt;/type&gt;&lt;/wpt&gt;</pre>
+      <p class="muted">Turns: STRAIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, LEFT, RIGHT, SHARP_LEFT, SHARP_RIGHT, KEEP_LEFT, KEEP_RIGHT, UTURN, ROUNDABOUT. Cues more than 150 m from the line are ignored. A track with cues is followed exactly as written — no turns are invented from its shape.</p>
+    </div>
+    <img src="/img/phone-record.png" alt="Recording a pre-run" loading="lazy">
+  </section>
+
+  <footer>
+    <span class="nav"><a href="/">hondoroadbook.com</a> · </span>Marks (★ on the pin panel) save a named point with a note; MAPS has EXPORT and BURN for all of them. The padlock holds the screen the way your mount sits. Miles/km under MAPS.
+  </footer>
+</div>
+</body>
+</html>

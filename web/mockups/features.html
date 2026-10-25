@@ -1,0 +1,91 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+html,body{margin:0;background:#666;font-family:Inter,system-ui,sans-serif}
+.comp{width:1600px;height:1000px;position:relative;overflow:hidden;background:#F4EFE6;color:#1B1B1B;margin:20px;display:flex;align-items:center;padding:0 90px;box-sizing:border-box;gap:60px}
+.comp.dark{background:#141414;color:#F2F2F2}
+.comp::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(27,27,27,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(27,27,27,.045) 1px,transparent 1px);background-size:64px 64px;pointer-events:none}
+.comp.dark::before{background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px)}
+.comp::after{content:"";position:absolute;width:900px;height:900px;border-radius:50%;background:radial-gradient(closest-side,rgba(216,80,47,.22),transparent);right:-150px;top:-200px;pointer-events:none}
+.text{position:relative;z-index:1;flex:1;max-width:720px}
+.kicker{font-size:18px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:#D8502F;margin-bottom:18px;display:flex;align-items:center;gap:12px}
+.kicker .logo{width:34px;height:34px;background:currentColor;-webkit-mask:url(../../fold/web/site/hondo-logo.svg) center/contain no-repeat;mask:url(../../fold/web/site/hondo-logo.svg) center/contain no-repeat;color:#1B1B1B}
+.dark .kicker .logo{color:#F2F2F2}
+h1{font-size:76px;line-height:1.02;letter-spacing:-.025em;margin:0 0 22px;font-weight:800}
+h1 em{font-style:normal;color:#D8502F}
+.sub{font-size:26px;line-height:1.4;color:#5A5A5A;margin:0 0 30px;max-width:620px}
+.dark .sub{color:#A8A8A8}
+ul{list-style:none;padding:0;margin:0;font-size:22px;line-height:1.35}
+li{display:flex;gap:14px;align-items:flex-start;margin:12px 0}
+li::before{content:"";width:12px;height:12px;border-radius:6px;background:#D8502F;flex:none;margin-top:10px}
+.phones{position:relative;z-index:1;display:flex;align-items:flex-end;gap:-40px}
+.tilt{transform:rotate(-4deg)}
+.wave{display:flex;gap:6px;align-items:center;height:60px;margin-top:30px}
+.wave i{display:block;width:8px;border-radius:4px;background:#D8502F}
+.footer{position:absolute;left:90px;bottom:36px;font-size:16px;color:#5A5A5A;letter-spacing:.08em;text-transform:uppercase;z-index:1}
+.dark .footer{color:#A8A8A8}
+</style></head><body>
+
+<div class="comp" id="c_hero">
+  <div class="text"><div class="kicker"><span class="logo"></span>Roadbook by Hondo Garage</div>
+    <h1>Ride the roadbook.<br><em>Never look down.</em></h1>
+    <p class="sub">Offline turn-by-turn for motorcycles. An arrow that fills exactly to the turn, pips in your helmet, the cue read aloud.</p>
+    <ul><li>Works with no signal, no account, no tracking</li><li>Whole states of maps on the phone</li><li>Free and open source</li></ul></div>
+  <div class="phones"><div id="p_hero"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<div class="comp dark" id="c_voice">
+  <div class="text"><div class="kicker"><span class="logo"></span>Spoken cues</div>
+    <h1>Hear it <em>before</em><br>you see it.</h1>
+    <p class="sub">Fifteen seconds out: “Left. Onto Dry Creek Road.” Then pips rise in pitch and quicken as the bar fills. A chime at the turn.</p>
+    <ul><li>The voice is built in — nothing to install</li><li>Night map for the dark</li><li>Bluetooth helmets get it as navigation audio</li></ul>
+    <div class="wave"><i style="height:14px"></i><i style="height:26px"></i><i style="height:44px"></i><i style="height:60px"></i><i style="height:38px"></i><i style="height:52px"></i><i style="height:22px"></i><i style="height:40px"></i><i style="height:58px"></i><i style="height:30px"></i><i style="height:16px"></i><i style="height:34px"></i><i style="height:48px"></i><i style="height:20px"></i></div></div>
+  <div class="phones"><div id="p_night"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<div class="comp" id="c_prerun">
+  <div class="text"><div class="kicker"><span class="logo"></span>Pre-run</div>
+    <h1>Record it.<br>Stop. Tap <em>CUE.</em></h1>
+    <p class="sub">Ride the course once with the recorder on. At every turn and hazard, pick the arrow and say what it is. The line and the cues save as one GPX.</p>
+    <ul><li>Keeps recording with the screen off</li><li>Notes, dangers in three levels, U-turns, keep left/right</li><li>Share the file with anyone</li></ul></div>
+  <div class="phones"><div id="p_record" style="margin-right:-24px;position:relative;z-index:1"></div><div id="p_cuepick" style="margin-top:80px"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<div class="comp" id="c_plan">
+  <div class="text"><div class="kicker"><span class="logo"></span>Plan at the table</div>
+    <h1>Seven ways to get there.<br><em>Then make it yours.</em></h1>
+    <p class="sub">Compare Fast, Towing, Backroads, Dirt, Ride, Quiet and Gravel on one screen. Save the one you like as a roadbook and add your own notes before the ride.</p>
+    <ul><li>Routes across state packs</li><li>Long-press a track to drop a cue</li><li>Marks with notes for water, gates, camps</li></ul></div>
+  <div class="phones"><div id="p_compare" style="margin-right:-24px;position:relative;z-index:1"></div><div id="p_edit" style="margin-top:80px"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<div class="comp" id="c_tablet" style="flex-direction:column;justify-content:center;gap:34px;padding-top:40px">
+  <div class="text" style="text-align:center;max-width:1100px;flex:none"><div class="kicker" style="justify-content:center"><span class="logo"></span>Hazards</div>
+    <h1 style="font-size:64px">Washout ahead. <em>You already know.</em></h1></div>
+  <div class="phones"><div id="p_tablet"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<div class="comp" id="c_packs">
+  <div class="text"><div class="kicker"><span class="logo"></span>Map packs</div>
+    <h1>Whole states.<br><em>Then no signal needed.</em></h1>
+    <p class="sub">Download the states you ride inside the app. Roads, routing and address search live on the phone; a big rural state is about half a gigabyte.</p>
+    <ul><li>Downloads resume where they stopped</li><li>Packs overlap and route across borders</li><li>Built from OpenStreetMap, refreshed monthly</li></ul></div>
+  <div class="phones"><div id="p_packs"></div></div>
+  <div class="footer">hondoroadbook.com</div>
+</div>
+
+<script type="module">
+import { phone } from './app.js'; import { SCENES } from './scenes.js';
+phone(document.getElementById('p_hero'), SCENES.hero, 0.92);
+phone(document.getElementById('p_night'), SCENES.night, 0.92);
+phone(document.getElementById('p_record'), SCENES.record, 0.74);
+phone(document.getElementById('p_cuepick'), SCENES.cuepick, 0.74);
+phone(document.getElementById('p_compare'), SCENES.compare, 0.74);
+phone(document.getElementById('p_edit'), SCENES.edit, 0.74);
+phone(document.getElementById('p_tablet'), SCENES.tablet, 0.55);
+phone(document.getElementById('p_packs'), SCENES.packs, 0.92);
+</script></body></html>

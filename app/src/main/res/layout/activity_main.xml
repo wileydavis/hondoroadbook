@@ -238,13 +238,13 @@
         android:gravity="center_vertical"
         android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="12dp" android:paddingBottom="20dp"
         android:visibility="gone">
-        <LinearLayout android:id="@+id/navCard" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_card" android:elevation="4dp" android:paddingStart="16dp" android:paddingEnd="16dp" android:layout_marginEnd="8dp" android:clickable="true" android:focusable="true">
-            <TextView android:id="@+id/navRemaining" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="18sp" android:textStyle="bold" android:text="12.4 km · 18 min" />
-            <TextView android:id="@+id/navSpeed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="18sp" android:text="45 mph" />
+        <LinearLayout android:id="@+id/navCard" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/bg_card" android:elevation="4dp" android:paddingStart="14dp" android:paddingEnd="12dp" android:layout_marginEnd="8dp" android:clickable="true" android:focusable="true">
+            <TextView android:id="@+id/navRemaining" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:text="12.4 km · 18 min" />
+            <TextView android:id="@+id/navSpeed" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="13sp" android:maxLines="1" android:includeFontPadding="false" android:paddingTop="2dp" android:text="45 mph" />
         </LinearLayout>
         <ImageButton android:id="@+id/btnNavCue" style="@style/RoundIcon" android:src="@drawable/ic_cue" android:contentDescription="Add cue here" android:layout_marginEnd="8dp" android:visibility="gone" />
         <ImageButton android:id="@+id/btnSound" style="@style/RoundIcon" android:src="@drawable/ic_sound_off" android:contentDescription="Sound" android:layout_marginEnd="8dp" />
-        <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="76dp" android:text="@string/end" />
+        <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="64dp" android:text="@string/end" />
     </LinearLayout>
 
     <!-- countdown chip, placed on the map at the next turn -->

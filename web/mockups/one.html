@@ -1,0 +1,6 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}</style></head><body><div id="root" style="padding:20px;display:inline-block"></div>
+<script type="module">
+import { phone } from './app.js'; import { SCENES } from './scenes.js';
+const name = new URLSearchParams(location.search).get('s') || 'hero';
+phone(document.getElementById('root'), SCENES[name], 1);
+</script></body></html>

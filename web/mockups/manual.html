@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+html,body{margin:0;background:#666;font-family:Inter,system-ui,sans-serif}
+.comp{width:1600px;height:1000px;position:relative;overflow:hidden;background:#F4EFE6;color:#1B1B1B;margin:20px;box-sizing:border-box}
+.anat{display:flex;align-items:center;justify-content:center}
+.callout{position:absolute;font-size:22px;line-height:1.3;max-width:330px}
+.callout b{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:17px;background:#D8502F;color:#fff;font-size:18px;margin-right:10px;vertical-align:middle}
+.callout p{margin:6px 0 0 44px;color:#5A5A5A;font-size:19px}
+svg.lines{position:absolute;inset:0;pointer-events:none}
+</style></head><body>
+<div class="comp anat" id="c_anatomy">
+  <div id="p_anat" style="position:absolute;left:560px;top:40px"></div>
+  <svg class="lines" width="1600" height="1000">
+    <g stroke="#D8502F" stroke-width="2" fill="none" stroke-dasharray="5 5">
+      <path d="M520,150 L610,160"/><path d="M1080,150 L965,165"/><path d="M520,420 L765,688"/><path d="M1080,460 L955,705"/><path d="M520,840 L640,915"/><path d="M1080,830 L835,915"/>
+    </g>
+  </svg>
+  <div class="callout" style="left:150px;top:110px"><b>1</b>The turn, as a bar<p>It fills over the last ~15 seconds and is full exactly at the turn. Pips rise with it; a chime at the turn.</p></div>
+  <div class="callout" style="left:1100px;top:110px"><b>2</b>Distance and words<p>Road name, or the note you wrote. The compass points north.</p></div>
+  <div class="callout" style="left:150px;top:380px"><b>3</b>You, heading-up<p>Lower third of the screen so most of the map is ahead. Tap the map to cycle whole route → next turn → close up.</p></div>
+  <div class="callout" style="left:1100px;top:420px"><b>4</b>Lock, night, locate<p>Hold the screen the way your mount sits; night map; re-center.</p></div>
+  <div class="callout" style="left:150px;top:800px"><b>5</b>Left and time<p>Tap for the written turn list, SAVE / SHARE.</p></div>
+  <div class="callout" style="left:1100px;top:790px"><b>6</b>Cue · Sound · End<p>↳ drops a cue where you are. Speaker turns the voice and pips on.</p></div>
+</div>
+<script type="module">
+import { phone } from './app.js'; import { SCENES } from './scenes.js';
+phone(document.getElementById('p_anat'), SCENES.hero, 1.0);
+</script></body></html>
