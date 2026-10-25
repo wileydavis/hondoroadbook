@@ -42,8 +42,8 @@ button.icon:hover { border-color: var(--soft); }
 .cues li { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--rule); cursor: pointer; font-size: 14px; }
 .cues li:hover { background: var(--paper); }
 .cues li .at { color: var(--soft); font-size: 12px; font-variant-numeric: tabular-nums; }
-.cues li .g { font-size: 20px; text-align: center; }
-.cues li .g.danger { color: var(--accent); font-weight: 800; }
+.cues li .g { width: 34px; height: 34px; }
+.cues li .g svg, .turns button svg, .dangerRow button svg, .marker-cue svg { width: 100%; height: 100%; display: block; }
 .cues li .words { color: var(--soft); font-size: 13px; display: block; }
 .cues li.auto .g { opacity: .85; }
 .cues li.user { background: color-mix(in srgb, var(--track) 7%, transparent); }
@@ -75,11 +75,12 @@ button.icon:hover { border-color: var(--soft); }
 .sheet-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .sheet .cta { padding: 8px 14px; font-size: 14px; border: 0; cursor: pointer; font-family: inherit; }
 .turns { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
-.turns button, .dangerRow button { font: inherit; font-size: 20px; height: 44px; border-radius: 10px; border: 2px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+.turns button, .dangerRow button { font: inherit; font-size: 20px; height: 48px; padding: 3px; border-radius: 10px; border: 2px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
 .turns button.on, .dangerRow button.on { border-color: var(--track); background: color-mix(in srgb, var(--track) 15%, var(--paper)); }
 .dangerRow { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 13px; color: var(--soft); }
-.dangerRow button { font-size: 15px; font-weight: 700; width: 44px; }
-.dangerRow button[data-turn="NOTE"] { width: auto; padding: 0 12px; }
+.dangerRow button { width: 48px; }
+.dangerRow button[data-turn="NOTE"] { width: auto; padding: 3px 12px 3px 4px; display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
+.dangerRow button[data-turn="NOTE"] svg { width: 38px; }
 #cueText { width: 100%; margin-top: 8px; font: inherit; font-size: 14px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); }
 
 .inspmap { height: 240px; border-radius: 10px; overflow: hidden; border: 1px solid var(--rule); background: #000; }
@@ -106,10 +107,9 @@ button.icon:hover { border-color: var(--soft); }
 .marker-pt.a { background: #16a34a; } .marker-pt.b { background: #dc2626; }
 .marker-pt.via { width: 18px; height: 18px; border-radius: 9px; font-size: 0; background: #fff; border: 3px solid var(--ink); }
 .marker-pt.ghost { opacity: .7; }
-.marker-cue { z-index: 2; width: 22px; height: 22px; border-radius: 11px; background: #fff; border: 2px solid var(--ink); color: var(--ink); font: 700 14px/18px var(--sans); text-align: center; box-shadow: 0 1px 5px rgba(0,0,0,.3); cursor: pointer; }
-.marker-cue.danger { border-color: var(--accent); color: var(--accent); }
+.marker-cue { z-index: 2; width: 30px; height: 30px; padding: 2px; border-radius: 15px; background: var(--card); border: 2px solid var(--ink); box-shadow: 0 1px 5px rgba(0,0,0,.3); cursor: pointer; --card: #fff; --ink: #1b1b1b; --accent: #d8502f; }
+.marker-cue.danger { border-color: var(--accent); }
 .marker-cue.user { border-color: var(--track); }
-.marker-cue.note { color: var(--track); border-color: var(--track); }
 
 @media (max-width: 700px) {
   #side { width: 100vw; max-height: 55vh; bottom: auto; top: auto; left: 0; right: 0; bottom: 0; border-right: 0; border-top: 1px solid var(--rule); border-radius: 16px 16px 0 0; }

@@ -10,7 +10,33 @@ const MODES = [
   ["RIDE", "Ride", "#16A34A"], ["QUIET", "Quiet ride", "#7C3AED"], ["GRAVEL", "Gravel ride", "#65A30D"],
 ];
 const TURNS = ["STRAIGHT", "SLIGHT_LEFT", "SLIGHT_RIGHT", "LEFT", "RIGHT", "SHARP_LEFT", "SHARP_RIGHT", "KEEP_LEFT", "KEEP_RIGHT", "UTURN", "ROUNDABOUT"];
-const GLYPH = { STRAIGHT: "↑", SLIGHT_LEFT: "↖", SLIGHT_RIGHT: "↗", LEFT: "←", RIGHT: "→", SHARP_LEFT: "↙", SHARP_RIGHT: "↘", KEEP_LEFT: "⇖", KEEP_RIGHT: "⇗", UTURN: "↩", ROUNDABOUT: "↻", DANGER: "!", NOTE: "✎" };
+// The app's ArrowView, as SVG: the same shapes in the same 100×100 box, the same accent shaft and head,
+// the same signs for a note and a danger, so a cue looks here exactly as it does on the phone.
+const SHAPES = {
+  STRAIGHT: "M50 92 L50 24", RIGHT: "M32 92 L32 48 Q32 32 48 32 L74 32", LEFT: "M68 92 L68 48 Q68 32 52 32 L26 32",
+  SLIGHT_RIGHT: "M42 92 L42 56 Q42 44 50 36 L70 18", SLIGHT_LEFT: "M58 92 L58 56 Q58 44 50 36 L30 18",
+  KEEP_RIGHT: "M46 92 L46 60 Q46 48 52 40 L62 22", KEEP_LEFT: "M54 92 L54 60 Q54 48 48 40 L38 22",
+  SHARP_RIGHT: "M36 92 L36 40 Q36 22 50 30 L72 52", SHARP_LEFT: "M64 92 L64 40 Q64 22 50 30 L28 52",
+  UTURN: "M66 92 L66 46 A16 22 0 0 0 34 46 L34 70", ROUNDABOUT: "M50 92 L50 72 A18 18 0 0 0 50 34 L50 14",
+  NOTE: "M50 92 L50 46", DANGER: "M50 92 L50 46",
+};
+// end point and direction of each shaft, for the head
+const ENDS = { STRAIGHT: [50, 24, 0, -1], RIGHT: [74, 32, 1, 0], LEFT: [26, 32, -1, 0], SLIGHT_RIGHT: [70, 18, 20, -18], SLIGHT_LEFT: [30, 18, -20, -18], KEEP_RIGHT: [62, 22, 10, -18], KEEP_LEFT: [38, 22, -10, -18], SHARP_RIGHT: [72, 52, 22, 22], SHARP_LEFT: [28, 52, -22, 22], UTURN: [34, 70, 0, 1], ROUNDABOUT: [50, 14, 0, -1] };
+function arrowSvg(turn, level = 0, exit = 0) {
+  const d = SHAPES[turn] || SHAPES.STRAIGHT;
+  let extra = "";
+  if (turn === "NOTE" || turn === "DANGER") {
+    const x = 50, y = 46 - 17, r = 19;
+    if (turn === "DANGER") { const tri = `M${x} ${y - r} L${x + r * 1.1} ${y + r * 0.8} L${x - r * 1.1} ${y + r * 0.8} Z`; extra = `<path d="${tri}" fill="var(--accent)" stroke="var(--card)" stroke-width="3.25" stroke-linejoin="round"/><text x="${x}" y="${y + r * 0.75}" font-size="${r * 1.3}" font-weight="700" fill="var(--card)" text-anchor="middle" font-family="system-ui,sans-serif">!</text>` + (level > 1 ? `<text x="${x + r * 1.4}" y="${y + r * 0.7}" font-size="${r * 0.5}" font-weight="700" fill="var(--ink)" text-anchor="middle" font-family="system-ui,sans-serif">${"!".repeat(Math.min(3, level))}</text>` : ""); }
+    else extra = `<circle cx="${x}" cy="${y}" r="${r}" fill="var(--ink)" stroke="var(--card)" stroke-width="3.25"/><text x="${x}" y="${y + r * 0.45}" font-size="${r * 1.3}" font-weight="700" fill="var(--card)" text-anchor="middle" font-family="system-ui,sans-serif">i</text>`;
+  } else {
+    const [ex, ey, dx, dy] = ENDS[turn] || ENDS.STRAIGHT; const l = Math.hypot(dx, dy); const tx = dx / l, ty = dy / l, nx = -ty, ny = tx;
+    const hl = 20, hw = 15; const tipX = ex + tx * hl * 0.85, tipY = ey + ty * hl * 0.85, bx = ex - tx * hl * 0.15, by = ey - ty * hl * 0.15;
+    extra = `<path d="M${tipX} ${tipY} L${bx + nx * hw} ${by + ny * hw} L${bx - nx * hw} ${by - ny * hw} Z" fill="var(--accent)" stroke="var(--card)" stroke-width="3.25" stroke-linejoin="round"/>`;
+    if (turn === "ROUNDABOUT" && exit > 0) extra += `<circle cx="84" cy="84" r="14" fill="var(--ink)"/><text x="84" y="90" font-size="18" font-weight="700" fill="var(--card)" text-anchor="middle" font-family="system-ui,sans-serif">${exit}</text>`;
+  }
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>${extra}</svg>`;
+}
 const WORDS = { STRAIGHT: "Straight on", SLIGHT_LEFT: "Slight left", SLIGHT_RIGHT: "Slight right", LEFT: "Left", RIGHT: "Right", SHARP_LEFT: "Sharp left", SHARP_RIGHT: "Sharp right", KEEP_LEFT: "Keep left", KEEP_RIGHT: "Keep right", UTURN: "U-turn", ROUNDABOUT: "Roundabout", DANGER: "Danger", NOTE: "Note" };
 const SURF = { motorway: ["Highway", "#2563eb"], trunk: ["Highway", "#2563eb"], primary: ["Paved", "#64748b"], secondary: ["Paved", "#64748b"], tertiary: ["Paved", "#64748b"], unclassified: ["Minor", "#94a3b8"], residential: ["Minor", "#94a3b8"], living_street: ["Minor", "#94a3b8"], service: ["Minor", "#94a3b8"], road: ["Minor", "#94a3b8"], track: ["Two-track", "#8b5a2b"], path: ["Trail", "#a16207"], bridleway: ["Trail", "#a16207"], cycleway: ["Path", "#16a34a"], footway: ["Path", "#16a34a"], pedestrian: ["Path", "#16a34a"], steps: ["Path", "#16a34a"] };
 const LAND_TILES = "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_with_PriUnk/MapServer/tile/{z}/{y}/{x}";
@@ -262,7 +288,7 @@ function setRoute(j, preview) {
   const line = j.coords;
   const kept = S.cues.filter(c => !c.auto).filter(c => nearLine(c, line) < 150);
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
-  const auto = j.cues.filter(c => !S.deletedAuto.some(d => dist([d.lon, d.lat], [c.lon, c.lat]) < 40)).map(c => ({ lon: c.lon, lat: c.lat, turn: c.turn, level: 0, text: c.turn === "ROUNDABOUT" ? c.name : (c.name || ""), auto: true }));
+  const auto = j.cues.filter(c => !S.deletedAuto.some(d => dist([d.lon, d.lat], [c.lon, c.lat]) < 40)).map(c => ({ lon: c.lon, lat: c.lat, turn: c.turn, level: 0, exit: c.exit || 0, text: c.turn === "ROUNDABOUT" ? c.name : (c.name || ""), auto: true }));
   S.cues = [...auto, ...kept];
   if (dropped) status(`${dropped} of your cues no longer touch the route and were dropped`, true);
   renderAll();
@@ -314,11 +340,11 @@ function renderCues() {
   $("#cueCount").textContent = S.cues.length ? `(${S.cues.length})` : "";
   S.cues.forEach((c, idx) => {
     const li = document.createElement("li"); li.className = c.auto ? "auto" : "user";
-    const g = GLYPH[c.turn] || "•";
-    li.innerHTML = `<span class="g ${c.turn === "DANGER" ? "danger" : ""}">${c.turn === "DANGER" ? "!".repeat(c.level || 2) : g}</span><span><b>${esc(WORDS[c.turn] || c.turn)}</b>${c.text ? `<span class="words">${esc(c.text)}</span>` : ""}</span><span class="at">${fmtDistShort(c.at)}</span>`;
+    const g = arrowSvg(c.turn, c.level, c.exit);
+    li.innerHTML = `<span class="g">${g}</span><span><b>${esc(WORDS[c.turn] || c.turn)}</b>${c.text ? `<span class="words">${esc(c.text)}</span>` : ""}</span><span class="at">${fmtDistShort(c.at)}</span>`;
     li.onclick = () => { map.flyTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 14) }); editCue(idx); };
     ol.appendChild(li);
-    const el = document.createElement("div"); el.className = "marker-cue" + (c.turn === "DANGER" ? " danger" : c.turn === "NOTE" ? " note" : "") + (c.auto ? "" : " user"); el.textContent = c.turn === "DANGER" ? "!" : g; el.title = (WORDS[c.turn] || c.turn) + (c.text ? ": " + c.text : "");
+    const el = document.createElement("div"); el.className = "marker-cue" + (c.turn === "DANGER" ? " danger" : c.turn === "NOTE" ? " note" : "") + (c.auto ? "" : " user"); el.innerHTML = g; el.title = (WORDS[c.turn] || c.turn) + (c.text ? ": " + c.text : "");
     el.addEventListener("click", e => { e.stopPropagation(); editCue(idx); });
     S.cueMarkers.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([c.lon, c.lat]).addTo(map));
   });
@@ -326,7 +352,8 @@ function renderCues() {
 
 let editing = null;   // {idx} or {lon,lat} for a new cue
 const grid = $("#turnGrid");
-for (const t of TURNS) { const b = document.createElement("button"); b.dataset.turn = t; b.textContent = GLYPH[t]; b.title = WORDS[t]; grid.appendChild(b); }
+for (const t of TURNS) { const b = document.createElement("button"); b.dataset.turn = t; b.innerHTML = arrowSvg(t); b.title = WORDS[t]; grid.appendChild(b); }
+document.querySelectorAll("#cueEd .dangerRow [data-turn]").forEach(b => { const t = b.dataset.turn; b.innerHTML = arrowSvg(t, Number(b.dataset.level || 0)) + (t === "NOTE" ? "<span>Note</span>" : ""); b.title = t === "NOTE" ? "A note, read in your words" : `Danger ${b.dataset.level}`; });
 document.querySelectorAll("#cueEd [data-turn]").forEach(b => b.onclick = () => { document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.remove("on")); b.classList.add("on"); if (b.dataset.turn === "NOTE") $("#cueText").focus(); });
 function editCue(idx) {
   editing = { idx }; const c = S.cues[idx];
@@ -507,11 +534,14 @@ document.addEventListener("click", e => { if (!e.target.closest(".search")) $("#
 async function search() {
   const q = $("#q").value.trim(); const box = $("#hits");
   if (q.length < 2) { box.hidden = true; return; }
-  const c = map.getCenter();
+  if ($("#q") !== document.activeElement && box.hidden) return;
+  const c = map.getCenter(); const b = map.getBounds();
+  box.innerHTML = `<div class="muted">Searching…</div>`; box.hidden = false;
   try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng}&lat=${c.lat}`); const j = await r.json();
+    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng}&lat=${c.lat}&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`); const j = await r.json();
+    if ($("#q").value.trim() !== q) return;
     const hits = j.hits || [];
-    box.innerHTML = hits.length ? hits.map(h => `<div data-lon="${h.lon}" data-lat="${h.lat}">${esc(h.name)}<small>${esc(h.context || "")}${h.distance ? " · " + fmtDist(h.distance) : ""}</small></div>`).join("") : `<div class="muted">Nothing found near the map. Searches cover the states in view.</div>`;
+    box.innerHTML = j.error ? `<div class="muted">${esc(j.error)}</div>` : hits.length ? hits.map(h => `<div data-lon="${h.lon}" data-lat="${h.lat}">${esc(h.name)}<small>${esc([h.context, h.region].filter(Boolean).join(" · "))}${h.distance ? " · " + fmtDist(h.distance) : ""}</small></div>`).join("") : `<div class="muted">Nothing found under the map. Add the state to look elsewhere: “manhattan, mt”.</div>`;
     box.hidden = false;
     box.querySelectorAll("div[data-lon]").forEach(d => d.onclick = () => { map.flyTo({ center: [Number(d.dataset.lon), Number(d.dataset.lat)], zoom: 13 }); box.hidden = true; });
   } catch { box.innerHTML = `<div class="muted">Search is not reachable right now.</div>`; box.hidden = false; }

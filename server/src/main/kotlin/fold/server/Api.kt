@@ -140,21 +140,49 @@ class Api(private val packs: PackSet) {
             "pack" to Json.str(loaded[s.pack].pack.id), "region" to Json.str(loaded[s.pack].pack.region))
     }
 
-    /** Place and address search in the packs around a point, the same index the phone uses. */
+    /**
+     * Place and address search, the same index the phone uses. "manhattan, mt" or "manhattan montana"
+     * searches Montana wherever the map is; otherwise the packs under the map (its bounds, or 2° around
+     * a point) are searched, nearest first among equal scores.
+     */
     fun search(q: Map<String, String>): String {
-        val text = q["q"]?.trim() ?: throw ApiError(400, "q required")
+        var text = q["q"]?.trim() ?: throw ApiError(400, "q required")
         if (text.length < 2) return Json.obj("hits" to "[]")
         val lon = q["lon"]?.toDoubleOrNull(); val lat = q["lat"]?.toDoubleOrNull()
-        val loaded = if (lon != null && lat != null) packs.forBbox(lon - 2.0, lat - 2.0, lon + 2.0, lat + 2.0) else emptyList()
-        val hits = ArrayList<Triple<Int, Double, fold.core.Hit>>()
+        val bbox = q["bbox"]?.split(',')?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 4 }
+        // a state named at the end of the query picks the packs
+        val words = text.lowercase().replace(Regex("[,.]"), " ").split(Regex("\\s+")).filter { it.isNotEmpty() }
+        var region: String? = null
+        if (words.size >= 2) {
+            val last1 = words.last(); val last2 = words.takeLast(2).joinToString(" ")
+            region = STATES[last2]?.also { text = words.dropLast(2).joinToString(" ") } ?: STATES[last1]?.also { text = words.dropLast(1).joinToString(" ") }
+        }
+        val loaded: List<Loaded> = when {
+            region != null -> packs.catalog().filter { it.region.equals(region, ignoreCase = true) }.mapNotNull { try { packs.ensure(it) } catch (e: Throwable) { System.err.println("search: ${it.id} unavailable: ${e.message}"); null } }
+            bbox != null -> packs.forBbox(minOf(bbox[0], bbox[2]), minOf(bbox[1], bbox[3]), maxOf(bbox[0], bbox[2]), maxOf(bbox[1], bbox[3]))
+            lon != null && lat != null -> packs.forBbox(lon - 2.0, lat - 2.0, lon + 2.0, lat + 2.0)
+            else -> emptyList()
+        }
+        if (region != null && loaded.isEmpty()) throw ApiError(404, "No map pack for $region yet")
+        if (text.isBlank()) return Json.obj("hits" to "[]")
+        val hits = ArrayList<Triple<Int, Double, Pair<fold.core.Hit, String>>>()
         for (l in loaded) {
             val sf = l.search ?: continue
             for ((score, h) in sf.queryScored(text, 15)) {
                 val d = if (lon != null && lat != null) Geo.fastDistance(lat, lon, h.lat, h.lon) else 0.0
-                hits.add(Triple(score, d, h))
+                hits.add(Triple(score, d, h to l.pack.region))
             }
         }
-        val best = hits.sortedWith(compareByDescending<Triple<Int, Double, fold.core.Hit>> { it.first }.thenBy { it.second }).take(12)
-        return Json.obj("hits" to Json.arr(best.map { (_, d, h) -> Json.obj("kind" to Json.str(h.kind.toString()), "name" to Json.str(h.name), "context" to Json.str(h.context), "lon" to Json.num(h.lon), "lat" to Json.num(h.lat), "distance" to Json.num(d, 0)) }))
+        val best = hits.sortedWith(compareByDescending<Triple<Int, Double, Pair<fold.core.Hit, String>>> { it.first }.thenBy { it.second }).take(12)
+        return Json.obj("hits" to Json.arr(best.map { (_, d, hr) -> val h = hr.first; Json.obj("kind" to Json.str(h.kind.toString()), "name" to Json.str(h.name), "context" to Json.str(h.context), "region" to Json.str(hr.second), "lon" to Json.num(h.lon), "lat" to Json.num(h.lat), "distance" to Json.num(d, 0)) }))
+    }
+
+    companion object {
+        /** State codes and names → the catalog's region names. */
+        val STATES: Map<String, String> = HashMap<String, String>().apply {
+            val pairs = listOf("al" to "Alabama", "ak" to "Alaska", "az" to "Arizona", "ar" to "Arkansas", "ca" to "California", "co" to "Colorado", "ct" to "Connecticut", "de" to "Delaware", "dc" to "District of Columbia", "fl" to "Florida", "ga" to "Georgia", "hi" to "Hawaii", "id" to "Idaho", "il" to "Illinois", "in" to "Indiana", "ia" to "Iowa", "ks" to "Kansas", "ky" to "Kentucky", "la" to "Louisiana", "me" to "Maine", "md" to "Maryland", "ma" to "Massachusetts", "mi" to "Michigan", "mn" to "Minnesota", "ms" to "Mississippi", "mo" to "Missouri", "mt" to "Montana", "ne" to "Nebraska", "nv" to "Nevada", "nh" to "New Hampshire", "nj" to "New Jersey", "nm" to "New Mexico", "ny" to "New York", "nc" to "North Carolina", "nd" to "North Dakota", "oh" to "Ohio", "ok" to "Oklahoma", "or" to "Oregon", "pa" to "Pennsylvania", "ri" to "Rhode Island", "sc" to "South Carolina", "sd" to "South Dakota", "tn" to "Tennessee", "tx" to "Texas", "ut" to "Utah", "vt" to "Vermont", "va" to "Virginia", "wa" to "Washington", "wv" to "West Virginia", "wi" to "Wisconsin", "wy" to "Wyoming", "bc" to "Baja California", "bcs" to "Baja California", "baja" to "Baja California")
+            for ((code, name) in pairs) { put(code, name); put(name.lowercase(), name) }
+            put("baja california", "Baja California"); put("baja california sur", "Baja California")
+        }
     }
 }
