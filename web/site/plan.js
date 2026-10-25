@@ -86,16 +86,26 @@ function inter(bb, b) { return !(bb[2] < b.getWest() || bb[0] > b.getEast() || b
 
 /** Packs in view become sources; the style is rebuilt (diffed) when the set changes. */
 async function updatePacks(force) {
-  const b = map.getBounds(); const z = map.getZoom();
+  // every pack in view is a source at any zoom: the packs carry zoom 0 up, so the country view is
+  // the packs' own low-zoom tiles (a tile or two each, cached at the edge after the first visitor)
+  const b = map.getBounds();
   const want = new Set();
-  if (z >= 5.5) for (const p of roadsPacks()) if (inter(p.bbox, b)) want.add(p.id);
-  if (z >= 5.5) for (const p of terrainPacks()) if (inter(p.bbox, b)) want.add(p.id);
+  for (const p of roadsPacks()) if (inter(p.bbox, b)) want.add(p.id);
+  for (const p of terrainPacks()) if (inter(p.bbox, b)) want.add(p.id);
   let changed = force || want.size !== S.activePacks.size || [...want].some(id => !S.activePacks.has(id));
   if (!changed) return;
-  // a roads pack may carry an overview file (small roads at low zoom); ask once
-  await Promise.all([...want].filter(id => !S.overview.has(id) && roadsPacks().some(p => p.id === id)).map(async id => {
-    try { const r = await fetch(`/tiles/${id}/roads.pmtiles`, { method: "HEAD" }); S.overview.set(id, r.ok); } catch { S.overview.set(id, false); }
+  // ask once per pack whether its tiles are really there (a pack can be in the catalog before its file
+  // is), and whether a roads pack carries an overview file (small roads at low zoom)
+  await Promise.all([...want].filter(id => !S.overview.has(id)).map(async id => {
+    const roads = roadsPacks().some(p => p.id === id);
+    try {
+      const r = await fetch(`/tiles/${id}/${roads ? "tiles" : "terrain"}.pmtiles`, { method: "HEAD" });
+      if (!r.ok) { S.overview.set(id, null); return; }
+      if (!roads) { S.overview.set(id, false); return; }
+      const o = await fetch(`/tiles/${id}/roads.pmtiles`, { method: "HEAD" }); S.overview.set(id, o.ok);
+    } catch { S.overview.set(id, null); }
   }));
+  for (const id of [...want]) if (S.overview.get(id) === null) want.delete(id);   // not on the shelf yet
   S.activePacks = want;
   applyStyle();
 }
@@ -145,7 +155,7 @@ function buildStyle() {
   let at = layers.findIndex(l => l.type === "symbol"); if (at < 0) at = layers.length;
   const mode = MODES.find(m => m[0] === S.mode); const color = S.track ? "#7c3aed" : mode[2];
   const ours = [
-    { id: "coverage_line", type: "line", source: "coverage", maxzoom: 7, paint: { "line-color": night ? "#777" : "#555", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.6 } },
+    { id: "coverage_line", type: "line", source: "coverage", maxzoom: 6, paint: { "line-color": night ? "#777" : "#555", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.35 } },
     { id: "library_line", type: "line", source: "library", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#7c3aed", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 10, 3, 14, 5], "line-opacity": 0.75 } },
     { id: "route_casing", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 5, 12, 9, 16, 13], "line-opacity": 0.9 } },
     { id: "route_line", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 6, 16, 9] } },
@@ -153,7 +163,7 @@ function buildStyle() {
     { id: "route_hit", type: "line", source: "route", paint: { "line-color": "#000", "line-width": 22, "line-opacity": 0.001 } },
   ];
   layers.splice(at, 0, ...ours);
-  layers.push({ id: "coverage_label", type: "symbol", source: "coverage", maxzoom: 7, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-transform": "uppercase", "text-letter-spacing": 0.1 }, paint: { "text-color": night ? "#aaa" : "#666", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1 } });
+  layers.push({ id: "coverage_label", type: "symbol", source: "coverage", maxzoom: 5, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-transform": "uppercase", "text-letter-spacing": 0.1 }, paint: { "text-color": night ? "#aaa" : "#666", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1 } });
   return { version: 8, glyphs: `${ORIGIN}/map/fonts/{fontstack}/{range}.pbf`, sprite: `${ORIGIN}/map/sprites/${night ? "dark" : "light"}`, sources, layers };
 }
 
