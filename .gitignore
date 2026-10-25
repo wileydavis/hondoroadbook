@@ -1,0 +1,16 @@
+# signing keys never leave the machine that built them
+keys/
+*.jks
+*.password
+local.properties
+# build output
+build/
+.gradle/
+.kotlin/
+*.apk
+*.apk.idsig
+*.mappack
+*.osm.pbf
+# node, for wrangler
+node_modules/
+.wrangler/

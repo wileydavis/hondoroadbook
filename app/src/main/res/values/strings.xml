@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="go_to">GO TO</string>
+    <string name="track">TRACK</string>
+    <string name="maps">MAPS</string>
+    <string name="route_here">ROUTE HERE</string>
+    <string name="end">END</string>
+    <string name="cancel">CANCEL</string>
+    <string name="drive">DRIVE</string>
+    <string name="ride">RIDE</string>
+    <string name="search_hint">Address, street or place</string>
+    <string name="no_packs">No maps on this phone yet.\n\nBuild a .mappack on a computer with fold-packer, copy it to the phone, then tap IMPORT.</string>
+    <string name="import_pack">IMPORT .MAPPACK</string>
+    <string name="credits">Map data © OpenStreetMap contributors · Basemap © Protomaps</string>
+    <string name="off_track">OFF TRACK</string>
+    <string name="arrived">ARRIVED</string>
+    <string name="no_route">No route found inside the loaded maps.</string>
+    <string name="outside_maps">That point is outside your maps.</string>
+    <string name="need_location">Fold needs location permission to show where you are. Nothing leaves the phone.</string>
+</resources>

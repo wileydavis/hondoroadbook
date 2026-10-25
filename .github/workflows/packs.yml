@@ -1,0 +1,122 @@
+# Builds map packs on GitHub's runners and publishes them to the Cloudflare R2 bucket behind
+# hondoroadbook.com/packs/. Free for a public repository; each state is its own job, so a failure
+# in one never costs the others. Runs monthly, or by hand with a list of states.
+#
+# Secrets needed (repository → Settings → Secrets and variables → Actions):
+#   R2_ACCOUNT_ID          Cloudflare account id (dashboard → R2 → "Account ID" on the right)
+#   R2_ACCESS_KEY_ID       from an R2 API token with Object Read & Write on bucket roadbook-packs
+#   R2_SECRET_ACCESS_KEY   the same token's secret
+name: packs
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Space-separated Geofabrik state slugs (montana wyoming …) or 'all'"
+        default: "montana wyoming idaho"
+      max_zoom:
+        description: "Tile detail (15 = full; 14 ≈ 40% smaller)"
+        default: "15"
+  schedule:
+    - cron: "17 9 3 * *"     # monthly refresh of everything, 3rd of the month 09:17 UTC
+
+concurrency:
+  group: packs
+  cancel-in-progress: false
+
+env:
+  BUCKET: roadbook-packs
+  SITE: https://hondoroadbook.com/packs
+
+jobs:
+  packer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: gradle --no-daemon -q :packer:fatJar
+      - uses: actions/upload-artifact@v4
+        with: { name: fold-packer, path: packer/build/libs/fold-packer.jar, retention-days: 7 }
+
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: bash
+        run: |
+          ALL="alabama alaska arizona arkansas california colorado connecticut delaware district-of-columbia florida georgia hawaii idaho illinois indiana iowa kansas kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada new-hampshire new-jersey new-mexico new-york north-carolina north-dakota ohio oklahoma oregon pennsylvania rhode-island south-carolina south-dakota tennessee texas utah vermont virginia washington west-virginia wisconsin wyoming"
+          WANT="${{ github.event.inputs.states || 'all' }}"
+          [ "$WANT" = "all" ] && WANT="$ALL"
+          echo "matrix=$(printf '%s\n' $WANT | jq -R . | jq -sc '{state: .}')" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [packer, plan]
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      max-parallel: 6          # be polite to Geofabrik and Protomaps
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: actions/download-artifact@v4
+        with: { name: fold-packer }
+      - name: Free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+      - name: Download extract
+        run: curl -fL --retry 5 --retry-all-errors -o state.osm.pbf "https://download.geofabrik.de/north-america/us/${{ matrix.state }}-latest.osm.pbf"
+      - name: Build pack
+        shell: bash
+        run: |
+          s="${{ matrix.state }}"
+          name="$(echo "$s" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')"
+          extra="--max-zoom ${{ github.event.inputs.max_zoom || '15' }}"
+          [ "$s" = "alaska" ] && extra="--max-zoom 13"
+          java -Xmx12g -jar fold-packer.jar --pbf state.osm.pbf --out "$s-roads.mappack" --name "$name" $extra
+          rm -f state.osm.pbf
+          # sidecar for the catalog: id, name, kind, size, built date, bbox from pack.txt
+          unzip -p "$s-roads.mappack" pack.txt > pack.txt
+          bbox=$(grep '^bbox=' pack.txt | cut -d= -f2)      # minLat,minLon,maxLat,maxLon
+          IFS=, read -r minLat minLon maxLat maxLon <<< "$bbox"
+          jq -n --arg id "us-$s-roads" --arg name "$name" --arg url "$SITE/us/$s-roads.mappack" --argjson bytes "$(stat -c %s "$s-roads.mappack")" \
+                --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
+                '{id:$id, name:$name, group:"United States", kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$s-roads.json"
+          cat "$s-roads.json"
+      - name: Upload to R2
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          s="${{ matrix.state }}"
+          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 --progress "$s-roads.mappack" "r2:$BUCKET/us/$s-roads.mappack"
+          rclone copyto "$s-roads.json" "r2:$BUCKET/us/$s-roads.json"
+
+  catalog:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    steps:
+      - name: Rebuild catalog.json from the sidecars in the bucket
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          mkdir meta && rclone copy --include "*.json" --exclude "catalog.json" "r2:$BUCKET" meta
+          find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
+          jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
+          rclone copyto catalog.json "r2:$BUCKET/catalog.json"

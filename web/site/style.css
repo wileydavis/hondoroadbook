@@ -1,0 +1,51 @@
+:root {
+  --paper: #f4efe6; --ink: #1b1b1b; --soft: #5a5a5a; --accent: #d8502f; --card: #fffdf8; --rule: #e2dccf; --track: #7c3aed;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #15140f; --ink: #efe9dc; --soft: #a9a294; --card: #1f1d17; --rule: #312e26; }
+}
+* { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); font: 17px/1.55 var(--sans); -webkit-text-size-adjust: 100%; }
+body { margin: 0; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 8px; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .02em; text-decoration: none; color: var(--ink); }
+.brand .mark { width: 34px; height: 34px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+.brand .mark svg { width: 22px; height: 22px; }
+.brand small { display: block; font-weight: 500; color: var(--soft); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+nav.top a { margin-left: 18px; color: var(--soft); text-decoration: none; font-size: 15px; }
+nav.top a:hover { color: var(--ink); }
+.hero { padding: 48px 0 28px; border-bottom: 1px solid var(--rule); }
+.hero h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -.02em; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p.lead { font-size: 20px; color: var(--soft); max-width: 640px; margin: 0 0 26px; }
+.cta { display: inline-flex; align-items: center; gap: 10px; background: var(--ink); color: var(--paper); padding: 14px 20px; border-radius: 12px; text-decoration: none; font-weight: 600; }
+.cta.alt { background: transparent; color: var(--ink); border: 2px solid var(--ink); margin-left: 10px; }
+.cta small { font-weight: 500; opacity: .7; }
+.hud { margin: 34px 0 0; display: flex; align-items: center; gap: 18px; background: var(--card); border: 1px solid var(--rule); border-radius: 18px; padding: 16px 22px; max-width: 520px; box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+.hud svg { flex: none; }
+.hud .d { font-size: 42px; font-weight: 800; line-height: 1; }
+.hud .s { color: var(--soft); font-size: 17px; margin-top: 4px; }
+section { padding: 40px 0; border-bottom: 1px solid var(--rule); }
+section h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -.01em; }
+section p.sub { color: var(--soft); margin: 0 0 22px; max-width: 640px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 18px; }
+.card h3 { margin: 0 0 6px; font-size: 17px; }
+.card p { margin: 0; color: var(--soft); font-size: 15px; }
+ol.steps { padding-left: 22px; }
+ol.steps li { margin: 10px 0; }
+code, pre { font-family: var(--mono); font-size: 14px; }
+pre { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; overflow-x: auto; }
+table.packs { width: 100%; border-collapse: collapse; font-size: 15px; }
+table.packs th, table.packs td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.packs th { color: var(--soft); font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
+table.packs td.sz { white-space: nowrap; color: var(--soft); }
+.kind { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--rule); color: var(--soft); margin-left: 6px; }
+.muted { color: var(--soft); }
+footer { padding: 30px 0 50px; color: var(--soft); font-size: 14px; }
+footer a { color: var(--soft); }
+@media (max-width: 600px) { .cta.alt { margin-left: 0; margin-top: 10px; } nav.top a { margin-left: 12px; } .hud .d { font-size: 34px; } }

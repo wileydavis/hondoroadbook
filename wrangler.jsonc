@@ -1,0 +1,15 @@
+// Cloudflare Worker for hondoroadbook.com: the product site (static files in web/site) and the
+// pack catalog + downloads, served from an R2 bucket that the GitHub Actions workflow fills.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hondoroadbook",
+  "main": "web/worker.js",
+  "compatibility_date": "2025-09-01",
+  "assets": { "directory": "web/site", "binding": "ASSETS", "not_found_handling": "404-page" },
+  "r2_buckets": [{ "binding": "PACKS", "bucket_name": "roadbook-packs" }],
+  "routes": [
+    { "pattern": "hondoroadbook.com", "custom_domain": true },
+    { "pattern": "www.hondoroadbook.com", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

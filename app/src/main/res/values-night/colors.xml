@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="paper">#121212</color>
+    <color name="ink">#F2F2F2</color>
+    <color name="ink_soft">#A8A8A8</color>
+    <color name="card">#1E1E1E</color>
+    <color name="accent">#FF7A59</color>
+    <color name="route">#60A5FA</color>
+    <color name="route_casing">#000000</color>
+    <color name="track">#C084FC</color>
+    <color name="bar_bg">#333333</color>
+    <color name="button">#F2F2F2</color>
+    <color name="button_text">#111111</color>
+    <color name="scrim">#CC000000</color>
+</resources>
