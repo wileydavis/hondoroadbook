@@ -20,7 +20,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
       - uses: gradle/actions/setup-gradle@v4
-      - run: gradle --no-daemon -q :core:test :app:assembleFoldRelease :app:assembleRoadbookRelease :packer:fatJar
+      - run: ./gradlew --no-daemon -q :core:test :app:assembleFoldRelease :app:assembleRoadbookRelease :packer:fatJar
       - name: Sign
         env:
           RB_KS: ${{ secrets.ROADBOOK_KEYSTORE_B64 }}

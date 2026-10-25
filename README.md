@@ -209,9 +209,9 @@ the whole US ~25 GB, the planet 100+ GB. Packs can be copied phone-to-phone; the
 
 ```
 export ANDROID_HOME=/path/to/android-sdk     # platform 35 + build-tools 35
-gradle :core:test :packer:test               # routing/GPX/HUD tests (set FOLD_GRAPH to a graph.bin for the real-data tests)
-gradle :packer:fatJar                        # packer/build/libs/fold-packer.jar
-gradle :app:assembleFoldRelease :app:assembleRoadbookRelease   # then zipalign + apksigner (keys/ is git-ignored; see release.yml)
+./gradlew :core:test :packer:test               # routing/GPX/HUD tests (set FOLD_GRAPH to a graph.bin for the real-data tests)
+./gradlew :packer:fatJar                        # packer/build/libs/fold-packer.jar
+./gradlew :app:assembleFoldRelease :app:assembleRoadbookRelease   # then zipalign + apksigner (keys/ is git-ignored; see release.yml)
 ```
 
 ## Credits
