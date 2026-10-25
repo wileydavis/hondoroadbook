@@ -40,6 +40,19 @@ jobs:
           sign app/build/outputs/apk/fold/release/app-fold-release-unsigned.apk "$FD_KS" "$FD_PW" fold fold.apk
           cp packer/build/libs/fold-packer.jar out/; cp dist/build-states.sh out/
           ls -la out
+      - name: Publish to hondoroadbook.com/download/
+        if: ${{ env.R2_KEY != '' }}
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          for f in out/*.apk; do rclone copyto "$f" "r2:roadbook-packs/app/$(basename "$f")"; done
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:

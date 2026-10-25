@@ -21,7 +21,10 @@ The bucket is filled by `.github/workflows/packs.yml`, which builds packs on Git
 4. **Build packs.** Actions → *packs* → Run workflow → `montana wyoming idaho` (or `all`).
    Each state runs as its own job; `all` is about 50 jobs, six at a time, two to three hours.
    The last job rewrites `catalog.json`. The site table and the app's MAPS → DOWNLOAD read it.
-5. **Release an APK.** Add `ROADBOOK_KEYSTORE_B64` (`base64 -w0 keys/roadbook-release.jks`) and
+5. **The download button.** `/download/roadbook.apk` serves the R2 object `app/roadbook.apk` when
+   the release workflow has uploaded one, and until then the APK committed at `dist/roadbook.apk`
+   (proxied from GitHub and cached at the edge). So a build is live as soon as it is committed.
+6. **Release an APK.** Add `ROADBOOK_KEYSTORE_B64` (`base64 -w0 keys/roadbook-release.jks`) and
    `ROADBOOK_KEYSTORE_PASSWORD` as secrets, then `git tag v0.1 && git push --tags`. The *release*
    workflow builds, signs and attaches `roadbook.apk`; the site's download button points at the
    latest release.
