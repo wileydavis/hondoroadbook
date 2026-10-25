@@ -23,7 +23,10 @@ import java.util.concurrent.Executors
  *
  * Downloads resume: a partial file in the cache keeps its bytes and the next attempt asks for the rest.
  */
-class CatalogPack(val id: String, val name: String, val group: String, val kind: String, val url: String, val bytes: Long, val built: String, val notes: String)
+class CatalogPack(val id: String, val name: String, val region: String, val group: String, val kind: String, val url: String, val bytes: Long, val built: String, val notes: String) {
+    val kindLabel: String get() = when (kind) { "roads" -> "Roads"; "terrain" -> "Terrain"; "imagery" -> "Imagery"; else -> kind.replaceFirstChar { it.uppercase() } }
+    val blurb: String get() = when (kind) { "roads" -> "roads, trails, routing, address search"; "terrain" -> "hillshade and contours under the roads"; "imagery" -> "aerial photos"; else -> "" }
+}
 
 object Catalog {
     private val worker = Executors.newSingleThreadExecutor()
@@ -35,7 +38,8 @@ object Catalog {
         val out = ArrayList<CatalogPack>()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            out.add(CatalogPack(o.getString("id"), o.getString("name"), o.optString("group", ""), o.optString("kind", "roads"), o.getString("url"), o.optLong("bytes", 0L), o.optString("built", ""), o.optString("notes", "")))
+            val name = o.getString("name")
+            out.add(CatalogPack(o.getString("id"), name, o.optString("region", name), o.optString("group", ""), o.optString("kind", "roads"), o.getString("url"), o.optLong("bytes", 0L), o.optString("built", ""), o.optString("notes", "")))
         }
         return out
     }
@@ -61,36 +65,65 @@ object Catalog {
         }
     }
 
+    private fun state(installed: Map<String, Pack>, p: CatalogPack): String { val have = installed[p.name] ?: return ""; return if (have.manifest.created < p.built) "update" else "installed" }
+
+    /** Regions first; tapping one shows the kinds of map available for it. */
     private fun showList(act: Activity, packs: PackStore, list: List<CatalogPack>, onImported: () -> Unit) {
         val ctx = act
-        val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), ctx.dp(8)) }
+        if (list.isEmpty()) { AlertDialog.Builder(ctx).setTitle("No packs yet").setMessage("The catalog is empty: the first packs are still being built. Try again later, or import a .mappack file.").setPositiveButton("OK", null).show(); return }
         val installed = packs.packs.associateBy { it.name }
+        val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), ctx.dp(8)) }
+        val regions = list.groupBy { it.region }.toSortedMap()
         var lastGroup: String? = null
-        for (p in list.sortedWith(compareBy({ it.group }, { it.name }, { it.kind }))) {
-            if (p.group != lastGroup) { lastGroup = p.group; root.addView(TextView(ctx).apply { text = p.group.uppercase(); textSize = 12f; letterSpacing = 0.1f; setPadding(0, ctx.dp(14), 0, ctx.dp(2)) }) }
-            val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(6), 0, ctx.dp(6)) }
-            val have = installed[p.name]
-            val state = when { have == null -> ""; have.manifest.created < p.built -> "update available"; else -> "installed" }
-            val mb = p.bytes / (1024 * 1024)
+        var dlg: AlertDialog? = null
+        for ((region, kinds) in regions) {
+            val g = kinds.first().group
+            if (g != lastGroup) { lastGroup = g; root.addView(TextView(ctx).apply { text = g.uppercase(); textSize = 12f; letterSpacing = 0.1f; setPadding(0, ctx.dp(14), 0, ctx.dp(2)) }) }
+            val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(10), 0, ctx.dp(10)); isClickable = true; isFocusable = true
+                val tv = android.util.TypedValue(); ctx.theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true); setBackgroundResource(tv.resourceId) }
+            val have = kinds.count { state(installed, it) == "installed" }; val upd = kinds.count { state(installed, it) == "update" }
+            val sub = kinds.joinToString(" · ") { it.kindLabel + " " + it.bytes / (1024 * 1024) + " MB" } + when { upd > 0 -> " · update available"; have == kinds.size -> " · installed"; have > 0 -> " · $have of ${kinds.size} installed"; else -> "" }
+            row.addView(TextView(ctx).apply { text = region + "\n" + sub; textSize = 16f; setLineSpacing(0f, 1.1f) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(ctx).apply { text = "›"; textSize = 22f; setPadding(ctx.dp(12), 0, 0, 0) })
+            row.setOnClickListener { showRegion(act, packs, region, kinds, installed) { dlg?.dismiss(); onImported() } }
             root.addView(row)
-            row.addView(TextView(ctx).apply { text = p.name + (if (p.kind != "roads") " · ${p.kind}" else "") + "\n$mb MB · ${p.built}" + (if (state.isNotEmpty()) " · $state" else ""); textSize = 16f }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            row.addView(Button(ctx).apply {
-                text = when (state) { "installed" -> "AGAIN"; "update available" -> "UPDATE"; else -> "GET" }; textSize = 13f
-                setOnClickListener { download(act, packs, p, onImported) }
-            })
         }
-        root.addView(TextView(ctx).apply { text = "Packs download to this phone and are imported automatically. A download you interrupt resumes where it stopped. Nothing is sent but the request for the file."; textSize = 12f; setPadding(0, ctx.dp(14), 0, 0) })
-        AlertDialog.Builder(ctx).setTitle("Download map packs").setView(android.widget.ScrollView(ctx).apply { addView(root) }).setNegativeButton("CLOSE", null).show()
+        root.addView(TextView(ctx).apply { text = "Pick a region, then the maps you want for it. Packs download to this phone and install themselves; an interrupted download resumes."; textSize = 12f; setPadding(0, ctx.dp(14), 0, 0) })
+        dlg = AlertDialog.Builder(ctx).setTitle("Map packs").setView(android.widget.ScrollView(ctx).apply { addView(root) }).setNegativeButton("CLOSE", null).show()
     }
 
-    private fun download(act: Activity, packs: PackStore, p: CatalogPack, onImported: () -> Unit) {
+    private fun showRegion(act: Activity, packs: PackStore, region: String, kinds: List<CatalogPack>, installed: Map<String, Pack>, onDone: () -> Unit) {
+        val ctx = act
+        val order = listOf("roads", "terrain", "imagery")
+        val sorted = kinds.sortedBy { order.indexOf(it.kind).let { i -> if (i < 0) 99 else i } }
+        val checked = BooleanArray(sorted.size) { state(installed, sorted[it]) != "installed" }
+        val labels = sorted.map { p -> val st = state(installed, p); p.kindLabel + " · " + p.bytes / (1024 * 1024) + " MB" + (if (st.isNotEmpty()) " · $st" else "") + (if (p.blurb.isNotEmpty()) "\n" + p.blurb else "") }.toTypedArray()
+        val missing = order.filter { k -> sorted.none { it.kind == k } }.joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
+        val b = AlertDialog.Builder(ctx).setTitle(region)
+            .setMultiChoiceItems(labels, checked) { _, i, v -> checked[i] = v }
+            .setPositiveButton("DOWNLOAD") { _, _ ->
+                val want = sorted.filterIndexed { i, _ -> checked[i] }
+                if (want.isEmpty()) return@setPositiveButton
+                downloadAll(act, packs, want, onDone)
+            }
+            .setNegativeButton(R.string.cancel, null)
+        b.show()
+        if (missing.isNotEmpty()) android.widget.Toast.makeText(ctx, "$missing for $region: not built yet", android.widget.Toast.LENGTH_SHORT).show()
+    }
+
+    private fun downloadAll(act: Activity, packs: PackStore, want: List<CatalogPack>, onDone: () -> Unit) {
+        if (want.isEmpty()) { onDone(); return }
+        download(act, packs, want.first()) { ok -> if (ok) downloadAll(act, packs, want.drop(1), onDone) else onDone() }
+    }
+
+    private fun download(act: Activity, packs: PackStore, p: CatalogPack, onImported: (Boolean) -> Unit) {
         val ctx = act
         val dir = File(ctx.cacheDir, "downloads").apply { mkdirs() }
         val file = File(dir, p.id + ".mappack.part")
         val need = p.bytes + (64L shl 20)
-        if (ctx.filesDir.usableSpace < need) { AlertDialog.Builder(ctx).setMessage("Not enough space: ${p.name} needs ${p.bytes / (1024 * 1024)} MB.").setPositiveButton("OK", null).show(); return }
+        if (ctx.filesDir.usableSpace < need) { AlertDialog.Builder(ctx).setMessage("Not enough space: ${p.name} needs ${p.bytes / (1024 * 1024)} MB.").setPositiveButton("OK", null).show(); onImported(false); return }
         cancel = false
-        val dlg = ProgressDialogLite(ctx, "Downloading ${p.name}"); dlg.setCancel("CANCEL") { cancel = true }; dlg.show()
+        val dlg = ProgressDialogLite(ctx, "Downloading ${p.region} · ${p.kindLabel}"); dlg.setCancel("CANCEL") { cancel = true }; dlg.show()
         worker.execute {
             try {
                 var have = if (file.exists()) file.length() else 0L
@@ -123,11 +156,11 @@ object Catalog {
                 val done = File(dir, p.id + ".mappack"); done.delete(); file.renameTo(done)
                 val pack = packs.import(Uri.fromFile(done)) { s -> act.runOnUiThread { dlg.setMessage(s) } }
                 done.delete()
-                act.runOnUiThread { dlg.dismiss(); onImported(); android.widget.Toast.makeText(ctx, "Installed ${pack.name}", android.widget.Toast.LENGTH_LONG).show() }
+                act.runOnUiThread { dlg.dismiss(); android.widget.Toast.makeText(ctx, "Installed ${pack.name}", android.widget.Toast.LENGTH_LONG).show(); onImported(true) }
             } catch (_: InterruptedException) {
-                act.runOnUiThread { dlg.dismiss(); android.widget.Toast.makeText(ctx, "Paused — GET again to resume", android.widget.Toast.LENGTH_LONG).show() }
+                act.runOnUiThread { dlg.dismiss(); android.widget.Toast.makeText(ctx, "Paused — download again to resume", android.widget.Toast.LENGTH_LONG).show(); onImported(false) }
             } catch (e: Throwable) {
-                act.runOnUiThread { dlg.dismiss(); AlertDialog.Builder(ctx).setTitle("Download failed").setMessage(e.message ?: e.toString()).setPositiveButton("OK", null).show() }
+                act.runOnUiThread { dlg.dismiss(); AlertDialog.Builder(ctx).setTitle("Download failed").setMessage(e.message ?: e.toString()).setPositiveButton("OK", null).show(); onImported(false) }
             }
         }
     }

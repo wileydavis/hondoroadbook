@@ -1,11 +1,10 @@
-# Builds map packs on GitHub's runners and publishes them to the Cloudflare R2 bucket behind
-# hondoroadbook.com/packs/. Free for a public repository; each state is its own job, so a failure
-# in one never costs the others. Runs monthly, or by hand with a list of states.
+# Builds map packs on GitHub's runners and publishes them where hondoroadbook.com/packs/ serves them.
+# Free for a public repository; each state is its own job, so one failure never costs the others.
 #
-# Secrets needed (repository → Settings → Secrets and variables → Actions):
-#   R2_ACCOUNT_ID          Cloudflare account id (dashboard → R2 → "Account ID" on the right)
-#   R2_ACCESS_KEY_ID       from an R2 API token with Object Read & Write on bucket roadbook-packs
-#   R2_SECRET_ACCESS_KEY   the same token's secret
+# Where packs go: always to the rolling GitHub release tagged "packs" (no setup needed; the Worker
+# proxies /packs/* from there). Additionally to the Cloudflare R2 bucket when these secrets exist:
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   (see web/README.md)
+# The last job rebuilds catalog.json from every pack's sidecar and publishes it the same way.
 name: packs
 
 on:
@@ -18,15 +17,19 @@ on:
         description: "Tile detail (15 = full; 14 ≈ 40% smaller)"
         default: "15"
   schedule:
-    - cron: "17 9 3 * *"     # monthly refresh of everything, 3rd of the month 09:17 UTC
+    - cron: "17 9 3 * *"     # monthly refresh of everything
 
 concurrency:
   group: packs
   cancel-in-progress: false
 
+permissions:
+  contents: write
+
 env:
   BUCKET: roadbook-packs
   SITE: https://hondoroadbook.com/packs
+  RELEASE_TAG: packs
 
 jobs:
   packer:
@@ -39,6 +42,9 @@ jobs:
       - run: gradle --no-daemon -q :packer:fatJar
       - uses: actions/upload-artifact@v4
         with: { name: fold-packer, path: packer/build/libs/fold-packer.jar, retention-days: 7 }
+      - name: Make sure the rolling release exists
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --title "Map packs" --notes "Prebuilt map packs. The app and hondoroadbook.com/packs/ read catalog.json here. Rebuilt monthly from OpenStreetMap and Protomaps."
 
   plan:
     runs-on: ubuntu-latest
@@ -77,18 +83,26 @@ jobs:
           name="$(echo "$s" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')"
           extra="--max-zoom ${{ github.event.inputs.max_zoom || '15' }}"
           [ "$s" = "alaska" ] && extra="--max-zoom 13"
+          # release assets are capped at 2 GB: the three biggest states drop one zoom level
+          case "$s" in california|texas|florida) extra="--max-zoom 14";; esac
           java -Xmx12g -jar fold-packer.jar --pbf state.osm.pbf --out "$s-roads.mappack" --name "$name" $extra
           rm -f state.osm.pbf
-          # sidecar for the catalog: id, name, kind, size, built date, bbox from pack.txt
           unzip -p "$s-roads.mappack" pack.txt > pack.txt
           bbox=$(grep '^bbox=' pack.txt | cut -d= -f2)      # minLat,minLon,maxLat,maxLon
           IFS=, read -r minLat minLon maxLat maxLon <<< "$bbox"
-          jq -n --arg id "us-$s-roads" --arg name "$name" --arg url "$SITE/us/$s-roads.mappack" --argjson bytes "$(stat -c %s "$s-roads.mappack")" \
+          jq -n --arg id "us-$s-roads" --arg name "$name" --arg region "$name" --arg url "$SITE/us/$s-roads.mappack" --argjson bytes "$(stat -c %s "$s-roads.mappack")" \
                 --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
-                '{id:$id, name:$name, group:"United States", kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$s-roads.json"
+                '{id:$id, name:$name, region:$region, group:"United States", kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$s-roads.json"
           cat "$s-roads.json"
-      - name: Upload to R2
+      - name: Publish to the packs release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          s="${{ matrix.state }}"
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "$s-roads.mappack" "$s-roads.json"
+      - name: Also copy to R2 (when configured)
+        if: ${{ env.R2_KEY != '' }}
         env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -98,7 +112,7 @@ jobs:
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
           s="${{ matrix.state }}"
-          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 --progress "$s-roads.mappack" "r2:$BUCKET/us/$s-roads.mappack"
+          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$s-roads.mappack" "r2:$BUCKET/us/$s-roads.mappack"
           rclone copyto "$s-roads.json" "r2:$BUCKET/us/$s-roads.json"
 
   catalog:
@@ -106,17 +120,25 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     env:
+      R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
       RCLONE_CONFIG_R2_TYPE: s3
       RCLONE_CONFIG_R2_PROVIDER: Cloudflare
       RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Rebuild catalog.json from the sidecars in the bucket
+      - name: Rebuild catalog.json from every sidecar on the release
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
-          mkdir meta && rclone copy --include "*.json" --exclude "catalog.json" "r2:$BUCKET" meta
+          mkdir meta && cd meta
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -E '\.json$' | grep -v '^catalog.json$' | while read -r a; do gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p "$a" || true; done
+          cd ..
           find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
           jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber catalog.json
+      - name: Mirror to R2 (when configured)
+        if: ${{ env.R2_KEY != '' }}
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
           rclone copyto catalog.json "r2:$BUCKET/catalog.json"

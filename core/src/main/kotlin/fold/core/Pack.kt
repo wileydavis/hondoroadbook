@@ -1,13 +1,14 @@
 package fold.core
 
 /** Manifest of a .mappack: a stored (uncompressed) zip holding pack.txt, tiles.pmtiles, graph.bin, search.tsv. */
-class PackManifest(val name: String, val format: Int, val minLat: Double, val minLon: Double, val maxLat: Double, val maxLon: Double, val created: String, val notes: String) {
+class PackManifest(val name: String, val format: Int, val minLat: Double, val minLon: Double, val maxLat: Double, val maxLon: Double, val created: String, val notes: String, val kind: String = "roads") {
     fun serialize(): String = buildString {
         append("name=").append(name).append('\n')
         append("format=").append(format).append('\n')
         append("bbox=").append(minLat).append(',').append(minLon).append(',').append(maxLat).append(',').append(maxLon).append('\n')
         append("created=").append(created).append('\n')
         append("notes=").append(notes.replace('\n', ' ')).append('\n')
+        append("kind=").append(kind).append('\n')
     }
 
     fun contains(lat: Double, lon: Double) = lat in minLat..maxLat && lon in minLon..maxLon
@@ -27,7 +28,7 @@ class PackManifest(val name: String, val format: Int, val minLat: Double, val mi
             val fmt = m["format"]?.toIntOrNull() ?: return null
             val b = m["bbox"]?.split(',')?.map { it.toDoubleOrNull() ?: return null } ?: return null
             if (b.size != 4) return null
-            return PackManifest(name, fmt, b[0], b[1], b[2], b[3], m["created"] ?: "", m["notes"] ?: "")
+            return PackManifest(name, fmt, b[0], b[1], b[2], b[3], m["created"] ?: "", m["notes"] ?: "", m["kind"] ?: "roads")
         }
     }
 }

@@ -6,18 +6,37 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.hostname.startsWith("www.")) return Response.redirect(url.href.replace("//www.", "//"), 301);
-    if (url.pathname.startsWith("/packs/")) return servePack(request, env, decodeURIComponent(url.pathname.slice("/packs/".length)));
+    if (url.pathname.startsWith("/packs/")) return servePackOrRelease(request, env, decodeURIComponent(url.pathname.slice("/packs/".length)));
     if (url.pathname.startsWith("/download/")) return serveApp(request, env, url.pathname.slice("/download/".length));
     return env.ASSETS.fetch(request);
   },
 };
+
+// /packs/<key>: the R2 object if the workflow has mirrored one there, otherwise the same file from the
+// rolling GitHub release "packs" (catalog.json, us/<state>-roads.mappack → asset <state>-roads.mappack).
+const RELEASE = "https://github.com/wileydavis/hondoroadbook/releases/download/packs/";
+async function servePackOrRelease(request, env, key) {
+  if (!key || key.endsWith("/") || key.includes("..")) return new Response("not found", { status: 404 });
+  if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }
+  if (request.method !== "GET" && request.method !== "HEAD") return new Response("method not allowed", { status: 405 });
+  const asset = key.split("/").pop();
+  const isCatalog = asset === "catalog.json";
+  const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);
+  const upstream = await fetch(RELEASE + asset, { method: request.method, headers: fwd, redirect: "follow", cf: rng ? undefined : { cacheTtl: isCatalog ? 120 : 86400, cacheEverything: true } });
+  if (!upstream.ok) return new Response(isCatalog ? '{"version":1,"packs":[]}' : "not found", { status: isCatalog ? 200 : 404, headers: { "Content-Type": isCatalog ? "application/json" : "text/plain", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
+  const headers = new Headers({ "Accept-Ranges": "bytes", "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" });
+  if (isCatalog) { headers.set("Content-Type", "application/json; charset=utf-8"); headers.set("Cache-Control", "public, max-age=120"); }
+  else { headers.set("Content-Type", "application/octet-stream"); headers.set("Cache-Control", "public, max-age=86400"); headers.set("Content-Disposition", `attachment; filename="${asset}"`); }
+  for (const h of ["Content-Length", "Content-Range", "ETag", "Last-Modified"]) { const v = upstream.headers.get(h); if (v) headers.set(h, v); }
+  return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers });
+}
 
 // /download/roadbook.apk and /download/fold.apk: the R2 copy if the release workflow has uploaded
 // one (key app/<name>), otherwise the APK committed in the repo's dist/ folder, proxied and cached.
 const APK_TYPE = "application/vnd.android.package-archive";
 async function serveApp(request, env, name) {
   if (!/^[a-z-]+\.apk$/.test(name)) return new Response("not found", { status: 404 });
-  const fromR2 = await servePack(request, env, "app/" + name);
+  const fromR2 = env.PACKS ? await servePack(request, env, "app/" + name) : new Response(null, { status: 404 });
   if (fromR2.status !== 404) { const h = new Headers(fromR2.headers); h.set("Content-Type", APK_TYPE); return new Response(fromR2.body, { status: fromR2.status, headers: h }); }
   // pass Range through so Android's download manager can resume; raw.githubusercontent honours it
   const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);
