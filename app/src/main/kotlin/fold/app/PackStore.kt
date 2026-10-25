@@ -48,26 +48,51 @@ class PackStore(private val ctx: Context) {
         val cur = packs
         multi?.let { if (multiFor === cur) return it }
         val errs = ArrayList<String>()
-        val routers = cur.filter { !it.isTerrain }.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-import that pack"); null } }
+        val routers = cur.filter { !it.isTerrain }.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-download or re-import that pack"); null } }
         routerErrors = errs
         return MultiRouter(routers).also { multi = it; multiFor = cur }
     }
     /** Pack index (as used by the router) of an installed pack, or -1. */
     fun routerPacks(): List<Pack> = multiFor.filter { it.router != null }
 
+    /** Packs on disk that failed validation this scan, with the reason; shown under MAPS, never routed. */
+    @Volatile var broken: List<Pair<String, String>> = emptyList(); private set
+
+    /** Lists installed packs. Also finishes any replacement a crash interrupted and validates every pack before it is used. */
     fun scan(): List<Pack> {
-        val found = ArrayList<Pack>()
-        root.listFiles()?.filter { it.isDirectory }?.sortedBy { it.name }?.forEach { d ->
+        recover()
+        val found = ArrayList<Pack>(); val bad = ArrayList<Pair<String, String>>()
+        root.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.sortedBy { it.name }?.forEach { d ->
             try {
                 val mf = File(d, PackManifest.FILE)
-                if (!mf.exists()) return@forEach
-                val m = PackManifest.parse(mf.readText()) ?: return@forEach
-                if (m.required.all { File(d, it).exists() }) found.add(Pack(d, m))
-            } catch (_: Throwable) {}
+                if (!mf.exists()) { bad.add(d.name to "no pack.txt"); return@forEach }
+                val m = PackManifest.parse(mf.readText()) ?: run { bad.add(d.name to "unreadable pack.txt"); return@forEach }
+                val missing = m.required.filter { !File(d, it).exists() }
+                if (missing.isNotEmpty()) { bad.add(m.name to "missing ${missing.joinToString()}"); return@forEach }
+                found.add(Pack(d, m))
+            } catch (e: Throwable) { bad.add(d.name to (e.message ?: "unreadable")) }
         }
-        packs = found
+        packs = found; broken = bad
         return found
     }
+
+    /**
+     * A replacement goes old → .old-slug, staging → slug, delete .old-slug. If the process died between
+     * the first two steps the pack is in .old-slug and nothing is at slug: put it back. Leftover staging
+     * directories are incomplete imports and are removed.
+     */
+    private fun recover() {
+        root.listFiles()?.forEach { d ->
+            if (!d.isDirectory) return@forEach
+            if (d.name.startsWith(".old-")) {
+                val live = File(root, d.name.removePrefix(".old-"))
+                if (!live.exists() || !File(live, PackManifest.FILE).exists()) { live.deleteRecursively(); d.renameTo(live) } else d.deleteRecursively()
+            } else if (d.name.startsWith(".staging-")) d.deleteRecursively()
+        }
+    }
+
+    /** Opens the routing graph once to prove the file is sound (header, sizes, sample edges); cheap, mmap only. */
+    fun validate(p: Pack): String? = if (p.isTerrain) null else try { Graph.open(File(p.dir, PackManifest.GRAPH)); null } catch (e: Throwable) { e.message ?: "unreadable graph" }
 
     /** Copies and unpacks a .mappack picked by the user. Returns the new pack or throws with a readable message. */
     fun import(uri: Uri, progress: (String) -> Unit): Pack {
@@ -114,22 +139,24 @@ class PackStore(private val ctx: Context) {
                         }
                     } }
                 }
+                // the new pack must open before it is allowed to replace anything
+                if (!manifest.isTerrain) { try { Graph.open(File(staging, PackManifest.GRAPH)) } catch (e: Throwable) { throw IllegalStateException("This pack's routing data is damaged (${e.message}) — it was not installed") } }
                 if (replacing) {
-                    // drop any open handles on the old files, then swap directories
+                    // drop any open handles on the old files, then swap: the old pack is kept until the new one is in place
                     packs.firstOrNull { it.dir == dir }?.let { it.router = null }
                     multi = null; multiFor = emptyList()
                     val old = File(root, ".old-$safe").apply { deleteRecursively() }
                     if (!dir.renameTo(old)) throw IllegalStateException("Could not replace the old pack")
+                    if (!staging.renameTo(dir)) { old.renameTo(dir); throw IllegalStateException("Could not move pack into place; the previous version was kept") }
                     old.deleteRecursively()
-                }
-                if (!staging.renameTo(dir)) throw IllegalStateException("Could not move pack into place")
+                } else if (!staging.renameTo(dir)) throw IllegalStateException("Could not move pack into place")
                 scan()
                 return packs.first { it.dir == dir }
             }
         } finally {
             try { pfd?.close() } catch (_: Throwable) {}
             tmp.delete()
-            root.listFiles()?.filter { it.name.startsWith(".staging-") || it.name.startsWith(".old-") }?.forEach { it.deleteRecursively() }
+            root.listFiles()?.filter { it.name.startsWith(".staging-") }?.forEach { it.deleteRecursively() }
         }
     }
 

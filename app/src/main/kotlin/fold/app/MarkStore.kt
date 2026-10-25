@@ -23,17 +23,22 @@ class MarkStore(private val ctx: Context) {
         marks = try { if (file.exists()) parse(file.readText()) else emptyList() } catch (_: Throwable) { emptyList() }
     }
 
+    /** Each change is written before it becomes visible; a failed write leaves memory and file as they were. */
     @Synchronized fun add(name: String, note: String, lat: Double, lon: Double): Mark {
         val m = Mark(System.currentTimeMillis(), name, note, lat, lon, System.currentTimeMillis())
-        marks = marks + m; save(); return m
+        val next = marks + m; save(next); marks = next; return m
     }
-    @Synchronized fun update(m: Mark, name: String, note: String) { m.name = name; m.note = note; save() }
-    @Synchronized fun remove(m: Mark) { marks = marks.filter { it.id != m.id }; save() }
-    @Synchronized fun burn() { marks = emptyList(); file.delete() }
+    @Synchronized fun update(m: Mark, name: String, note: String) {
+        val oldName = m.name; val oldNote = m.note
+        m.name = name; m.note = note
+        try { save(marks) } catch (e: Throwable) { m.name = oldName; m.note = oldNote; throw e }
+    }
+    @Synchronized fun remove(m: Mark) { val next = marks.filter { it.id != m.id }; save(next); marks = next }
+    @Synchronized fun burn() { file.delete(); marks = emptyList() }
 
-    fun gpx(): String = buildString {
+    fun gpx(list: List<Mark> = marks): String = buildString {
         append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Fold\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
-        for (m in marks) {
+        for (m in list) {
             append("  <wpt lat=\"").append(m.lat).append("\" lon=\"").append(m.lon).append("\">\n")
             append("    <name>").append(esc(m.name)).append("</name>\n")
             if (m.note.isNotEmpty()) append("    <desc>").append(esc(m.note)).append("</desc>\n")
@@ -43,7 +48,13 @@ class MarkStore(private val ctx: Context) {
         append("</gpx>\n")
     }
 
-    private fun save() { if (marks.isEmpty()) file.delete() else file.writeText(gpx()) }
+    /** Atomic: the new file is written beside the old one and renamed over it, so a crash never leaves a torn marks.gpx. */
+    private fun save(list: List<Mark>) {
+        if (list.isEmpty()) { file.delete(); return }
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeText(gpx(list))
+        if (!tmp.renameTo(file)) { file.delete(); if (!tmp.renameTo(file)) throw java.io.IOException("Could not replace ${file.name}") }
+    }
 
     /** Writes marks.gpx into the folder the person granted. Returns the file name written. */
     fun exportTo(tree: Uri): String {

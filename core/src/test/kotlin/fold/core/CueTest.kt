@@ -23,3 +23,17 @@ class CueTest {
         val ats = r.maneuvers.map { it.at }; assertEquals(ats.sorted(), ats)
     }
 }
+
+class CuePerfTest {
+    /** REL-01: snapping thousands of cues onto a long track must not be quadratic. */
+    @kotlin.test.Test fun manyCuesOnLongTrackIsFast() {
+        val n = 100_000
+        val lats = DoubleArray(n) { 46.0 + it * 0.00002 }; val lons = DoubleArray(n) { -112.0 + Math.sin(it / 300.0) * 0.001 }
+        val cues = (0 until 5000).map { k -> val i = (k.toLong() * (n - 1) / 5000).toInt(); Cue(lats[i], lons[i], Turn.NOTE, "note $k") }
+        val t0 = System.nanoTime()
+        val r = Route.fromTrack(lats, lons, "long", cues)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        kotlin.test.assertTrue(r.maneuvers.size >= 5000, "all cues snapped: ${r.maneuvers.size}")
+        kotlin.test.assertTrue(ms < 4000, "100k points + 5k cues took $ms ms")
+    }
+}

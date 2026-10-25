@@ -27,6 +27,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.content.ContextCompat
 import fold.core.Cue
 import fold.core.Fix
+import fold.core.FixState
 import fold.core.Follower
 import fold.core.Geo
 import fold.core.Gpx
@@ -62,11 +63,16 @@ class MainActivity : AppCompatActivity() {
     enum class Mode { IDLE, PIN, COMPARE, NAV, EDIT }
 
     // ---- the track being followed or edited, with its authored cues (Roadbook)
-    private var trackLats: DoubleArray? = null
-    private var trackLons: DoubleArray? = null
-    private var trackName = "Track"
-    private var trackUri: Uri? = null
-    private val trackCues = ArrayList<Cue>()
+    // (kept in NavSession so a night-mode recreation keeps the editor and the followed track's cues)
+    private var trackLats: DoubleArray?
+        get() = NavSession.trackLats; set(v) { NavSession.trackLats = v }
+    private var trackLons: DoubleArray?
+        get() = NavSession.trackLons; set(v) { NavSession.trackLons = v }
+    private var trackName: String
+        get() = NavSession.trackName; set(v) { NavSession.trackName = v }
+    private var trackUri: Uri?
+        get() = NavSession.trackUri; set(v) { NavSession.trackUri = v }
+    private val trackCues: ArrayList<Cue> get() = NavSession.trackCues
     private var srcCues: GeoJsonSource? = null
     private lateinit var panelEdit: View
     private lateinit var recStrip: View
@@ -81,6 +87,9 @@ class MainActivity : AppCompatActivity() {
         var destName = ""
         /** a start chosen on the map for planning, instead of the GPS position */
         var planStart: LatLng? = null
+        /** the track being followed or edited, with its authored cues */
+        var trackLats: DoubleArray? = null; var trackLons: DoubleArray? = null; var trackName = "Track"; var trackUri: Uri? = null
+        val trackCues = ArrayList<Cue>()
     }
 
     private lateinit var mapView: MapView
@@ -209,7 +218,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnTrack).setOnClickListener { showTrackPicker() }
         findViewById<ImageButton>(R.id.btnMaps).setOnClickListener { MapsDialog.show(this, packs, marks, { showPackPicker() }, { p -> deletePack(p) }, { metric -> prefs.metric = metric; Units.metric = metric },
             onExportMarks = { val tree = FilePicker.folder(this); if (tree == null) chooseFolder { exportMarks() } else exportMarks() },
-            onBurnMarks = { marks.burn(); drawMarks(); toast("All marks deleted") },
+            onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
             onDownload = if (BuildConfig.ROADBOOK) ({ Catalog.show(this, packs) { onPacksChanged() } }) else null) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
@@ -217,7 +226,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnFrom).setOnClickListener { pin?.let { setStart(it) } }
         findViewById<Button>(R.id.btnSaveRoute).setOnClickListener { candidates[profile]?.let { saveOrShareRoute(it) } ?: toast("Pick a route first") }
         findViewById<View>(R.id.navCard).setOnClickListener { route?.let { r -> if (!isTrack) showTurnList(r) } }
-        findViewById<ImageButton>(R.id.btnSavePin).setOnClickListener { pin?.let { ll -> MarkDialog.edit(this, null, if (pinName.isEmpty() || pinName.first().isDigit() || pinName.first() == '-') "" else pinName) { name, note -> marks.add(name, note, ll.latitude, ll.longitude); drawMarks(); clearPin(); toast("Saved: $name") } } }
+        findViewById<ImageButton>(R.id.btnSavePin).setOnClickListener { pin?.let { ll -> MarkDialog.edit(this, null, if (pinName.isEmpty() || pinName.first().isDigit() || pinName.first() == '-') "" else pinName) { name, note -> safe { marks.add(name, note, ll.latitude, ll.longitude); drawMarks(); clearPin(); toast("Saved: $name") } } } }
         findViewById<Button>(R.id.btnEnd).setOnClickListener { endNavigation() }
         findViewById<ImageButton>(R.id.btnSound).setOnClickListener {
             val on = !prefs.sound; prefs.sound = on; Tone.enabled = on; Speech.enabled = on && BuildConfig.ROADBOOK; updateSoundButton()
@@ -358,6 +367,8 @@ class MainActivity : AppCompatActivity() {
             try { addOverlays(st) } catch (e: Throwable) { toast("Overlay error: ${e.message}") }
             // re-draw anything we had (also restores a trip after a night-mode recreation)
             route?.let { drawRoute(it) }
+            drawCues()
+            if (mode == Mode.EDIT) findViewById<TextView>(R.id.editLabel).text = "$trackName · ${trackCues.size} cues\nLong-press on the line to add a cue. Tap a cue to edit it."
             pin?.let { showPinMarker(it); pinLabel.text = pinName.ifEmpty { "%.5f, %.5f".format(it.latitude, it.longitude) } }
             lastFix?.let { updatePuck(it.lat, it.lon, heading) }
             switchMode(mode)
@@ -516,8 +527,8 @@ class MainActivity : AppCompatActivity() {
     private fun openMark(m: Mark) {
         MarkDialog.show(this, m,
             onRoute = { routeTo(LatLng(m.lat, m.lon), m.name) },
-            onEdit = { MarkDialog.edit(this, m, m.name) { name, note -> marks.update(m, name, note); drawMarks() } },
-            onDelete = { marks.remove(m); drawMarks(); toast("Deleted ${m.name}") })
+            onEdit = { MarkDialog.edit(this, m, m.name) { name, note -> safe { marks.update(m, name, note); drawMarks() } } },
+            onDelete = { safe { marks.remove(m); drawMarks(); toast("Deleted ${m.name}") } })
     }
 
     fun goToMark(m: Mark) {
@@ -1015,6 +1026,16 @@ class MainActivity : AppCompatActivity() {
             navRemaining.text = Units.distance(0.0)
             return
         }
+        if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) {
+            // no position to trust: say so instead of showing frozen guidance as current
+            hud.visibility = View.GONE
+            offPanel.visibility = View.VISIBLE
+            offTrack.text = if (v.fixState == FixState.NONE) "WAITING FOR GPS" else "NO GPS · " + Units.time(v.fixAge)
+            btnReroute.visibility = View.GONE
+            navRemaining.text = Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds)
+            navSpeed.text = "—"
+            return
+        }
         if (!v.onRoute) {
             hud.visibility = View.GONE
             offPanel.visibility = View.VISIBLE
@@ -1031,9 +1052,16 @@ class MainActivity : AppCompatActivity() {
             hud.visibility = View.VISIBLE
             val m = v.next
             if (m != null) {
-                arrow.turn = m.turn; arrow.exit = if (m.turn == Turn.DANGER) m.level else m.exit
-                hudDistance.text = Units.cue(v.distToNext)
-                hudStreet.text = when { m.turn == Turn.ARRIVE -> "Destination"; m.note.isNotEmpty() -> m.note; else -> m.name.ifEmpty { if (isTrack) "" else "unnamed road" } }
+                // a danger at the same place as a turn takes the arrow; the words carry the whole group
+                val lead = v.hazard ?: m
+                arrow.turn = lead.turn; arrow.exit = if (lead.turn == Turn.DANGER) lead.level else lead.exit
+                hudDistance.text = Units.cue(v.distToNext) + if (v.fixState == FixState.DEGRADED) " ?" else ""
+                hudStreet.text = when {
+                    m.turn == Turn.ARRIVE -> "Destination"
+                    v.group.size > 1 -> v.group.joinToString(" · ") { g -> g.note.ifEmpty { if (g.turn == Turn.DANGER || g.turn == Turn.NOTE) g.turn.spoken else g.name.ifEmpty { g.turn.spoken } } }
+                    m.note.isNotEmpty() -> m.note
+                    else -> m.name.ifEmpty { if (isTrack) "" else "unnamed road" }
+                }
                 arrow.progress = v.progress.toFloat()
             }
         }
@@ -1076,10 +1104,17 @@ class MainActivity : AppCompatActivity() {
     private fun loadGpx(uri: Uri) {
         worker.execute {
             val result = try {
-                val text = contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { bytes ->
-                    if (bytes.size > 64 shl 20) throw IllegalStateException("GPX is too large") else String(bytes, Charsets.UTF_8)
+                val cap = 64 shl 20
+                val text = contentResolver.openInputStream(uri)?.use { ins ->
+                    // stop reading at the cap instead of loading a huge file first
+                    val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(1 shl 16); var total = 0
+                    while (true) { val n = ins.read(buf); if (n < 0) break; total += n; if (total > cap) throw IllegalStateException("GPX is larger than 64 MB"); out.write(buf, 0, n) }
+                    String(out.toByteArray(), Charsets.UTF_8)
                 } ?: throw IllegalStateException("Could not read file")
-                Gpx.parse(text) ?: throw IllegalStateException("No track or route points found")
+                val tr = Gpx.parse(text) ?: throw IllegalStateException("No track or route points found")
+                if (tr.lats.size > 2_000_000) throw IllegalStateException("Track has too many points (${tr.lats.size})")
+                if (tr.cues.size > 20_000) throw IllegalStateException("Track has too many cues (${tr.cues.size})")
+                tr
             } catch (e: Throwable) { e }
             ui.post {
                 when (result) {
@@ -1096,7 +1131,7 @@ class MainActivity : AppCompatActivity() {
             // Roadbook: a track is something you author as well as follow
             val n = tr.cues.size
             androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name)
-                .setMessage(Units.distance(Route.fromTrack(tr.lats, tr.lons, tr.name, tr.cues).length) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute && n == 0) "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." else ""))
+                .setMessage(Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute && n == 0) "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." else ""))
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
                 .setNeutralButton("EDIT CUES") { _, _ -> openEditor(tr, uri) }
                 .apply { if (tr.hasRoute && n == 0) setNegativeButton("RE-ROUTE") { _, _ -> rerouteGpx(tr) } else setNegativeButton(R.string.cancel, null) }
@@ -1105,6 +1140,8 @@ class MainActivity : AppCompatActivity() {
         }
         if (tr.hasRoute) rerouteGpx(tr) else followTrack(tr, uri)
     }
+
+    private fun trackLength(tr: Gpx.Track): Double { var d = 0.0; for (i in 1 until tr.lats.size) d += Geo.fastDistance(tr.lats[i - 1], tr.lons[i - 1], tr.lats[i], tr.lons[i]); return d }
 
     private fun followTrack(tr: Gpx.Track, uri: Uri?) {
         trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackCues.clear(); trackCues.addAll(tr.cues)
@@ -1160,26 +1197,34 @@ class MainActivity : AppCompatActivity() {
     private var wasOffRoute = false
     private var arrivedChimed = false
     private var spoken = false
+    private var prevGroup: List<Maneuver> = emptyList()
 
     private fun soundTick(v: NavView, now: Long) {
+        // cues crossed without having been the current instruction (sparse fixes at speed): say them late rather than never
+        follower?.drainMissed()?.forEach { m -> if (m.turn == Turn.DANGER || m.turn == Turn.NOTE) { if (Tone.enabled) { if (m.turn == Turn.DANGER) Tone.danger(m.level) else Tone.note() }; Speech.say("Passed. " + m.phrase()) } }
         if (!Tone.enabled) return
+        if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) return
         if (v.arrived) { if (!arrivedChimed) { arrivedChimed = true; Tone.arrive() }; return }
         if (!v.onRoute) { if (!wasOffRoute) { wasOffRoute = true; Tone.offRoute() }; return }
         if (wasOffRoute) { wasOffRoute = false; Tone.back() }
         val m = v.next ?: return
-        if (m !== cuedManeuver) { cuedManeuver = m; turnChimed = false; spoken = false; nextPipAt = 0L; if (m.turn != Turn.ARRIVE) Speech.prepare(m.phrase()) }
+        if (m !== cuedManeuver) {
+            // the previous instruction's window never opened (passed it between two fixes): deliver its hazards now
+            val prev = cuedManeuver
+            if (prev != null && !spoken && prevGroup.any { it.turn == Turn.DANGER || it.turn == Turn.NOTE }) { prevGroup.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }.forEach { g -> if (g.turn == Turn.DANGER) Tone.danger(g.level) else Tone.note(); Speech.say("Passed. " + g.phrase()) } }
+            cuedManeuver = m; prevGroup = v.group; turnChimed = false; spoken = false; nextPipAt = 0L
+            if (m.turn != Turn.ARRIVE) Speech.prepare(v.phrase())
+        }
         if (m.turn == Turn.ARRIVE) return
         if (v.progress <= 0.0) return
         // the window just opened (~15 s out): say what is coming, then the pips take over
-        if (!spoken) { spoken = true; if (Speech.enabled && Speech.ready) { Speech.say(m.phrase()); nextPipAt = now + 1500 + 60L * m.phrase().length } }
+        if (!spoken) { spoken = true; if (Speech.enabled && Speech.ready) { val ph = v.phrase(); Speech.say(ph); nextPipAt = now + 1500 + 60L * ph.length } }
         if (v.progress >= 0.97 || v.distToNext < 12.0) {
-            if (!turnChimed) { turnChimed = true; when (m.turn) { Turn.DANGER -> Tone.danger(m.level); Turn.NOTE -> Tone.note(); else -> Tone.turn() } }
+            if (!turnChimed) { turnChimed = true; val lead = v.hazard ?: m; when (lead.turn) { Turn.DANGER -> Tone.danger(lead.level); Turn.NOTE -> Tone.note(); else -> Tone.turn() } }
             return
         }
         if (now >= nextPipAt) { Tone.pip(v.progress); nextPipAt = now + Tone.pipIntervalMs(v.progress) }
     }
-
-
 
     // ---------------------------------------------------------------- Roadbook: cues, pre-run recording, editor, orientation
 
@@ -1279,29 +1324,60 @@ class MainActivity : AppCompatActivity() {
         if (trackLats == null) return
         val uri = trackUri
         val b = androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Save \"$trackName\"").setMessage("${trackCues.size} cues. The GPX keeps the line and adds the cues as waypoints, so any app still opens it.")
-        if (uri != null) b.setPositiveButton("SAVE OVER FILE") { _, _ -> try { contentResolver.openOutputStream(uri, "wt")?.use { it.write(trackGpx().toByteArray()) } ?: throw IllegalStateException("Could not open the file"); toast("Saved") } catch (e: Throwable) { toast("Save failed: ${e.message}", 6000) } }
-        b.setNeutralButton(if (uri != null) "SAVE AS…" else "SAVE TO FOLDER") { _, _ -> askNameAndWrite(trackName) { trackGpx() } }
+        if (uri != null) b.setPositiveButton("SAVE OVER FILE") { _, _ -> overwriteTrack(uri) }
+        b.setNeutralButton(if (uri != null) "SAVE AS…" else "SAVE TO FOLDER") { _, _ -> askNameAndWrite(trackName, { trackGpx() }) }
         b.setNegativeButton(R.string.cancel, null).show()
     }
 
-    private fun askNameAndWrite(suggest: String, body: () -> String) {
+    /** Asks for a file name and writes into the granted folder; [onDone] gets true only after the bytes are on disk. */
+    /** Overwrites the opened GPX. The old bytes are kept in the app's cache until the new ones are verified. */
+    private fun overwriteTrack(uri: Uri) {
+        try {
+            val old = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("Could not read the file")
+            val backup = java.io.File(cacheDir, "last-overwritten.gpx").apply { writeBytes(old) }
+            val bytes = trackGpx().toByteArray()
+            contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes); it.flush() } ?: throw IllegalStateException("Could not open the file for writing")
+            val written = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
+            if (written != bytes.size.toLong()) {
+                // put the old content back rather than leave a torn file
+                try { contentResolver.openOutputStream(uri, "wt")?.use { it.write(old) } } catch (_: Throwable) {}
+                throw IllegalStateException("File is incomplete; the previous version was restored (copy in ${backup.name})")
+            }
+            toast("Saved")
+        } catch (e: Throwable) { toast("Save failed: ${e.message}", 7000) }
+    }
+
+    private fun askNameAndWrite(suggest: String, body: () -> String, onDone: (Boolean) -> Unit = {}) {
         val input = android.widget.EditText(this).apply { setText(suggest); isSingleLine = true; textSize = 18f; setSelectAllOnFocus(true); setPadding(dp(20), dp(12), dp(20), dp(12)) }
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle("File name").setView(input)
             .setPositiveButton("SAVE") { _, _ ->
                 val name = input.text.toString().trim().ifEmpty { suggest }
-                val go = { writeToFolder(name.removeSuffix(".gpx") + ".gpx", body()) }
-                if (FilePicker.folder(this) == null) chooseFolder(go) else go()
-            }.setNegativeButton(R.string.cancel, null).show()
+                val go = { onDone(writeToFolder(name.removeSuffix(".gpx") + ".gpx", body())) }
+                if (FilePicker.writableFolder(this) == null) chooseFolder(go) else go()
+            }
+            .setNegativeButton(R.string.cancel) { _, _ -> onDone(false) }
+            .setOnCancelListener { onDone(false) }
+            .show()
     }
 
-    private fun writeToFolder(fileName: String, text: String) {
-        val tree = FilePicker.folder(this) ?: run { toast("No folder chosen"); return }
+    /** Writes a new file into the granted folder. Returns true only when the whole file was written. */
+    private fun writeToFolder(fileName: String, text: String): Boolean {
+        val tree = FilePicker.writableFolder(this) ?: run { toast(if (FilePicker.folder(this) != null) "The folder grant is read-only — pick the folder again" else "No folder chosen"); return false }
+        var doc: Uri? = null
         try {
             val parent = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, android.provider.DocumentsContract.getTreeDocumentId(tree))
-            val doc = android.provider.DocumentsContract.createDocument(contentResolver, parent, "application/gpx+xml", fileName) ?: throw IllegalStateException("Could not create file")
-            contentResolver.openOutputStream(doc)?.use { it.write(text.toByteArray()) } ?: throw IllegalStateException("Could not write file")
+            doc = android.provider.DocumentsContract.createDocument(contentResolver, parent, "application/gpx+xml", fileName) ?: throw IllegalStateException("Could not create file")
+            val bytes = text.toByteArray()
+            contentResolver.openOutputStream(doc, "wt")?.use { it.write(bytes); it.flush() } ?: throw IllegalStateException("Could not write file")
+            // read back the size: a full disk or a flaky provider must not pass as saved
+            val written = contentResolver.openFileDescriptor(doc, "r")?.use { it.statSize } ?: -1L
+            if (written != bytes.size.toLong()) throw IllegalStateException("File is incomplete ($written of ${bytes.size} bytes)")
             toast("Saved $fileName — it is under TRACK", 5000)
-        } catch (e: Throwable) { toast("Save failed: ${e.message}", 6000) }
+            return true
+        } catch (e: Throwable) {
+            try { doc?.let { android.provider.DocumentsContract.deleteDocument(contentResolver, it) } } catch (_: Throwable) {}
+            toast("Save failed: ${e.message}", 6000); return false
+        }
     }
 
     // ---- pre-run recording
@@ -1309,6 +1385,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun startRecording() {
         if (Recorder.running) return
+        // an earlier recording that was never saved is offered again, not thrown away
+        if (Recorder.hasData) { offerSaveRecording("Unsaved recording"); return }
         if (lastFix == null) toast("Recording starts with the first GPS fix")
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS) else startRecordingNow()
     }
@@ -1329,8 +1407,11 @@ class MainActivity : AppCompatActivity() {
     private fun offerSaveRecording(title: String) {
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle(title)
             .setMessage(Units.distance(Recorder.distance) + " · " + Recorder.cues.size + " cues")
-            .setPositiveButton("SAVE") { _, _ -> askNameAndWrite(Recorder.defaultName()) { Recorder.gpx(Recorder.defaultName()) }; Recorder.recoveryFile(this).delete() }
-            .setNeutralButton("SHARE…") { _, _ -> shareText(Recorder.defaultName().replace(Regex("[^A-Za-z0-9 .-]"), "") + ".gpx", Recorder.gpx(Recorder.defaultName())) }
+            .setPositiveButton("SAVE") { _, _ ->
+                // the recovery file lives until the save is on disk; cancel or a failed write keeps it
+                askNameAndWrite(Recorder.defaultName(), { Recorder.gpx(Recorder.defaultName()) }) { ok -> if (ok) { Recorder.discard(this); updateRecStrip() } else toast("Recording kept — tap ● to save it later", 5000) }
+            }
+            .setNeutralButton("SHARE…") { _, _ -> shareText(Recorder.defaultName().replace(Regex("[^A-Za-z0-9 .-]"), "") + ".gpx", Recorder.gpx(Recorder.defaultName())); toast("Recording kept until you SAVE or DISCARD it", 5000) }
             .setNegativeButton("DISCARD") { _, _ -> androidx.appcompat.app.AlertDialog.Builder(this).setMessage("Discard this recording? There is no undo.").setPositiveButton("Discard") { _, _ -> Recorder.discard(this); updateRecStrip() }.setNegativeButton(R.string.cancel, null).show() }
             .setCancelable(false).show()
     }

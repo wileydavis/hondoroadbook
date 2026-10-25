@@ -8,8 +8,8 @@ import kotlin.test.assertTrue
 /** Runs against a real graph.bin built from an OSM extract (set FOLD_GRAPH). Skipped otherwise. */
 class RealDataTest {
     private fun graph(): Graph? {
-        val p = System.getenv("FOLD_GRAPH") ?: return null
-        val f = File(p); if (!f.exists()) return null
+        val p = System.getenv("FOLD_GRAPH") ?: throw org.opentest4j.TestAbortedException("FOLD_GRAPH not set: real-data test skipped")
+        val f = File(p); if (!f.exists()) throw org.opentest4j.TestAbortedException("FOLD_GRAPH missing: real-data test skipped")
         return Graph.open(f)
     }
 
@@ -20,7 +20,7 @@ class RealDataTest {
 
     @Test
     fun routeAcrossBoulder() {
-        val g = graph() ?: return
+        val g = graph()!!
         println("graph nodes=${g.nodeCount} edges=${g.edgeCount} bbox=${g.minLat},${g.minLon}..${g.maxLat},${g.maxLon}")
         val router = MultiRouter(listOf(Router(g)))
         // Pearl St downtown -> NCAR Mesa Lab
@@ -57,7 +57,7 @@ class RealDataTest {
 
     @Test
     fun followSimulatedDrive() {
-        val g = graph() ?: return
+        val g = graph()!!
         val router = MultiRouter(listOf(Router(g)))
         val a = router.snap(40.0176, -105.2797, Profile.FAST)!!; val b = router.snap(39.9781, -105.2746, Profile.FAST)!!
         val route = Route.fromGraphRoute(router.route(a, b, Profile.FAST)!!, router, Profile.FAST)
@@ -103,7 +103,7 @@ class RealDataTest {
 
     @Test
     fun gpxTrackCues() {
-        val g = graph() ?: return
+        val g = graph()!!
         val router = MultiRouter(listOf(Router(g)))
         val a = router.snap(40.0176, -105.2797, Profile.FAST)!!; val b = router.snap(39.9781, -105.2746, Profile.FAST)!!
         val rr = router.route(a, b, Profile.FAST)!!
@@ -123,7 +123,7 @@ class RealDataTest {
 
     @Test
     fun search() {
-        val p = System.getenv("FOLD_SEARCH") ?: return
+        val p = System.getenv("FOLD_SEARCH") ?: throw org.opentest4j.TestAbortedException("FOLD_SEARCH not set: real-data test skipped")
         val idx = SearchFile.open(File(p))
         for (q in listOf("pearl st", "1770 13th street", "boulder", "eldorado springs", "baseline rd", "flagstaff")) {
             val t0 = System.nanoTime()

@@ -53,6 +53,9 @@ object Recorder {
         onChange?.invoke()
     }
 
+    /** After Android restarted the service (process death mid-ride): the journal is the recording; keep going. */
+    fun resumeAfterRestart() { running = true; dirty = true; onChange?.invoke() }
+
     /** Drops the recording and its recovery file. */
     fun discard(ctx: Context) { clear(); recoveryFile(ctx).delete() }
 
@@ -128,6 +131,11 @@ class RecordService : Service() {
     @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) { Recorder.stop(this); stopSelf(); return START_NOT_STICKY }
+        if (!Recorder.running) {
+            // sticky restart after process death: resume from the journal, or stop honestly if there is nothing to resume
+            if (intent == null && Recorder.recover(this)) Recorder.resumeAfterRestart()
+            else { stopSelf(); return START_NOT_STICKY }
+        }
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Recording", NotificationManager.IMPORTANCE_LOW).apply { setSound(null, null); enableVibration(false) })
         try {

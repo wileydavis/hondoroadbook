@@ -195,13 +195,22 @@ object PmTiles {
         for (r in ranges) { placements.add(r to cursor); cursor += (r[1] - r[0]) }
         raf.setLength(cursor)
         val t0 = System.currentTimeMillis()
-        for ((r, dst) in placements) pool.execute {
+        // every fetch is a future: a failed range fails the whole extraction instead of leaving a hole of zero bytes
+        val failed = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+        val futures = placements.map { (r, dst) -> pool.submit {
+            if (failed.get() != null) return@submit
             val data = src.read(r[0], r[1] - r[0])
+            if (data.size.toLong() != r[1] - r[0]) throw java.io.IOException("short read: got ${data.size} of ${r[1] - r[0]} bytes at ${r[0]}")
             synchronized(raf) { raf.seek(dst); raf.write(data) }
             val d = progress.done.incrementAndGet(); progress.bytes.addAndGet(data.size.toLong())
             if (d % 50 == 0L || d == ranges.size.toLong()) log("tiles: $d/${ranges.size} ranges, ${progress.bytes.get() / 1024 / 1024} MB (${(System.currentTimeMillis() - t0) / 1000}s)")
-        }
-        pool.shutdown(); pool.awaitTermination(6, TimeUnit.HOURS)
+        } }
+        pool.shutdown()
+        try {
+            for (f in futures) try { f.get() } catch (e: java.util.concurrent.ExecutionException) { failed.compareAndSet(null, e.cause ?: e) }
+        } finally { pool.shutdownNow() }
+        failed.get()?.let { raf.close(); scratch.delete(); throw java.io.IOException("tile fetch failed: ${it.message}", it) }
+        require(progress.done.get() == ranges.size.toLong()) { "tile fetch incomplete: ${progress.done.get()} of ${ranges.size} ranges" }
         // map each unique tile to its scratch offset
         var ri = 0
         for (u in unique) {
@@ -245,6 +254,34 @@ object PmTiles {
         }
         raf.close(); scratch.delete()
         log("tiles: wrote ${out.name} (${out.length() / 1024 / 1024} MB, ${ids.size} tiles)")
+        verify(out, ids.size, h.tileCompression, log)
+    }
+
+    /** Reopens a written archive and checks that every addressed tile is readable and looks like a tile. */
+    fun verify(out: File, expectedTiles: Int, tileCompression: Int, log: (String) -> Unit) {
+        val fs = FileSource(out)
+        val head = fs.read(0, 127); val h = Header(head)
+        val root = deserialize(decompress(fs.read(h.rootOff, h.rootLen), h.internalCompression))
+        var addressed = 0L; var checked = 0
+        val raf = RandomAccessFile(out, "r")
+        try {
+            fun checkTile(e: Entry) {
+                if (e.length <= 0) throw IllegalStateException("tile ${e.tileId} has no bytes")
+                if (checked < 4000 || checked % 97 == 0) {
+                    val b = ByteArray(min(2, e.length)); raf.seek(h.tileOff + e.offset); raf.readFully(b)
+                    if (tileCompression == 2 && (b[0].toInt() and 0xFF != 0x1f || b[1].toInt() and 0xFF != 0x8b)) throw IllegalStateException("tile ${e.tileId} is not gzip data (${b[0]},${b[1]}): the download was incomplete")
+                }
+                checked++
+            }
+            for (r in root) {
+                if (r.runLength == 0) {       // leaf directory
+                    val leaf = deserialize(decompress(fs.read(h.leafOff + r.offset, r.length.toLong()), h.internalCompression))
+                    for (e in leaf) { addressed += e.runLength; checkTile(e) }
+                } else { addressed += r.runLength; checkTile(r) }
+            }
+        } finally { raf.close() }
+        if (addressed != expectedTiles.toLong()) throw IllegalStateException("archive addresses $addressed tiles, expected $expectedTiles")
+        log("tiles: verified $addressed tiles")
     }
 
     /** Finds the newest daily Protomaps planet build reachable from here (tries today backwards). */

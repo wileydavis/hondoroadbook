@@ -119,7 +119,10 @@ object Catalog {
     private fun download(act: Activity, packs: PackStore, p: CatalogPack, onImported: (Boolean) -> Unit) {
         val ctx = act
         val dir = File(ctx.cacheDir, "downloads").apply { mkdirs() }
-        val file = File(dir, p.id + ".mappack.part")
+        // the partial file is named for the build it belongs to: a newer catalog entry never resumes onto old bytes
+        val stamp = p.built.replace(Regex("[^0-9A-Za-z]"), "")
+        dir.listFiles()?.filter { it.name.startsWith(p.id + "-") && it.name.endsWith(".part") && !it.name.contains("-$stamp.") }?.forEach { it.delete() }
+        val file = File(dir, p.id + "-" + stamp + ".mappack.part")
         val need = p.bytes + (64L shl 20)
         if (ctx.filesDir.usableSpace < need) { AlertDialog.Builder(ctx).setMessage("Not enough space: ${p.name} needs ${p.bytes / (1024 * 1024)} MB.").setPositiveButton("OK", null).show(); onImported(false); return }
         cancel = false

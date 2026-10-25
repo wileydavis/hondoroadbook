@@ -448,7 +448,7 @@ class MultiRouter(val routers: List<Router>) {
         run {
             val te = to.edge; val g = graph(to.pack)
             val fromFromNode = goalIdx == 0
-            appendPartial(to.pack, te, to.alongFrom, fromFromNode, false, lats, lons, segE, segP, vn)
+            appendArrival(to.pack, te, to, fromFromNode, lats, lons, segE, segP, vn)
             val l = if (fromFromNode) to.alongFrom else to.alongTo
             length += l; time += l / Speeds.speed(profile, g.edgeFlags(te))
         }
@@ -459,6 +459,29 @@ class MultiRouter(val routers: List<Router>) {
         val g = graph(p); val n = g.edgePointCount(e)
         if (forward) for (k in 1 until n) { lats.add(g.edgePointLat(e, k)); lons.add(g.edgePointLon(e, k)); segE.add(e); segP.add(p); vn.add(-1) }
         else for (k in n - 2 downTo 0) { lats.add(g.edgePointLat(e, k)); lons.add(g.edgePointLon(e, k)); segE.add(e); segP.add(p); vn.add(-1) }
+    }
+
+    /**
+     * The last piece: from the node we reached ([fromFromNode] = the edge's from-node, else its to-node)
+     * along the edge to the snapped destination, ending exactly at the snap. Interior points are the
+     * ones between that node and the snap, in travel order.
+     */
+    private fun appendArrival(p: Int, e: Int, to: Snap, fromFromNode: Boolean,
+                              lats: ArrayList<Double>, lons: ArrayList<Double>, segE: IntList, segP: IntList, vn: IntList) {
+        val g = graph(p); val n = g.edgePointCount(e)
+        val pts = ArrayList<DoubleArray>()
+        var along = 0.0
+        var pLat = g.edgePointLat(e, 0); var pLon = g.edgePointLon(e, 0)
+        for (k in 1 until n - 1) {
+            val qLat = g.edgePointLat(e, k); val qLon = g.edgePointLon(e, k)
+            along += Geo.fastDistance(pLat, pLon, qLat, qLon)
+            val take = if (fromFromNode) along < to.alongFrom else along > to.alongFrom
+            if (take) pts.add(doubleArrayOf(qLat, qLon))
+            pLat = qLat; pLon = qLon
+        }
+        if (!fromFromNode) pts.reverse()
+        for (pt in pts) { lats.add(pt[0]); lons.add(pt[1]); segE.add(e); segP.add(p); vn.add(-1) }
+        lats.add(to.lat); lons.add(to.lon); segE.add(e); segP.add(p); vn.add(-1)
     }
 
     private fun appendPartial(p: Int, e: Int, alongFrom: Double, towardTo: Boolean, leaving: Boolean,

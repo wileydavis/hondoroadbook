@@ -23,8 +23,16 @@ object FilePicker {
         ctx.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
     }
 
+    /** The folder, only if the grant that survives a reboot includes writing (older grants were read-only). */
+    fun writableFolder(ctx: Context): Uri? = Prefs(ctx).folder?.let { Uri.parse(it) }?.takeIf { uri ->
+        ctx.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission && it.isWritePermission }
+    }
+
     fun rememberFolder(ctx: Context, uri: Uri) {
-        try { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
+        // both flags: a read-only persisted grant lets TRACK list files but makes every save fail after a reboot
+        try { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } catch (_: Throwable) {
+            try { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Throwable) {}
+        }
         Prefs(ctx).folder = uri.toString()
     }
 

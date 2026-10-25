@@ -230,12 +230,27 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                 val man = ArrayList<Maneuver>()
                 man.add(Maneuver(Turn.DEPART, 0.0, 0, name, 0.0))
                 val proj = DoubleArray(4)
+                // segments bucketed by 0.01° cell so a thousand cues on a hundred-thousand-point track stay cheap
+                val cell = 0.01
+                val grid = HashMap<Long, IntArrayList>()
+                fun key(la: Double, lo: Double) = (Math.floor(la / cell).toLong() shl 32) xor (Math.floor(lo / cell).toLong() and 0xFFFFFFFFL)
+                for (i in 0 until lats.size - 1) {
+                    val la0 = Math.floor(Math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = Math.floor(Math.max(lats[i], lats[i + 1]) / cell).toLong()
+                    val lo0 = Math.floor(Math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = Math.floor(Math.max(lons[i], lons[i + 1]) / cell).toLong()
+                    if (la1 - la0 > 20 || lo1 - lo0 > 20) continue   // a wild jump in the track; not a place for a cue anyway
+                    for (a in la0..la1) for (b in lo0..lo1) grid.getOrPut((a shl 32) xor (b and 0xFFFFFFFFL)) { IntArrayList() }.add(i)
+                }
                 for (c in cues) {
                     // nearest point on the line, as a vertex index (cues further than 150 m from the line are dropped)
                     var best = Double.MAX_VALUE; var bi = -1; var bt = 0.0
-                    for (i in 0 until lats.size - 1) {
-                        Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
-                        if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
+                    val ca = Math.floor(c.lat / cell).toLong(); val co = Math.floor(c.lon / cell).toLong()
+                    for (a in ca - 1..ca + 1) for (b in co - 1..co + 1) {
+                        val segs = grid[(a shl 32) xor (b and 0xFFFFFFFFL)] ?: continue
+                        for (k in 0 until segs.size) {
+                            val i = segs[k]
+                            Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
+                            if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
+                        }
                     }
                     if (bi < 0 || best > 150.0) continue
                     val vertex = if (bt < 0.5) bi else bi + 1
@@ -293,3 +308,8 @@ object Simplify {
         return out.toArray()
     }
 }
+
+/** A tiny growable int array for indexes. */
+class IntArrayList { private var a = IntArray(4); var size = 0; private set
+    fun add(v: Int) { if (size == a.size) a = a.copyOf(size * 2); a[size++] = v }
+    operator fun get(i: Int) = a[i] }

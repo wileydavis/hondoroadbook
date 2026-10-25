@@ -27,7 +27,7 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
     private var rate = 16000
     private val cache = object : LinkedHashMap<String, FloatArray>(16, 0.75f, true) { override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 12 }
     @Volatile private var playing: AudioTrack? = null
-    @Volatile private var generation = 0
+    @Volatile private var generation = 0   // bumped by say() and stop(); queued synthesis checks it before playing
 
     init { worker.execute { load() } }
 
@@ -65,12 +65,13 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
 
     override fun say(text: String) {
         if (!ready) return
+        stopPlayback()
         val gen = ++generation
-        stop()
         worker.execute {
             val pcm = synth(text) ?: return@execute
+            // a stop() or a newer say() since this was queued: drop it rather than talk over the rider
             if (gen != generation) return@execute
-            play(pcm)
+            synchronized(this) { if (gen != generation) return@execute; play(pcm) }
         }
     }
 
@@ -91,7 +92,9 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         } catch (_: Throwable) {}
     }
 
-    override fun stop() { playing?.let { t -> playing = null; try { t.stop(); t.release() } catch (_: Throwable) {} } }
+    /** Silences now and invalidates anything queued, so nothing speaks after END or mute. */
+    override fun stop() { generation++; stopPlayback() }
+    private fun stopPlayback() { playing?.let { t -> playing = null; try { t.stop(); t.release() } catch (_: Throwable) {} } }
 
     override fun shutdown() { stop(); worker.execute { try { tts?.release() } catch (_: Throwable) {}; tts = null; ready = false } }
 

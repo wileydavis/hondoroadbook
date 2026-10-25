@@ -112,6 +112,7 @@ object MapsDialog {
             })
             root.addView(row)
         }
+        for ((name, why) in packs.broken) root.addView(TextView(ctx).apply { text = "$name: damaged ($why) — re-download or re-import"; textSize = 14f; setTextColor(ctx.getColor(R.color.accent)); setPadding(0, ctx.dp(4), 0, ctx.dp(4)) })
         val units = Button(ctx).apply {
             fun label() = if (Units.metric) "UNITS: KM / M" else "UNITS: MILES / FT"
             text = label(); textSize = 14f

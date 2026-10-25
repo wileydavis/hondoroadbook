@@ -72,10 +72,12 @@ class Bytes private constructor(private val chunks: Array<ByteBuffer>, val size:
     fun u8(off: Long): Int = chunks[(off ushr CHUNK_BITS).toInt()].get((off and (CHUNK - 1)).toInt()).toInt() and 0xFF
     fun i64(off: Long): Long = chunks[(off ushr CHUNK_BITS).toInt()].getLong((off and (CHUNK - 1)).toInt())
     fun get(off: Long, dst: ByteArray) {
+        require(off >= 0 && off + dst.size <= size) { "read past end of file (${off + dst.size} > $size)" }
         var o = off; var i = 0
         while (i < dst.size) {
             val c = chunks[(o ushr CHUNK_BITS).toInt()]; val within = (o and (CHUNK - 1)).toInt()
             val n = minOf(dst.size - i, c.limit() - within)
+            require(n > 0) { "read past end of file" }
             synchronized(c) { c.position(within); c.get(dst, i, n) }
             i += n; o += n
         }
@@ -105,12 +107,17 @@ class Graph private constructor(private val buf: Bytes) {
     private val offOsmNodes: Long
 
     init {
+        require(buf.size >= GraphFormat.HEADER) { "graph truncated (${buf.size} bytes)" }
         val magic = ByteArray(8); buf.get(0, magic)
         require(String(magic, Charsets.US_ASCII) == GraphFormat.MAGIC) { "not a Fold graph" }
         require(buf.i32(8) == GraphFormat.VERSION) { "unsupported graph version" }
         nodeCount = buf.i32(12L); edgeCount = buf.i32(16L); geomPointCount = buf.i32(20L); nameCount = buf.i32(24L)
         minLat = buf.i32(28L) / 1e7; minLon = buf.i32(32L) / 1e7; maxLat = buf.i32(36L) / 1e7; maxLon = buf.i32(40L) / 1e7
         gridCols = buf.i32(44L); gridRows = buf.i32(48L); gridEntryCount = buf.i32(52L); nameBytesLen = buf.i32(56L)
+        // every count must be non-negative and every section must fit; a damaged file is rejected here, never looped on
+        require(nodeCount > 0 && edgeCount > 0 && geomPointCount >= 0 && nameCount > 0 && gridCols > 0 && gridRows > 0 && gridEntryCount >= 0 && nameBytesLen >= 0) { "graph header counts are invalid" }
+        require(gridCols.toLong() * gridRows <= 50_000_000L) { "graph grid is implausibly large" }
+        require(minLat in -90.0..90.0 && maxLat in -90.0..90.0 && minLon in -180.0..180.0 && maxLon in -180.0..180.0 && minLat <= maxLat && minLon <= maxLon) { "graph bbox is invalid" }
         offNodes = GraphFormat.HEADER.toLong()
         offAdjStart = offNodes + nodeCount.toLong() * 8
         offAdj = offAdjStart + (nodeCount + 1).toLong() * 4
@@ -123,7 +130,16 @@ class Graph private constructor(private val buf: Bytes) {
         val gridEnd = offGridEntries + gridEntryCount.toLong() * 4
         offOsmIds = (gridEnd + 7) / 8 * 8
         offOsmNodes = offOsmIds + nodeCount.toLong() * 8
-        require(offOsmNodes + nodeCount.toLong() * 4 <= buf.size) { "graph truncated" }
+        val reverseOff = offOsmNodes + nodeCount.toLong() * 4 + ((nodeCount.toLong() * 4) % 8).let { if (it == 0L) 0L else 8 - it }
+        require(reverseOff + nodeCount.toLong() * 8 <= buf.size) { "graph truncated" }
+        // spot checks that catch a file whose header is intact but whose body is garbage
+        require(adjStart(0) == 0 && adjEnd(nodeCount - 1) == 2 * edgeCount) { "graph adjacency table is inconsistent" }
+        for (e in longArrayOf(0L, (edgeCount - 1).toLong(), (edgeCount / 2).toLong())) {
+            val ei = e.toInt()
+            require(edgeFrom(ei) in 0 until nodeCount && edgeTo(ei) in 0 until nodeCount) { "graph edge $ei points outside the node table" }
+            require(edgeGeomStart(ei) + edgeGeomCount(ei) <= geomPointCount) { "graph edge $ei geometry is out of range" }
+            require(edgeNameIdx(ei) in 0 until nameCount) { "graph edge $ei name is out of range" }
+        }
     }
 
     /** Graph node for an OpenStreetMap node id, or -1. Binary search over the sorted on-disk index. */

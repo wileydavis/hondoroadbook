@@ -154,6 +154,14 @@ Updating later: install the new `fold.apk` over the old one; packs and settings 
   short pips rise one octave and come faster; a two-note chime at the turn; one low buzz when you
   leave the route and a short falling note when you are back on it; three rising notes on arrival.
   The pips are synthesized, not recordings, and play as navigation guidance so a Bluetooth helmet or car stereo gets them.
+* **GPS confidence.** The HUD only shows guidance for a position it can trust. No fix yet: "WAITING FOR GPS".
+  Nothing from the GPS for 15 s: the cue card is replaced by "NO GPS · 1:20" and the speed goes blank — nothing
+  is extrapolated, no pips play. Accuracy worse than 50 m: the distance gets a "?". Fixes that arrive out of
+  order, or imply more than 120 m/s, are ignored unless the next fix agrees with them (a real jump after a
+  tunnel is accepted on the second fix; after a gap of a minute, on the first).
+* **Cues at one place** (a turn and a danger at the same point) are one instruction: the danger takes the arrow,
+  the words carry both ("Left. Danger. washout"). A cue crossed between two sparse fixes is never dropped: a
+  danger or note is announced late ("Passed. Danger. washout") rather than never.
 * While navigating the screen stays on, the map is heading-up with you in the lower third,
   and the top card shows the next turn. The bar fills over the last ~15 seconds of approach and is
   full exactly at the turn. **END** stops. Leave the route (gas, a detour, a look at something) and the route stays exactly as it was:
