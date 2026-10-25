@@ -39,6 +39,14 @@ Everything under **Fold** below applies; Roadbook adds:
   downloads with resume, imports automatically. IMPORT FILE still takes a `.mappack` you copied yourself.
   Packs of different kinds (roads today; terrain, imagery later) for one region install side by side.
 
+### Small roads when zoomed out
+
+The Protomaps basemap only carries minor roads from zoom 12 and trails from 13. Road packs built
+since 2026-10-25 also contain `roads.pmtiles`: tracks from zoom 8, minor roads from 9, trails and
+cycleways from 10, service roads at 11, cut from the pack's own routing graph (`packer/.../Overview.kt`,
+≈20 MB for Montana). The style draws them up to zoom 12, where the basemap takes over. Older packs
+without the file simply don't get the extra layers.
+
 ### Terrain packs
 
 A second kind of pack, `kind=terrain` in `pack.txt`, carries `terrain.pmtiles`: hillshade raster tiles

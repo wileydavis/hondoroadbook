@@ -65,13 +65,17 @@ fun main(args: Array<String>) {
         f
     }
 
+    // overview tiles for the small roads and trails at zooms the basemap leaves them out of
+    val overview = File(work, PackManifest.OVERVIEW)
+    run { val g = fold.core.Graph.open(graph); Overview.build(g, overview, log) }
+
     val manifest = PackManifest(name, PackManifest.FORMAT, packer.minLat, packer.minLon, packer.maxLat, packer.maxLon, LocalDate.now().toString(), "source=${pbf.name}")
     val manifestFile = File(work, PackManifest.FILE).apply { writeText(manifest.serialize()) }
 
     log("writing ${outFile.name}")
     ZipOutputStream(outFile.outputStream().buffered(1 shl 20)).use { zip ->
         zip.setMethod(ZipOutputStream.STORED)
-        for ((entryName, f) in listOf(PackManifest.FILE to manifestFile, PackManifest.GRAPH to graph, PackManifest.SEARCH to search, PackManifest.TILES to tilesFile)) {
+        for ((entryName, f) in listOf(PackManifest.FILE to manifestFile, PackManifest.GRAPH to graph, PackManifest.SEARCH to search, PackManifest.TILES to tilesFile, PackManifest.OVERVIEW to overview)) {
             val e = ZipEntry(entryName)
             e.method = ZipEntry.STORED; e.size = f.length(); e.compressedSize = f.length(); e.crc = crc(f)
             zip.putNextEntry(e)

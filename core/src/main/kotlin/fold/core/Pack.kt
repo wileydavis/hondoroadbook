@@ -21,6 +21,8 @@ class PackManifest(val name: String, val format: Int, val minLat: Double, val mi
         const val TILES = "tiles.pmtiles"
         const val GRAPH = "graph.bin"
         const val SEARCH = "search.tsv"
+        /** small roads and trails at zooms 8–11, from the graph (optional: older packs lack it) */
+        const val OVERVIEW = "roads.pmtiles"
         /** hillshade raster tiles of a terrain pack */
         const val TERRAIN = "terrain.pmtiles"
         const val FORMAT = 2

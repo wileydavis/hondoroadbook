@@ -28,6 +28,7 @@ object StyleBuilder {
         val sources = JSONObject()
         packs.forEachIndexed { i, p ->
             sources.put("pack$i", JSONObject().put("type", "vector").put("url", "pmtiles://file://" + p.tiles.absolutePath))
+            p.overview?.let { ov -> sources.put("ov$i", JSONObject().put("type", "vector").put("url", "pmtiles://file://" + ov.absolutePath)) }
         }
         terrain.forEachIndexed { i, p ->
             sources.put("terrain$i", JSONObject().put("type", "raster").put("url", "pmtiles://file://" + p.tiles.absolutePath).put("tileSize", 256))
@@ -46,10 +47,12 @@ object StyleBuilder {
                         .put("paint", JSONObject().put("raster-opacity", if (night) 0.5 else 0.8).put("raster-resampling", "linear").put("raster-fade-duration", 0)))
                 }
             }
+            val fromOverview = layer.optString("source") == "overview"
             for (i in packs.indices) {
+                if (fromOverview && packs[i].overview == null) continue
                 val clone = JSONObject(layer.toString())
                 clone.put("id", layer.getString("id") + "_p$i")
-                clone.put("source", "pack$i")
+                clone.put("source", if (fromOverview) "ov$i" else "pack$i")
                 out.put(clone)
             }
         }

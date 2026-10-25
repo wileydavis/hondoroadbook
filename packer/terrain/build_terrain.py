@@ -47,9 +47,9 @@ def fetch(z, x, y):
             if attempt == 3: raise
             time.sleep(1.5 * (attempt + 1))
 
-def hillshade(dem, res_x, res_y):
+def hillshade(dem, res_x, res_y, exaggeration=1.0):
     """Horn's method. dem has a 1-pixel apron; returns shade in [0,1] for the interior."""
-    z = dem
+    z = dem * exaggeration
     # Horn kernel
     dzdx = ((z[:-2, 2:] + 2 * z[1:-1, 2:] + z[2:, 2:]) - (z[:-2, :-2] + 2 * z[1:-1, :-2] + z[2:, :-2])) / (8.0 * res_x)
     dzdy = ((z[2:, :-2] + 2 * z[2:, 1:-1] + z[2:, 2:]) - (z[:-2, :-2] + 2 * z[:-2, 1:-1] + z[:-2, 2:])) / (8.0 * res_y)
@@ -93,7 +93,9 @@ def build(name, region, bbox, out, min_zoom, max_zoom, quality, workers):
                     if k < y: del rows[k]
                 lat_c = y2lat(y + 0.5, z)
                 res = 156543.03392 * math.cos(math.radians(lat_c)) / (1 << z)   # metres per pixel (256-px tiles)
-                shade = hillshade(strip[255:513, :], res, res)                 # one-pixel apron around the row
+                # coarse zooms flatten slopes; exaggerate so the ranges still read when zoomed out
+                exag = min(4.0, 1.35 ** max(0, 12 - z))
+                shade = hillshade(strip[255:513, :], res, res, exag)           # one-pixel apron around the row
                 for i, x in enumerate(cols[1:-1]):
                     img = tile_image(shade[:, i * 256:(i + 1) * 256])
                     buf = io.BytesIO(); img.save(buf, "WEBP", quality=90, alpha_quality=quality, method=4)

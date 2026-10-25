@@ -288,7 +288,38 @@ object PmTiles {
         }
     }
 
+    /** Writes a complete archive from in-memory tiles (ids → encoded, already compressed as [tileCompression] says). */
+    fun writeArchive(out: File, tiles: Map<Long, ByteArray>, minZ: Int, maxZ: Int, minLon: Double, minLat: Double, maxLon: Double, maxLat: Double, tileType: Int, tileCompression: Int, metadataJson: String) {
+        val ids = tiles.keys.sorted()
+        val entries = ArrayList<Entry>(ids.size)
+        val order = ArrayList<Long>(ids.size)
+        var cursor = 0L
+        val seen = HashMap<String, Long>()     // identical tiles stored once
+        for (id in ids) {
+            val data = tiles[id]!!
+            val key = java.util.Base64.getEncoder().encodeToString(java.security.MessageDigest.getInstance("SHA-1").digest(data))
+            val off = seen[key] ?: run { seen[key] = cursor; order.add(id); val o = cursor; cursor += data.size; o }
+            val last = entries.lastOrNull()
+            if (last != null && last.offset == off && last.tileId + last.runLength == id) entries[entries.size - 1] = Entry(last.tileId, last.offset, last.length, last.runLength + 1)
+            else entries.add(Entry(id, off, data.size, 1))
+        }
+        val (rootDir, leafDirs) = buildDirectories(entries)
+        val metaGz = gzip(metadataJson.toByteArray())
+        val rootOff = 127L; val metaOff = rootOff + rootDir.size; val leafOff = metaOff + metaGz.size; val tileOff = leafOff + leafDirs.size
+        RandomAccessFile(out, "rw").use { o ->
+            o.setLength(0)
+            o.write(headerBytes(tileCompression, tileType, rootOff, rootDir.size.toLong(), metaOff, metaGz.size.toLong(), leafOff, leafDirs.size.toLong(), tileOff, cursor,
+                ids.size.toLong(), entries.size.toLong(), order.size.toLong(), minZ, maxZ, minLon, minLat, maxLon, maxLat))
+            o.write(rootDir); o.write(metaGz); o.write(leafDirs)
+            for (id in order) o.write(tiles[id]!!)
+        }
+    }
+
     private fun header(src: Header, rootOff: Long, rootLen: Long, metaOff: Long, metaLen: Long, leafOff: Long, leafLen: Long, tileOff: Long, tileLen: Long,
+                       addressed: Long, entries: Long, contents: Long, minZ: Int, maxZ: Int, minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): ByteArray =
+        headerBytes(src.tileCompression, src.tileType, rootOff, rootLen, metaOff, metaLen, leafOff, leafLen, tileOff, tileLen, addressed, entries, contents, minZ, maxZ, minLon, minLat, maxLon, maxLat)
+
+    private fun headerBytes(tileCompression: Int, tileType: Int, rootOff: Long, rootLen: Long, metaOff: Long, metaLen: Long, leafOff: Long, leafLen: Long, tileOff: Long, tileLen: Long,
                        addressed: Long, entries: Long, contents: Long, minZ: Int, maxZ: Int, minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): ByteArray {
         val b = ByteBuffer.allocate(127).order(ByteOrder.LITTLE_ENDIAN)
         b.put("PMTiles".toByteArray()); b.put(3)
@@ -296,7 +327,7 @@ object PmTiles {
         b.putLong(addressed); b.putLong(entries); b.putLong(contents)
         b.put(1) // clustered
         b.put(2) // internal compression gzip
-        b.put(src.tileCompression.toByte()); b.put(src.tileType.toByte())
+        b.put(tileCompression.toByte()); b.put(tileType.toByte())
         b.put(minZ.toByte()); b.put(maxZ.toByte())
         b.putInt((minLon * 1e7).roundToInt()); b.putInt((minLat * 1e7).roundToInt()); b.putInt((maxLon * 1e7).roundToInt()); b.putInt((maxLat * 1e7).roundToInt())
         b.put(min(maxZ, 10).toByte()); b.putInt(((minLon + maxLon) / 2 * 1e7).roundToInt()); b.putInt(((minLat + maxLat) / 2 * 1e7).roundToInt())

@@ -15,6 +15,8 @@ import java.util.zip.ZipFile
 class Pack(val dir: File, val manifest: PackManifest) {
     val isTerrain get() = manifest.isTerrain
     val tiles: File get() = File(dir, if (isTerrain) PackManifest.TERRAIN else PackManifest.TILES)
+    /** roads.pmtiles, when the pack was built with it */
+    val overview: File? get() = File(dir, PackManifest.OVERVIEW).takeIf { it.exists() }
     @Volatile var router: Router? = null
     @Volatile private var search: SearchFile? = null
     val name get() = manifest.name
@@ -94,12 +96,13 @@ class PackStore(private val ctx: Context) {
                 val dir = File(root, safe)
                 val replacing = dir.exists()
                 val staging = File(root, ".staging-$safe").apply { deleteRecursively(); mkdirs() }
-                val total = manifest.required.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
+                val wanted = manifest.required + listOfNotNull(PackManifest.OVERVIEW.takeIf { zip.getEntry(it) != null && !manifest.isTerrain })
+                val total = wanted.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
                 val free = root.usableSpace
                 if (free < total + (64L shl 20)) throw IllegalStateException("Not enough space: pack needs ${total / (1024 * 1024)} MB, phone has ${free / (1024 * 1024)} MB free")
                 var done = 0L
                 val buf = ByteArray(1 shl 20)
-                for (req in manifest.required) {
+                for (req in wanted) {
                     val e = zip.getEntry(req)
                     zip.getInputStream(e).use { ins -> FileOutputStream(File(staging, req)).use { out ->
                         var lastPct = -1
