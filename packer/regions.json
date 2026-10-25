@@ -231,7 +231,8 @@
   "group": "United States",
   "path": "us",
   "pbf": "north-america/us/new-york-latest.osm.pbf",
-  "geofabrik": "us/new-york"
+  "geofabrik": "us/new-york",
+  "max_zoom": 14
  },
  "north-carolina": {
   "name": "North Carolina",
@@ -252,7 +253,8 @@
   "group": "United States",
   "path": "us",
   "pbf": "north-america/us/ohio-latest.osm.pbf",
-  "geofabrik": "us/ohio"
+  "geofabrik": "us/ohio",
+  "max_zoom": 14
  },
  "oklahoma": {
   "name": "Oklahoma",
@@ -273,7 +275,8 @@
   "group": "United States",
   "path": "us",
   "pbf": "north-america/us/pennsylvania-latest.osm.pbf",
-  "geofabrik": "us/pennsylvania"
+  "geofabrik": "us/pennsylvania",
+  "max_zoom": 14
  },
  "rhode-island": {
   "name": "Rhode Island",

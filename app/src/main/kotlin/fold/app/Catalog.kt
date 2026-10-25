@@ -73,7 +73,8 @@ object Catalog {
         if (list.isEmpty()) { AlertDialog.Builder(ctx).setTitle("No packs yet").setMessage("The catalog is empty: the first packs are still being built. Try again later, or import a .mappack file.").setPositiveButton("OK", null).show(); return }
         val installed = packs.packs.associateBy { it.name }
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), ctx.dp(8)) }
-        val regions = list.groupBy { it.region }.toSortedMap()
+        // grouped by country, then alphabetical, so each country heading appears once
+        val regions = list.groupBy { it.region }.entries.sortedWith(compareBy({ it.value.first().group }, { it.key }))
         var lastGroup: String? = null
         var dlg: AlertDialog? = null
         for ((region, kinds) in regions) {
