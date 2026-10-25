@@ -1,12 +1,59 @@
 # hondoroadbook.com
 
-One Cloudflare Worker (`wrangler.jsonc` at the repo root) does two jobs:
+One Cloudflare Worker (`wrangler.jsonc` at the repo root) does all of it:
 
-* serves the static site in `web/site/` (Workers static assets);
-* serves `/packs/*` from the R2 bucket `roadbook-packs`, with HTTP range support so the app can
-  resume a download, and `/packs/catalog.json` with a five-minute cache.
+* the static site in `web/site/`, including the planner (`plan.html`, `plan.js`, `plan.css`, `map/`);
+* `/packs/*` from the R2 bucket `roadbook-packs` (or the GitHub release when the bucket has no copy),
+  with HTTP range support so the app can resume a download; `/packs/catalog.json` with a short cache;
+* `/tiles/<pack>/<file>` — a file inside a pack by byte range (`web/tiles.js`), which is how the
+  planner's map reads `tiles.pmtiles`, `terrain.pmtiles` and `roads.pmtiles` straight out of the
+  stored zips without unpacking anything;
+* `/api/*` (`web/api.js`): `route`, `snap`, `search` go to the routing container; `park` and
+  `parked/<code>` hold a roadbook for 24 h for the phone; `roadbooks` is the public library (D1 +
+  R2); `web` is Brave web search for the inspect panel.
 
 The bucket is filled by `.github/workflows/packs.yml`, which builds packs on GitHub's runners.
+
+## The routing service (Cloudflare Containers)
+
+`server/` is the app's core behind a tiny HTTP server (`fold.server.MainKt`); `server/Dockerfile`
+builds it into an image that Cloudflare runs as a container bound to the Durable Object class
+`RouterContainer`. Two instances at most (`west` for points west of 97°W, `east` otherwise). An
+instance downloads the graphs it needs from the packs on first use (a byte range of the .mappack,
+75 MB for Nebraska in a few seconds), keeps them on its disk, and sleeps twenty minutes after the
+last request. The first route after a sleep takes a few seconds; after that, tens of milliseconds.
+
+Deploying the container needs the image built. Two ways:
+
+* **Locally**: Docker running, then `npm install && npx wrangler deploy` from the repo root. Wrangler
+  builds `server/Dockerfile` with the repo root as context (`.dockerignore` keeps it to `core/`,
+  `server/` and the Gradle wrapper) and pushes it.
+* **Workers Builds** (the GitHub-connected deploy): Cloudflare builds the image itself as part of the
+  deploy. Leave the build command empty; the deploy command is `npx wrangler deploy`.
+
+To deploy the Worker without touching the container (site changes only): `npx wrangler deploy --containers-rollout=none`.
+
+Run it anywhere else with `./gradlew :server:fatJar && PORT=8080 java -jar server/build/libs/fold-server.jar`
+and point the Worker at it with a `ROUTER_URL` variable instead of the container.
+
+## The library (D1 + R2)
+
+Once: `npx wrangler d1 create roadbook-library`, paste the printed `database_id` into
+`wrangler.jsonc`, then `npx wrangler d1 execute roadbook-library --remote --file web/schema.sql`.
+GPX bodies go into the existing R2 bucket under `library/`; parked roadbooks under `parked/`
+(expired ones are deleted when next asked for; an R2 lifecycle rule on `parked/` of two days keeps
+the bucket tidy). Until the database exists the planner's PUBLISH and the app's BROWSE say the
+library is not set up; everything else works.
+
+Secrets (`npx wrangler secret put NAME`):
+
+* `ADMIN_TOKEN` — to moderate: `curl -X POST -H "Authorization: Bearer $TOKEN" https://hondoroadbook.com/api/roadbooks/<id>/hide` (`unhide`, `delete` likewise).
+* `BRAVE_KEY` — a Brave Search API key (free tier, 2,000 queries a month) for the inspect panel's
+  web search. Without it the panel shows a link to a web search instead.
+* `SALT` — any string; it salts the daily per-visitor upload counter so no address is stored.
+
+Uploads are capped at 6 MB and 40 a day per visitor; published files are rewritten to the line and
+the cues only (no timestamps, no extensions, no device names).
 
 ## One-time setup
 

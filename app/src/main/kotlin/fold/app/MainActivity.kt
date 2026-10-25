@@ -173,7 +173,8 @@ class MainActivity : AppCompatActivity() {
     private val browsePack = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) importPacks(listOf(uri)) }
     private val browseGpx = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) loadGpx(uri) }
     private fun showTrackPicker() {
-        FilePicker.show(this, "Follow a track", listOf(".gpx"), "GPX tracks", { chooseFolder { showTrackPicker() } }, { e -> loadGpx(e.uri) }, null, { safe { browseGpx.launch(arrayOf("*/*")) } })
+        FilePicker.show(this, "Follow a track", listOf(".gpx"), "GPX tracks", { chooseFolder { showTrackPicker() } }, { e -> loadGpx(e.uri) }, null, { safe { browseGpx.launch(arrayOf("*/*")) } },
+            extra = if (BuildConfig.ROADBOOK) ("FETCH CODE FROM THE PLANNER" to { Library.fetchCode(this) { name, text -> onFetchedGpx(name, text) } }) else null)
     }
     private fun showPackPicker() {
         FilePicker.show(this, "Import map packs", listOf(".mappack", ".zip"), "map packs", { chooseFolder { showPackPicker() } }, { e -> importPacks(listOf(e.uri)) }, { all -> importPacks(all.map { it.uri }) }, { safe { browsePack.launch(arrayOf("*/*")) } })
@@ -219,7 +220,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnMaps).setOnClickListener { MapsDialog.show(this, packs, marks, { showPackPicker() }, { p -> deletePack(p) }, { metric -> prefs.metric = metric; Units.metric = metric },
             onExportMarks = { val tree = FilePicker.folder(this); if (tree == null) chooseFolder { exportMarks() } else exportMarks() },
             onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
-            onDownload = if (BuildConfig.ROADBOOK) ({ Catalog.show(this, packs) { onPacksChanged() } }) else null) }
+            onDownload = if (BuildConfig.ROADBOOK) ({ Catalog.show(this, packs) { onPacksChanged() } }) else null,
+            onBrowse = if (BuildConfig.ROADBOOK) ({ showLibrary(true) }) else null) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
         findViewById<Button>(R.id.btnVia).setOnClickListener { pin?.let { addVia(it, pinName) } }
@@ -292,8 +294,11 @@ class MainActivity : AppCompatActivity() {
                 val cue = cueHit?.getNumberProperty("idx")?.toInt()?.let { trackCues.getOrNull(it) }
                 val line = if (mode == Mode.COMPARE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(14), pt.y - dp(14), pt.x + dp(14), pt.y + dp(14)), "cmp-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val pickedMode = line?.getStringProperty("mode")?.let { try { Profile.valueOf(it) } catch (_: Throwable) { null } }
+                val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line").firstOrNull() } catch (_: Throwable) { null } else null
+                val libItem = libHit?.getStringProperty("id")?.let { id -> libraryItems.firstOrNull { it.id == id } }
                 when {
                     cue != null -> { editCue(cue); true }
+                    libItem != null -> { openLibraryItem(libItem); true }
                     mark != null -> { openMark(mark); true }
                     pickedMode != null && candidates.containsKey(pickedMode) -> { profile = pickedMode; prefs.profile = pickedMode; rebuildCompareRows(prefs.modes.toList().sortedBy { it.ordinal }, false); drawCandidates(); true }
                     mode == Mode.PIN -> { clearPin(); true }
@@ -303,6 +308,7 @@ class MainActivity : AppCompatActivity() {
             }
             m.addOnCameraIdleListener {
                 refreshVisiblePacks()
+                if (libraryOn && mode == Mode.IDLE && System.currentTimeMillis() - libraryFetchedAt > 1500) fetchLibrary(false)
                 // navigating: a pinch keeps following at the new zoom; a drag stops following
                 val from = gestureFrom
                 if (from != null && mode == Mode.NAV) {
@@ -399,6 +405,7 @@ class MainActivity : AppCompatActivity() {
         st.addImage("cue", cueBitmap(false)); st.addImage("cue-danger", cueBitmap(true))
         srcPin = GeoJsonSource("pin-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         srcPuck = GeoJsonSource("puck-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
+        if (BuildConfig.ROADBOOK) addLibraryLayers(st)
         val casing = ContextCompat.getColor(this, R.color.route_casing)
         // Route lines go under the map's labels (road names, shields, towns), so a route never hides the name of the road it follows.
         val firstLabel = st.layers.firstOrNull { it is SymbolLayer }?.id
@@ -1134,8 +1141,11 @@ class MainActivity : AppCompatActivity() {
         if (BuildConfig.ROADBOOK && tr.hasTrack) {
             // Roadbook: a track is something you author as well as follow
             val n = tr.cues.size
-            androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name)
-                .setMessage(Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute && n == 0) "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." else ""))
+            val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+            body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute && n == 0) "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." else "") })
+            var dlgRef: androidx.appcompat.app.AlertDialog? = null
+            body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrack(tr.name, tr.lats, tr.lons, null, tr.cues), recorded = true) } })
+            dlgRef = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name).setView(body)
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
                 .setNeutralButton("EDIT CUES") { _, _ -> openEditor(tr, uri) }
                 .apply { if (tr.hasRoute && n == 0) setNegativeButton("RE-ROUTE") { _, _ -> rerouteGpx(tr) } else setNegativeButton(R.string.cancel, null) }
@@ -1364,6 +1374,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private var lastWritten: Uri? = null
     /** Writes a new file into the granted folder. Returns true only when the whole file was written. */
     private fun writeToFolder(fileName: String, text: String): Boolean {
         val tree = FilePicker.writableFolder(this) ?: run { toast(if (FilePicker.folder(this) != null) "The folder grant is read-only — pick the folder again" else "No folder chosen"); return false }
@@ -1376,6 +1387,7 @@ class MainActivity : AppCompatActivity() {
             // read back the size: a full disk or a flaky provider must not pass as saved
             val written = contentResolver.openFileDescriptor(doc, "r")?.use { it.statSize } ?: -1L
             if (written != bytes.size.toLong()) throw IllegalStateException("File is incomplete ($written of ${bytes.size} bytes)")
+            lastWritten = doc
             toast("Saved $fileName — it is under TRACK", 5000)
             return true
         } catch (e: Throwable) {
@@ -1467,6 +1479,76 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---------------------------------------------------------------- the library (Roadbook)
+
+    /** A roadbook fetched by code: saved into the folder when there is one, then offered like any track. */
+    private fun onFetchedGpx(name: String, text: String) {
+        val tr = try { Gpx.parse(text) } catch (_: Throwable) { null }
+        if (tr == null || tr.lats.size < 2) { toast("The fetched file has no track"); return }
+        val file = name.replace(Regex("[^\\w .-]+"), "_").trim().ifEmpty { "Roadbook" } + ".gpx"
+        val open = { val ok = writeToFolder(file, text); onGpxLoaded(tr, if (ok) lastWritten else null) }
+        if (FilePicker.writableFolder(this) == null) chooseFolder(open) else open()
+    }
+
+    private var srcLib: GeoJsonSource? = null
+    private var libraryOn = false
+    private var libraryItems: List<LibraryItem> = emptyList()
+    private var libraryFetchedAt = 0L
+
+    private fun addLibraryLayers(st: Style) {
+        srcLib = GeoJsonSource("lib-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
+        val firstLabel = st.layers.firstOrNull { it is SymbolLayer }?.id
+        val l1 = LineLayer("lib-casing", "lib-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.route_casing)), lineWidth(7f), lineOpacity(0.8f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND))
+        val l2 = LineLayer("lib-line", "lib-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.track)), lineWidth(4f), lineOpacity(0.85f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND))
+        if (firstLabel != null) { st.addLayerBelow(l1, firstLabel); st.addLayerBelow(l2, firstLabel) } else { st.addLayer(l1); st.addLayer(l2) }
+        st.addLayer(SymbolLayer("lib-label", "lib-src").withProperties(textField(E.get("name")), textSize(12f), textFont(arrayOf("Noto Sans Medium")), textColor(ContextCompat.getColor(this, R.color.track)), textHaloColor(ContextCompat.getColor(this, R.color.route_casing)), textHaloWidth(1.5f), symbolPlacement(Property.SYMBOL_PLACEMENT_LINE), textAllowOverlap(false)))
+        if (libraryOn) drawLibrary()
+    }
+
+    private fun showLibrary(on: Boolean) {
+        libraryOn = on
+        if (!on) { libraryItems = emptyList(); drawLibrary(); toast("Roadbooks hidden"); return }
+        fetchLibrary(true)
+    }
+
+    private fun fetchLibrary(announce: Boolean) {
+        val m = map ?: return
+        val b = try { m.projection.visibleRegion.latLngBounds } catch (_: Throwable) { return }
+        libraryFetchedAt = System.currentTimeMillis()
+        Library.browse(b.longitudeWest, b.latitudeSouth, b.longitudeEast, b.latitudeNorth) { r -> ui.post {
+            if (!libraryOn) return@post
+            r.onSuccess { list -> libraryItems = list; drawLibrary(); if (announce) toast(if (list.isEmpty()) "No roadbooks published for this part of the map yet. Zoom out, or be the first: TRACK → PUBLISH." else "${list.size} roadbooks here — tap one. Hide them from the menu.", 5000) }
+             .onFailure { e -> if (announce) toast("Library not reachable: ${e.message}", 6000) }
+        } }
+    }
+
+    private fun drawLibrary() {
+        val feats = libraryItems.map { it ->
+            val f = Feature.fromGeometry(LineString.fromLngLats(it.line.map { p -> Point.fromLngLat(p[0], p[1]) }))
+            f.addStringProperty("id", it.id); f.addStringProperty("name", it.name); f
+        }
+        srcLib?.setGeoJson(FeatureCollection.fromFeatures(feats))
+    }
+
+    private fun openLibraryItem(item: LibraryItem) {
+        val surf = if (item.unpavedShare.isNaN()) "" else " · ${Math.round(item.unpavedShare * 100)}% unpaved"
+        val modeLabel = try { if (item.mode.isNotEmpty()) " · " + Profile.valueOf(item.mode).label else "" } catch (_: Throwable) { "" }
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle(item.name)
+            .setMessage(Units.distance(item.lengthM) + " · ${item.cues} cues" + modeLabel + surf + (if (item.created.isNotEmpty()) "\nPublished ${item.created}" else ""))
+            .setPositiveButton("FOLLOW") { _, _ -> withLibraryGpx(item) { tr, _ -> followTrack(tr, null) } }
+            .setNeutralButton("SAVE") { _, _ -> withLibraryGpx(item) { _, text -> val file = item.name.replace(Regex("[^\\w .-]+"), "_").trim().ifEmpty { "Roadbook" } + ".gpx"; val go = { writeToFolder(file, text); Unit }; if (FilePicker.writableFolder(this) == null) chooseFolder(go) else go() } }
+            .setNegativeButton("CLOSE", null).show()
+    }
+
+    private fun withLibraryGpx(item: LibraryItem, then: (Gpx.Track, String) -> Unit) {
+        val dlg = ProgressDialogLite(this, "Fetching ${item.name}…"); dlg.show()
+        Library.download(item) { r -> ui.post {
+            dlg.dismiss()
+            r.onSuccess { text -> val tr = try { Gpx.parse(text) } catch (_: Throwable) { null }; if (tr == null || tr.lats.size < 2) toast("That roadbook has no track") else then(tr, text) }
+             .onFailure { e -> toast("Could not fetch it: ${e.message}", 6000) }
+        } }
+    }
+
     // ---------------------------------------------------------------- the glove menu
 
     private class MenuItem(val label: String, val icon: Int, val accent: Boolean = false, val on: Boolean = false, val action: () -> Unit)
@@ -1485,6 +1567,7 @@ class MainActivity : AppCompatActivity() {
             items.add(MenuItem("TRACK", R.drawable.ic_track) { findViewById<ImageButton>(R.id.btnTrack).performClick() })
             items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
             if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
+            if (libraryOn) items.add(MenuItem("HIDE ROADBOOKS", R.drawable.ic_list, on = true) { showLibrary(false) })
         }
         items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night) { findViewById<ImageButton>(R.id.btnNight).performClick() })
         items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })

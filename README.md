@@ -41,6 +41,11 @@ Everything under **Fold** below applies; Roadbook adds:
 * **In-app packs.** MAPS → DOWNLOAD lists the catalog at `hondoroadbook.com/packs/catalog.json`,
   downloads with resume, imports automatically. IMPORT FILE still takes a `.mappack` you copied yourself.
   Packs of different kinds (roads today; terrain, imagery later) for one region install side by side.
+* **The network, only on a button.** Roadbook has the INTERNET permission for exactly four buttons:
+  MAPS → DOWNLOAD (packs), TRACK → FETCH CODE (a roadbook parked by the planner), PUBLISH (a roadbook
+  you choose to share, trimmed at the ends if you like) and MAPS → BROWSE ROADBOOKS (the shared library
+  drawn over the map; tap one to FOLLOW or SAVE). Nothing else touches the network; no identifier is
+  ever sent; a published file keeps only the line and the cues.
 
 ### Small roads when zoomed out
 
@@ -78,6 +83,18 @@ KEEP_RIGHT, UTURN, ROUNDABOUT; `danger:1..3`; `note`. Cues more than 150 m from 
 ignored, so ordinary waypoints in the same file do no harm. A track with authored cues is followed
 exactly as authored: no turns are synthesized from its geometry.
 
+### The planner (hondoroadbook.com/plan)
+
+A browser planner on the same router and maps, for the desk: click two points, drag the line
+onto the trails you want (every mode can be pulled onto any road or track), pick a mode, get the
+cues the phone will speak. Surface mix, elevation profile, BLM land ownership, aerial imagery and
+an inspect window per spot. **Send to phone** parks the GPX for 24 hours under a six-letter code
+that the app fetches (TRACK → FETCH CODE); **Publish** puts it in a shared library that both the
+planner map and the app (MAPS → BROWSE ROADBOOKS) can browse. The app can publish a recorded
+track too, trimmed at the ends. Published files keep only the line and the cues. See `web/README.md`
+for how the routing container, the tile proxy and the library are deployed, and `server/` for the
+service itself.
+
 ### Website, packs and releases
 
 `wrangler.jsonc` + `web/` is the Cloudflare Worker for hondoroadbook.com (static site, `/download/*`
@@ -101,7 +118,9 @@ fold/
   app/      Android app (Kotlin). MapLibre renders Protomaps vector tiles from local files.
   core/     Pure JVM library: road graph, A* router, route follower, turn cues, GPX, search.
   packer/   Desktop tool: OSM extract → .mappack (tiles + routing graph + address index).
-  dist/     fold.apk (signed), fold-packer.jar
+  server/   The core as an HTTP routing service, for the planner (a Cloudflare Container).
+  web/      hondoroadbook.com: Worker, tile proxy, API, the planner page.
+  dist/     fold.apk, roadbook.apk (signed), fold-packer.jar
   keys/     fold-release.jks — the signing key. Keep it; updates must be signed with the same key.
 ```
 

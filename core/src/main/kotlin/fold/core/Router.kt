@@ -157,6 +157,54 @@ class Router(private val g: Graph) {
         return best
     }
 
+    /**
+     * The nearest [limit] distinct edges to a point, nearest first. A planner's click may land next to
+     * a private driveway or a trail stub that leads nowhere; the caller tries these in order.
+     */
+    fun snapCandidates(pack: Int, lat: Double, lon: Double, profile: Profile, maxMeters: Double = 1500.0, limit: Int = 6): List<Snap> {
+        if (!g.contains(lat, lon)) return emptyList()
+        val col = g.cellCol(lon); val row = g.cellRow(lat)
+        val cellMeters = F.CELL_DEG * 111_000.0
+        val maxRing = (maxMeters / cellMeters).toInt() + 1
+        val out = ArrayList<Snap>()
+        for (ring in 0..maxRing) {
+            for (r in row - ring..row + ring) {
+                if (r < 0 || r >= g.gridRows) continue
+                for (c in col - ring..col + ring) {
+                    if (c < 0 || c >= g.gridCols) continue
+                    if (ring > 0 && r != row - ring && r != row + ring && c != col - ring && c != col + ring) continue
+                    for (slot in g.cellEdgesStart(c, r) until g.cellEdgesEnd(c, r)) {
+                        val edge = g.cellEdge(slot)
+                        if (Speeds.speed(profile, g.edgeFlags(edge)) <= 0.0) continue
+                        val cand = snapToEdge(pack, edge, lat, lon) ?: continue
+                        if (cand.distance <= maxMeters) out.add(cand)
+                    }
+                }
+            }
+        }
+        return out.sortedBy { it.distance }.distinctBy { it.edge }.take(limit)
+    }
+
+    /**
+     * How many nodes this profile can reach from the snap, stopping at [limit]. A small number means
+     * the edge sits on an island (a gated compound, a trail fragment) that no route can leave.
+     */
+    fun reachable(s: Snap, profile: Profile, limit: Int): Int {
+        val seen = HashSet<Int>(); val queue = ArrayDeque<Int>()
+        for (n in intArrayOf(g.edgeFrom(s.edge), g.edgeTo(s.edge))) if (seen.add(n)) queue.add(n)
+        while (queue.isNotEmpty() && seen.size < limit) {
+            val n = queue.removeFirst()
+            for (slot in g.adjStart(n) until g.adjEnd(n)) {
+                val edge = g.adj(slot) shr 1
+                val dir = if (g.edgeFrom(edge) == n) 0 else 1
+                if (!canTraverse(edge, dir, profile)) continue
+                val o = g.edgeOther(edge, n)
+                if (seen.add(o)) queue.add(o)
+            }
+        }
+        return seen.size
+    }
+
     private fun snapToEdge(pack: Int, edge: Int, lat: Double, lon: Double): Snap? {
         val n = g.edgePointCount(edge)
         var bestD = Double.MAX_VALUE; var bestK = -1; var bestT = 0.0; var bLat = 0.0; var bLon = 0.0
@@ -236,6 +284,19 @@ class MultiRouter(val routers: List<Router>) {
             if (best == null || s.distance < best.distance) best = s
         }
         return best
+    }
+
+    /** Nearest candidates across all packs covering the point, nearest first. */
+    fun snapCandidates(lat: Double, lon: Double, profile: Profile, maxMeters: Double = 1500.0, limit: Int = 6): List<Snap> {
+        val all = ArrayList<Snap>()
+        for (p in routers.indices) all.addAll(routers[p].snapCandidates(p, lat, lon, profile, maxMeters, limit))
+        return all.sortedBy { it.distance }.take(limit)
+    }
+
+    /** The nearest candidate that is not on an island of fewer than [minReach] nodes; the nearest of all if every one is. */
+    fun snapConnected(lat: Double, lon: Double, profile: Profile, maxMeters: Double = 1500.0, minReach: Int = 400): Snap? {
+        val cands = snapCandidates(lat, lon, profile, maxMeters)
+        return cands.firstOrNull { routers[it.pack].reachable(it, profile, minReach) >= minReach } ?: cands.firstOrNull()
     }
 
     /**

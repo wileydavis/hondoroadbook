@@ -7,8 +7,21 @@
   "compatibility_date": "2025-09-01",
   // run_worker_first: without it, Cloudflare's static-assets layer answers browser navigations to
   // /download/* and /packs/* with the 404 page before the Worker ever runs (plain fetches were fine).
-  "assets": { "directory": "web/site", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/download/*", "/packs/*"] },
+  "assets": { "directory": "web/site", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/download/*", "/packs/*", "/tiles/*", "/api/*"] },
   "r2_buckets": [{ "binding": "PACKS", "bucket_name": "roadbook-packs" }],
+  // The routing service: the phone's core in a container (server/Dockerfile), woken by the first
+  // /api/route of the day and asleep twenty minutes after the last. Graphs download on demand from
+  // the packs and stay on the instance's disk. "standard" is 4 GB of memory; raise it if a region's
+  // graphs stop fitting. Deploying builds the image from the repo root (needs Docker locally).
+  "containers": [{ "class_name": "RouterContainer", "image": "./server/Dockerfile", "image_build_context": ".", "max_instances": 2, "instance_type": "standard" }],
+  "durable_objects": { "bindings": [{ "name": "ROUTER", "class_name": "RouterContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RouterContainer"] }],
+  // The roadbook library: `wrangler d1 create roadbook-library`, paste the database_id here, then
+  // `wrangler d1 execute roadbook-library --remote --file web/schema.sql`. Until then the planner works
+  // without a library and PUBLISH says so.
+  "d1_databases": [{ "binding": "DB", "database_name": "roadbook-library", "database_id": "REPLACE-WITH-THE-ID-FROM-wrangler-d1-create" }],
+  // Secrets (wrangler secret put …): BRAVE_KEY for the inspect panel's web search (optional),
+  // ADMIN_TOKEN to hide or delete library entries, SALT for the daily upload counter.
   "routes": [
     { "pattern": "hondoroadbook.com", "custom_domain": true },
     { "pattern": "www.hondoroadbook.com", "custom_domain": true }

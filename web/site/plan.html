@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roadbook Planner</title>
+<meta name="description" content="Plan an adventure route on the same maps and router the Roadbook app rides with: click two points, drag the line onto the trails you want, get the cues, send it to your phone.">
+<link rel="stylesheet" href="/map/vendor/maplibre-gl.css">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/plan.css">
+<link rel="icon" href="/favicon.svg">
+</head>
+<body class="planner">
+<div id="map"></div>
+
+<aside id="side">
+  <header class="side-head">
+    <a class="brand" href="/" title="hondoroadbook.com"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>planner</small></span></a>
+    <button id="btnSide" class="icon" title="Hide panel" aria-label="Hide panel">‹</button>
+  </header>
+
+  <div class="search"><input id="q" type="search" placeholder="Find a town, road or trail…" autocomplete="off"><div id="hits" class="hits" hidden></div></div>
+
+  <div class="modes" id="modes" role="radiogroup" aria-label="Routing mode"></div>
+
+  <section id="empty" class="hint">
+    <p><b>Click the map twice</b>: a start and a finish. The route follows the mode above.</p>
+    <p><b>Drag the line</b> onto any road or trail to pull the route through it. Drag a point to move it; click a point to delete it.</p>
+    <p><b>Click the line</b> to add a cue, inspect the spot, or add a stop.</p>
+    <p class="muted">Or <label class="link" for="file">open a GPX</label> to edit its cues. <input id="file" type="file" accept=".gpx,application/gpx+xml" hidden></p>
+  </section>
+
+  <section id="stats" hidden>
+    <div class="row big"><span id="dist">—</span><span id="time" class="muted"></span></div>
+    <div id="surface" class="surface" title="Surface along the route"></div>
+    <div id="surfaceKey" class="skey"></div>
+    <canvas id="elev" width="340" height="90" hidden></canvas>
+    <div id="elevTxt" class="muted small"></div>
+    <div id="legs" class="legs"></div>
+  </section>
+
+  <section id="cuesSec" hidden>
+    <h3>Cues <span id="cueCount" class="muted"></span> <button id="btnAutoCues" class="mini" title="Replace the cues with the router's turns">reset to turns</button></h3>
+    <ol id="cues" class="cues"></ol>
+  </section>
+
+  <section id="actions" hidden>
+    <div class="actions">
+      <button id="btnGpx" class="cta">Download GPX</button>
+      <button id="btnPhone" class="cta alt">Send to phone</button>
+      <button id="btnPublish" class="cta alt">Publish</button>
+      <button id="btnClear" class="mini">clear</button>
+      <button id="btnReverse" class="mini">reverse</button>
+      <label class="mini link" for="file">open GPX</label>
+    </div>
+    <p class="muted small">Name: <input id="name" value="Roadbook" maxlength="80"></p>
+  </section>
+
+  <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a></footer>
+</aside>
+<button id="btnSideShow" class="icon showside" title="Show panel" hidden>›</button>
+
+<div id="layers" class="layers">
+  <label><input type="checkbox" id="lyTerrain" checked> Terrain</label>
+  <label><input type="checkbox" id="lyLand"> Land ownership</label>
+  <label><input type="checkbox" id="lyImagery"> Aerial</label>
+  <label><input type="checkbox" id="lyLibrary"> Roadbooks</label>
+  <label><input type="checkbox" id="lyNight"> Night</label>
+  <div id="landKey" class="landkey" hidden></div>
+</div>
+
+<div id="status" class="status" hidden></div>
+
+<!-- the click-the-route menu -->
+<div id="ctx" class="ctx" hidden>
+  <button data-act="via">Add a stop here</button>
+  <button data-act="cue">Add a cue here</button>
+  <button data-act="inspect">Inspect this spot</button>
+</div>
+
+<!-- cue editor -->
+<div id="cueEd" class="sheet" hidden>
+  <div class="sheet-head"><b id="cueEdTitle">Cue</b><button class="icon" data-close>×</button></div>
+  <div class="turns" id="turnGrid"></div>
+  <div class="dangerRow"><span>Danger</span><button data-turn="DANGER" data-level="1">1</button><button data-turn="DANGER" data-level="2">2</button><button data-turn="DANGER" data-level="3">3</button><button data-turn="NOTE">Note</button></div>
+  <input id="cueText" placeholder="What to say (optional for a turn)" maxlength="120">
+  <div class="sheet-actions"><button id="cueDelete" class="mini">delete</button><span></span><button id="cueSave" class="cta">Save</button></div>
+</div>
+
+<!-- inspect -->
+<div id="inspect" class="sheet wide" hidden>
+  <div class="sheet-head"><b>Inspect</b><span id="inspCoord" class="muted small"></span><button class="icon" data-close>×</button></div>
+  <div id="inspMap" class="inspmap"></div>
+  <div class="insp-links" id="inspLinks"></div>
+  <div id="inspFacts" class="facts"></div>
+  <div id="inspWiki" class="wiki"></div>
+  <div id="inspWeb" class="web"></div>
+</div>
+
+<!-- send to phone / publish results -->
+<div id="codeSheet" class="sheet" hidden>
+  <div class="sheet-head"><b id="codeTitle">On the phone</b><button class="icon" data-close>×</button></div>
+  <div id="codeBody"></div>
+</div>
+
+<!-- library item -->
+<div id="rbSheet" class="sheet" hidden>
+  <div class="sheet-head"><b id="rbName">Roadbook</b><button class="icon" data-close>×</button></div>
+  <div id="rbBody"></div>
+</div>
+
+<script src="/map/vendor/maplibre-gl.js"></script>
+<script src="/map/vendor/pmtiles.js"></script>
+<script src="/plan.js"></script>
+</body>
+</html>

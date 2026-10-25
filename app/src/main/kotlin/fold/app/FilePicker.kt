@@ -59,17 +59,19 @@ object FilePicker {
     /**
      * Shows the picker. [onChooseFolder] must launch the system folder chooser; the caller calls [show] again afterwards.
      */
-    fun show(act: Activity, title: String, extensions: List<String>, what: String, onChooseFolder: () -> Unit, onPick: (Entry) -> Unit, onPickAll: ((List<Entry>) -> Unit)? = null, onSystemPicker: (() -> Unit)? = null) {
+    fun show(act: Activity, title: String, extensions: List<String>, what: String, onChooseFolder: () -> Unit, onPick: (Entry) -> Unit, onPickAll: ((List<Entry>) -> Unit)? = null, onSystemPicker: (() -> Unit)? = null, extra: Pair<String, () -> Unit>? = null) {
         val ctx = act
         val tree = folder(ctx)
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(ctx, 20), dp(ctx, 8), dp(ctx, 20), 0) }
+        var dlgRef: AlertDialog? = null
+        if (extra != null) root.addView(android.widget.Button(ctx).apply { text = extra.first; textSize = 14f; setOnClickListener { dlgRef?.dismiss(); extra.second() } })
         if (tree == null) {
             root.addView(TextView(ctx).apply { textSize = 16f; text = "Choose the folder on this phone where your $what are (Downloads works well). Fold will remember it and list the files here from now on." })
             val b0 = AlertDialog.Builder(ctx).setTitle(title).setView(root)
                 .setPositiveButton("CHOOSE FOLDER") { _, _ -> onChooseFolder() }
                 .setNegativeButton(R.string.cancel, null)
             if (onSystemPicker != null) b0.setNeutralButton("BROWSE…") { _, _ -> onSystemPicker() }
-            b0.show()
+            dlgRef = b0.show()
             return
         }
         val listing = list(ctx, tree, extensions)
@@ -92,7 +94,7 @@ object FilePicker {
             .setNegativeButton(R.string.cancel, null)
         if (onPickAll != null && entries.isNotEmpty()) b.setPositiveButton("IMPORT ALL (${entries.size})") { _, _ -> onPickAll(entries) }
         else if (onSystemPicker != null) b.setPositiveButton("BROWSE…") { _, _ -> onSystemPicker() }
-        val dlg = b.create()
+        val dlg = b.create(); dlgRef = dlg
         list.setOnItemClickListener { _, _, pos, _ -> dlg.dismiss(); onPick(entries[pos]) }
         dlg.show()
     }

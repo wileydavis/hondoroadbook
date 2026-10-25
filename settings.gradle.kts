@@ -19,4 +19,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "fold"
-include(":core", ":packer", ":app")
+include(":core", ":packer", ":server", ":app")

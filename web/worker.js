@@ -1,16 +1,52 @@
 // hondoroadbook.com
 //   /packs/catalog.json   -> R2 object "catalog.json" (short cache, so new packs show up within minutes)
 //   /packs/<path>         -> R2 object <path>, with HTTP range support so the app can resume downloads
+//   /download/<apk>       -> the app
+//   /tiles/<pack>/<file>  -> a file inside a pack, by byte range (the planner's map tiles)      web/tiles.js
+//   /api/*                -> routing, parked roadbooks, the library, web search               web/api.js
 //   everything else       -> the static site in web/site
+import { Container, getContainer } from "@cloudflare/containers";
+import { serveTile } from "./tiles.js";
+import { serveApi } from "./api.js";
+
+/** The routing service (server/Dockerfile). Two instances at most: one holds western graphs, one eastern. */
+export class RouterContainer extends Container {
+  defaultPort = 8080;
+  sleepAfter = "20m";
+  envVars = { CATALOG_URL: "https://hondoroadbook.com/packs/catalog.json", PACK_DIR: "/data/packs" };
+}
+
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.hostname.startsWith("www.")) return Response.redirect(url.href.replace("//www.", "//"), 301);
     if (url.pathname.startsWith("/packs/")) return servePackOrRelease(request, env, decodeURIComponent(url.pathname.slice("/packs/".length)));
     if (url.pathname.startsWith("/download/")) return serveApp(request, env, url.pathname.slice("/download/".length));
+    if (url.pathname.startsWith("/tiles/")) return serveTile(request, env, url.pathname.slice("/tiles/".length), loadCatalog, fetchPack);
+    if (url.pathname.startsWith("/api/")) return serveApi(request, env, url.pathname.slice("/api/".length), ctx, routerFetch(env));
     return env.ASSETS.fetch(request);
   },
 };
+
+/** A request into the routing container that holds the shard's graphs; the container wakes if asleep. */
+function routerFetch(env) {
+  return (shard, target) => getContainer(env.ROUTER, shard).fetch(new Request("http://router" + target, { headers: { "Accept-Encoding": "gzip" } }));
+}
+
+/** The catalog as the site publishes it, parsed, cached a few minutes in this isolate. */
+let catalogCache = { at: 0, value: null };
+async function loadCatalog(env) {
+  if (catalogCache.value && Date.now() - catalogCache.at < 120000) return catalogCache.value;
+  const r = await servePackOrRelease(new Request("https://hondoroadbook.com/packs/catalog.json"), env, "catalog.json");
+  const value = r.ok ? await r.json() : { packs: [] };
+  catalogCache = { at: Date.now(), value };
+  return value;
+}
+
+/** One byte range of a pack, from R2 when mirrored there, else from the GitHub release. */
+async function fetchPack(env, key, range) {
+  return servePackOrRelease(new Request("https://hondoroadbook.com/packs/" + key, { headers: { Range: range } }), env, key);
+}
 
 // /packs/<key>: the R2 object if the workflow has mirrored one there, otherwise the same file from the
 // rolling GitHub release "packs" (catalog.json, us/<state>-roads.mappack → asset <state>-roads.mappack).
@@ -19,6 +55,7 @@ async function servePackOrRelease(request, env, key) {
   if (!key || key.endsWith("/") || key.includes("..")) return new Response("not found", { status: 404 });
   if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("method not allowed", { status: 405 });
+  if (key.startsWith("library/") || key.startsWith("parked/")) return new Response("not found", { status: 404 });   // those live under /api
   const asset = key.split("/").pop();
   const isCatalog = asset === "catalog.json";
   const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);

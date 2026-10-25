@@ -1,0 +1,16 @@
+{
+  "name": "hondoroadbook-site",
+  "private": true,
+  "type": "module",
+  "description": "hondoroadbook.com: the Cloudflare Worker (web/worker.js), its routing container and the planner",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "wrangler": "^4.152.0"
+  }
+}

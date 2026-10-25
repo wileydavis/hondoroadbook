@@ -95,7 +95,7 @@ object SearchDialog {
 
 /** Installed packs, import, delete, units. The only screen with any settings. */
 object MapsDialog {
-    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null) {
+    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null) {
         val ctx = act
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(16), ctx.dp(20), ctx.dp(8)) }
         val list = packs.packs
@@ -126,15 +126,21 @@ object MapsDialog {
         row.addView(Button(ctx).apply { text = "BURN"; textSize = 12f; isEnabled = n > 0; setOnClickListener {
             AlertDialog.Builder(ctx).setMessage("Delete all $n marks from this phone? There is no undo.").setPositiveButton("Burn") { _, _ -> onBurnMarks(); text = "BURN"; isEnabled = false }.setNegativeButton(R.string.cancel, null).show() } })
         root.addView(row)
+        if (onBrowse != null) {
+            root.addView(TextView(ctx).apply { text = "ROADBOOKS OTHERS SHARED"; textSize = 12f; letterSpacing = 0.1f; setPadding(0, ctx.dp(16), 0, ctx.dp(4)) })
+            root.addView(TextView(ctx).apply { text = "The library on hondoroadbook.com, drawn over the map. Tap one to follow it or save it."; textSize = 13f })
+            root.addView(Button(ctx).apply { text = "BROWSE ROADBOOKS"; textSize = 13f; tag = "browse" })
+        }
         root.addView(TextView(ctx).apply { text = ctx.getString(R.string.credits); textSize = 12f; setPadding(0, ctx.dp(12), 0, 0) })
         root.addView(TextView(ctx).apply { text = (if (BuildConfig.ROADBOOK) "Roadbook " else "Fold ") + BuildConfig.VERSION_NAME + (if (BuildConfig.ROADBOOK) " · hondoroadbook.com" else ""); textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
-        root.addView(TextView(ctx).apply { text = if (BuildConfig.ROADBOOK) "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only to fetch packs from the catalog. No accounts, no history." else "Fold stores only your map packs, these settings, and marks you save on purpose. No history, no accounts, no network permission."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
+        root.addView(TextView(ctx).apply { text = if (BuildConfig.ROADBOOK) "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. No accounts, no history." else "Fold stores only your map packs, these settings, and marks you save on purpose. No history, no accounts, no network permission."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
         val b = AlertDialog.Builder(ctx).setTitle("Maps on this phone").setView(scroll)
             .setPositiveButton(if (onDownload != null) "DOWNLOAD" else ctx.getString(R.string.import_pack)) { _, _ -> if (onDownload != null) onDownload() else onImport() }
             .setNegativeButton("CLOSE", null)
         if (onDownload != null) b.setNeutralButton("IMPORT FILE") { _, _ -> onImport() }
-        b.show()
+        val dlg = b.show()
+        if (onBrowse != null) root.findViewWithTag<Button>("browse")?.setOnClickListener { dlg.dismiss(); onBrowse() }
     }
 }
 
