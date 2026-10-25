@@ -51,13 +51,14 @@ const S = {
   mode: "DIRT", pts: [], route: null, track: null,
   cues: [],            // {lon,lat,turn,level,text,auto:boolean,at}
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
-  elastic: null,
+  elastic: null, lastGood: null,
   night: matchMedia("(prefers-color-scheme: dark)").matches, terrain: true, land: false, imagery: false, library: false,
-  catalog: null, activePacks: new Set(), overview: new Map(), markers: [], cueMarkers: [], libraryData: null,
+  catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
 };
 
 // ---- map ---------------------------------------------------------------------------------------------------
+maplibregl.setWorkerUrl("/map/vendor/maplibre-gl-csp-worker.js");   // the CSP build: no blob workers, no eval
 const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 let layersLight = null, layersDark = null;
@@ -70,8 +71,12 @@ map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribut
 async function init() {
   const [cat, ll, ld] = await Promise.all([fetch("/packs/catalog.json").then(r => r.json()), fetch("/map/layers_light.json").then(r => r.json()), fetch("/map/layers_dark.json").then(r => r.json())]);
   S.catalog = cat.packs || []; layersLight = ll; layersDark = ld;
+  try { S.hasOverview = (await fetch("/tiles/overview/tiles.pmtiles", { method: "HEAD" })).ok; } catch {}
   buildModes();
   restoreHash();
+  status("Loading the map…", false, true);
+  const slow = setTimeout(() => status("Still loading — the first visit to a region is the slow one; after that it is cached", false, true), 8000);
+  map.once("idle", () => { clearTimeout(slow); $("#status").hidden = true; });
   updatePacks(true);
   map.on("moveend", () => updatePacks(false));
   map.on("moveend", () => { if (S.library) loadLibrary(); });
@@ -86,29 +91,40 @@ function terrainPacks() { return S.catalog.filter(p => p.kind === "terrain"); }
 function inter(bb, b) { return !(bb[2] < b.getWest() || bb[0] > b.getEast() || bb[3] < b.getSouth() || bb[1] > b.getNorth()); }
 
 /** Packs in view become sources; the style is rebuilt (diffed) when the set changes. */
+const PACK_ZOOM = 7.5;   // below this the continent overview draws the map; from here the packs in view do
+let packGen = 0;
 async function updatePacks(force) {
-  // every pack in view is a source at any zoom: the packs carry zoom 0 up, so the country view is
-  // the packs' own low-zoom tiles (a tile or two each, cached at the edge after the first visitor)
-  const b = map.getBounds();
+  const b = map.getBounds(); const z = map.getZoom();
   const want = new Set();
-  for (const p of roadsPacks()) if (inter(p.bbox, b)) want.add(p.id);
-  for (const p of terrainPacks()) if (inter(p.bbox, b)) want.add(p.id);
-  let changed = force || want.size !== S.activePacks.size || [...want].some(id => !S.activePacks.has(id));
+  if (z >= PACK_ZOOM || !S.hasOverview) {
+    for (const p of roadsPacks()) if (inter(p.bbox, b)) want.add(p.id);
+    for (const p of terrainPacks()) if (inter(p.bbox, b)) want.add(p.id);
+  }
+  for (const id of [...want]) if (S.overview.get(id) === null) want.delete(id);   // known to be missing from the shelf
+  const changed = force || want.size !== S.activePacks.size || [...want].some(id => !S.activePacks.has(id));
   if (!changed) return;
-  // ask once per pack whether its tiles are really there (a pack can be in the catalog before its file
-  // is), and whether a roads pack carries an overview file (small roads at low zoom)
-  await Promise.all([...want].filter(id => !S.overview.has(id)).map(async id => {
+  // the style goes up at once with every pack assumed present; the checks below run behind it and only
+  // ever remove a pack (its file is not on the shelf yet) or add its overview roads file
+  S.activePacks = want;
+  applyStyle();
+  const gen = ++packGen;
+  const unknown = [...want].filter(id => !S.overview.has(id) && !S.checking.has(id));
+  if (!unknown.length) return;
+  await Promise.all(unknown.map(async id => {
+    S.checking.add(id);
     const roads = roadsPacks().some(p => p.id === id);
     try {
       const r = await fetch(`/tiles/${id}/${roads ? "tiles" : "terrain"}.pmtiles`, { method: "HEAD" });
-      if (!r.ok) { S.overview.set(id, null); return; }
+      if (r.status === 404 || r.status === 409) { S.overview.set(id, null); setTimeout(() => S.overview.delete(id), 120000); return; }   // retry in two minutes
+      if (!r.ok) return;                                                      // a transient failure: ask again next time
       if (!roads) { S.overview.set(id, false); return; }
       const o = await fetch(`/tiles/${id}/roads.pmtiles`, { method: "HEAD" }); S.overview.set(id, o.ok);
-    } catch { S.overview.set(id, null); }
+    } catch {} finally { S.checking.delete(id); }
   }));
-  for (const id of [...want]) if (S.overview.get(id) === null) want.delete(id);   // not on the shelf yet
-  S.activePacks = want;
-  applyStyle();
+  if (gen !== packGen) return;                                                 // a newer viewport took over
+  const now = new Set([...S.activePacks].filter(id => S.overview.get(id) !== null));
+  const grew = [...now].some(id => S.overview.get(id) === true && !map.getSource("o_" + id));
+  if (now.size !== S.activePacks.size || grew) { S.activePacks = now; applyStyle(); }
 }
 
 function applyStyle() {
@@ -128,6 +144,7 @@ function buildStyle() {
     if (S.overview.get(p.id)) sources["o_" + p.id] = { type: "vector", url: `pmtiles://${ORIGIN}/tiles/${p.id}/roads.pmtiles` };
   }
   for (const p of terr) sources["t_" + p.id] = { type: "raster", url: `pmtiles://${ORIGIN}/tiles/${p.id}/terrain.pmtiles`, tileSize: 256 };
+  if (S.hasOverview) sources.overview = { type: "vector", url: `pmtiles://${ORIGIN}/tiles/overview/tiles.pmtiles` };
   if (S.land) sources.land = { type: "raster", tiles: [LAND_TILES], tileSize: 256, maxzoom: 15, attribution: "BLM Surface Management Agency" };
   if (S.imagery) { sources.naip = { type: "raster", tiles: [NAIP], tileSize: 256, minzoom: 8, bounds: [-170, 17, -64, 72] }; sources.s2 = { type: "raster", tiles: [S2], tileSize: 256, maxzoom: 14 }; }
   sources.coverage = { type: "geojson", data: coverageGeo() };
@@ -146,10 +163,17 @@ function buildStyle() {
       if (S.land) layers.push({ id: "land", type: "raster", source: "land", paint: { "raster-opacity": S.imagery ? 0.45 : 0.5, "raster-fade-duration": 0 } });
     }
     const fromOverview = layer.source === "overview";
+    // the continent overview carries the basemap below PACK_ZOOM; the packs carry it from there
+    if (S.hasOverview && !fromOverview) {
+      const clone = webSafe(JSON.parse(JSON.stringify(layer)));
+      clone.id = layer.id + "_ov"; clone.source = "overview"; clone.maxzoom = Math.min(clone.maxzoom ?? 24, PACK_ZOOM);
+      if (!(clone.minzoom >= PACK_ZOOM)) layers.push(clone);
+    }
     for (const p of roads) {
       if (fromOverview && !S.overview.get(p.id)) continue;
       const clone = webSafe(JSON.parse(JSON.stringify(layer)));
       clone.id = layer.id + "_" + p.id; clone.source = (fromOverview ? "o_" : "p_") + p.id;
+      if (S.hasOverview) { clone.minzoom = Math.max(clone.minzoom ?? 0, PACK_ZOOM); if (clone.maxzoom != null && clone.maxzoom <= PACK_ZOOM) continue; }
       if (S.imagery && clone.type === "fill" && layer.id === "buildings") clone.paint["fill-opacity"] = 0.25;
       layers.push(clone);
     }
@@ -226,7 +250,7 @@ async function landLegend() {
 }
 
 let statusT;
-function status(msg, err) { const s = $("#status"); s.textContent = msg; s.className = "status" + (err ? " err" : ""); s.hidden = false; clearTimeout(statusT); statusT = setTimeout(() => s.hidden = true, err ? 6000 : 3000); }
+function status(msg, err, sticky) { const s = $("#status"); s.textContent = msg; s.className = "status" + (err ? " err" : ""); s.hidden = false; clearTimeout(statusT); if (!sticky) statusT = setTimeout(() => s.hidden = true, err ? 6000 : 3000); }
 function fmtDist(m) { return units === "mi" ? (m / 1609.344 < 10 ? (m / 1609.344).toFixed(1) : Math.round(m / 1609.344)) + " mi" : (m / 1000 < 10 ? (m / 1000).toFixed(1) : Math.round(m / 1000)) + " km"; }
 function fmtDistShort(m) { return units === "mi" ? (m < 300 ? Math.round(m * 3.28084) + " ft" : (m / 1609.344).toFixed(m / 1609.344 < 10 ? 1 : 0) + " mi") : (m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(m / 1000 < 10 ? 1 : 0) + " km"); }
 function fmtTime(s) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return h ? `${h} h ${m} min` : `${m} min`; }
@@ -336,7 +360,9 @@ async function reroute() {
   } catch (e) {
     if (e.name === "AbortError") return;
     S.inflight = null; setElastic(null); fadeRoute(false);
-    status(e.message, true);
+    // the points go back to the last route that worked, so what is shown and what is exported always agree
+    if (S.lastGood) { S.pts = S.lastGood.pts.map(p => ({ ...p })); S.mode = S.lastGood.mode; buildModes(); renderPoints(); saveHash(); status(e.message + " — kept the previous route", true); }
+    else { S.pts = []; S.route = null; refreshRouteSources(); renderAll(); status(e.message, true); }
   }
 }
 
@@ -347,6 +373,7 @@ function setRoute(j, preview) {
   if (preview) return;
   // the points sit where the router put them: on the road or trail it found, not in the sagebrush beside it
   if (j.snapped && j.snapped.length === S.pts.length) S.pts = j.snapped.map(p => ({ lon: p.lon, lat: p.lat }));
+  S.lastGood = { pts: S.pts.map(p => ({ ...p })), mode: S.mode };
   const line = j.coords;
   const kept = S.cues.filter(c => !c.auto).filter(c => nearLine(c, line) < 150);
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
@@ -381,13 +408,31 @@ function dist(a, b) { const R = 6371000, r = Math.PI / 180; const dLat = (b[1] -
 function nearLine(c, line) { let best = Infinity; for (let i = 1; i < line.length; i++) { const d = segDist([c.lon, c.lat], line[i - 1], line[i]); if (d < best) best = d; } return best; }
 function segDist(p, a, b) { const k = Math.cos(p[1] * Math.PI / 180); const P = [p[0] * k, p[1]], A = [a[0] * k, a[1]], B = [b[0] * k, b[1]]; const dx = B[0] - A[0], dy = B[1] - A[1]; const l2 = dx * dx + dy * dy; let t = l2 ? ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(P[0] - (A[0] + t * dx), P[1] - (A[1] + t * dy)) * 111320; }
 /** Nearest vertex index and distance along the line for a point. */
+/** Nearest point on the line: segment index, distance along, distance away, and the projected coordinate. A cell index per line keeps 5,000 cues on 100,000 points cheap. */
 function alongLine(line, p) {
-  let best = Infinity, bi = 0, bt = 0;
-  for (let i = 1; i < line.length; i++) { const d = segDist(p, line[i - 1], line[i]); if (d < best) { best = d; bi = i; } }
+  const idx = lineIndex(line);
+  let best = Infinity, bi = 1;
+  const cell = idx.cell; const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
+  const test = i => { const d = segDist(p, line[i - 1], line[i]); if (d < best) { best = d; bi = i; } };
+  for (let R = 0; R <= 2 && best > R * cell * 111320 * 0.5; R++) for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { if (R && Math.abs(x - cx) !== R && Math.abs(y - cy) !== R) continue; const l = idx.cells.get(x * 100003 + y); if (l) for (const i of l) test(i); }
+  for (const i of idx.longs) test(i);
+  if (best === Infinity) for (let i = 1; i < line.length; i++) test(i);      // nothing nearby: the exact answer, however far
   const cum = cumulative(line);
-  const a = line[bi - 1], b = line[bi]; const segLen = dist(a, b);
+  const a = line[bi - 1], b = line[bi]; const segLen = dist(a, b); let bt = 0;
   if (segLen > 0) { const k = Math.cos(p[1] * Math.PI / 180); const dx = (b[0] - a[0]) * k, dy = b[1] - a[1]; bt = Math.max(0, Math.min(1, (((p[0] - a[0]) * k) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy))); }
-  return { index: bi, at: cum[bi - 1] + segLen * bt, d: best };
+  return { index: bi, at: cum[bi - 1] + segLen * bt, d: best, point: [a[0] + (b[0] - a[0]) * bt, a[1] + (b[1] - a[1]) * bt] };
+}
+let idxCache = { line: null, idx: null };
+function lineIndex(line) {
+  if (idxCache.line === line) return idxCache.idx;
+  const cell = 0.01, cells = new Map(), longs = [];
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i];
+    const x0 = Math.floor(Math.min(a[0], b[0]) / cell), x1 = Math.floor(Math.max(a[0], b[0]) / cell), y0 = Math.floor(Math.min(a[1], b[1]) / cell), y1 = Math.floor(Math.max(a[1], b[1]) / cell);
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 400) { longs.push(i); continue; }     // a long straight stretch is checked for every point instead
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = x * 100003 + y; let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
+  }
+  idxCache = { line, idx: { cell, cells, longs } }; return idxCache.idx;
 }
 let cumCache = { line: null, cum: null };
 function cumulative(line) { if (cumCache.line === line) return cumCache.cum; const cum = new Float64Array(line.length); for (let i = 1; i < line.length; i++) cum[i] = cum[i - 1] + dist(line[i - 1], line[i]); cumCache = { line, cum }; return cum; }
@@ -486,10 +531,12 @@ function bindMap() {
     else { S.pts = drag.pts; }
     drag = null;
   };
-  map.on("mousedown", e => { if (e.originalEvent.button === 0) start(e.point, e.lngLat); });
+  // a press on a marker is the marker's drag (MapLibre handles it), never a grab of the line beneath it
+  const onMarker = ev => ev.target && ev.target.closest && ev.target.closest(".marker-pt, .marker-cue");
+  map.on("mousedown", e => { if (e.originalEvent.button === 0 && !onMarker(e.originalEvent)) start(e.point, e.lngLat); });
   map.on("mousemove", e => move(e.point, e.lngLat));
   map.on("mouseup", e => end(e.lngLat));
-  map.on("touchstart", e => { if (e.points.length === 1 && start(e.point, e.lngLat)) e.preventDefault(); });
+  map.on("touchstart", e => { if (e.points.length === 1 && !onMarker(e.originalEvent) && start(e.point, e.lngLat)) e.preventDefault(); });
   map.on("touchmove", e => { if (drag) { e.preventDefault(); move(e.point, e.lngLat); } });
   map.on("touchend", e => end(e.lngLat));
   map.on("touchcancel", e => end(e.lngLat));
@@ -500,7 +547,7 @@ let ctxAt = null;
 function showCtx(e) {
   const c = $("#ctx"); ctxAt = { lon: e.lngLat.lng, lat: e.lngLat.lat };
   const line = lineCoords(); const snap = line ? alongLine(line, [ctxAt.lon, ctxAt.lat]) : null;
-  if (snap && snap.d < 400) { const p = line[snap.index]; ctxAt = { lon: p[0], lat: p[1], index: snap.index }; }
+  if (snap && snap.d < 400) ctxAt = { lon: snap.point[0], lat: snap.point[1], index: snap.index };
   c.style.left = Math.min(e.point.x + 6, innerWidth - 200) + "px"; c.style.top = Math.min(e.point.y + 6, innerHeight - 140) + "px"; c.hidden = false;
   c.querySelector('[data-act="via"]').hidden = !S.route;
 }
@@ -646,26 +693,62 @@ $("#btnPublish").onclick = async () => {
     } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   };
 };
-$("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.track = null; S.route = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
-$("#btnReverse").onclick = () => { if (S.track) { S.track.coords.reverse(); refreshRouteSources(); renderAll(); return; } S.pts.reverse(); afterPointsChange(); };
-$("#file").onchange = async e => { const f = e.target.files[0]; if (!f) return; loadGpxText(await f.text(), f.name.replace(/\.gpx$/i, "")); e.target.value = ""; };
+$("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
+const MIRROR = { LEFT: "RIGHT", RIGHT: "LEFT", SLIGHT_LEFT: "SLIGHT_RIGHT", SLIGHT_RIGHT: "SLIGHT_LEFT", SHARP_LEFT: "SHARP_RIGHT", SHARP_RIGHT: "SHARP_LEFT", KEEP_LEFT: "KEEP_RIGHT", KEEP_RIGHT: "KEEP_LEFT" };
+$("#btnReverse").onclick = () => {
+  if (S.track) {
+    // a new array, so every cached distance is rebuilt; turns mirror, the rest is the author's to check
+    S.track = { ...S.track, coords: S.track.coords.slice().reverse() };
+    let flagged = 0;
+    S.cues = S.cues.map(c => { if (MIRROR[c.turn]) return { ...c, turn: MIRROR[c.turn] }; if (c.turn === "ROUNDABOUT" || (c.text && c.turn !== "DANGER")) flagged++; return { ...c }; });
+    refreshRouteSources(); renderAll();
+    status(`Reversed: turns mirrored${flagged ? `; ${flagged} cue${flagged > 1 ? "s" : ""} with words or a roundabout exit need a look` : ""}`, flagged > 0);
+    return;
+  }
+  S.pts.reverse(); afterPointsChange();
+};
+$("#file").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (f.size > 64 << 20) { status("That file is over 64 MB", true); return; }
+  try { loadGpxText(await f.text(), f.name.replace(/\.gpx$/i, "")); } catch (err) { status("Could not read that file: " + err.message, true); }
+};
 
+const IMPORT_LIMITS = { points: 200000, cues: 5000 };
 function parseGpx(text) {
-  const pts = []; for (const m of text.matchAll(/<(?:trkpt|rtept)\s+([^>]*?)\/?>/g)) { const lat = Number(/lat="([^"]+)"/.exec(m[1])?.[1]), lon = Number(/lon="([^"]+)"/.exec(m[1])?.[1]); if (Number.isFinite(lat) && Number.isFinite(lon)) pts.push([lon, lat]); }
+  if (!/<gpx[\s>]/.test(text)) throw new Error("That is not a GPX file");
+  const coord = (attrs, k, max) => { const v = Number(new RegExp(`${k}\\s*=\\s*"([^"]*)"`).exec(attrs)?.[1]); return Number.isFinite(v) && Math.abs(v) <= max ? v : null; };
+  const pts = [], rte = [];
+  for (const m of text.matchAll(/<trkpt\s+([^>]*?)(?:\/>|>[\s\S]*?<\/trkpt>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A track point has a bad coordinate"); if (pts.length >= IMPORT_LIMITS.points) throw new Error(`More than ${IMPORT_LIMITS.points.toLocaleString()} points; simplify the track first`); pts.push([lon, lat]); }
+  for (const m of text.matchAll(/<rtept\s+([^>]*?)(?:\/>|>[\s\S]*?<\/rtept>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A route point has a bad coordinate"); if (rte.length < 60) rte.push({ lon, lat }); }
   const cues = []; for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
-    const lat = Number(/lat="([^"]+)"/.exec(m[1])?.[1]), lon = Number(/lon="([^"]+)"/.exec(m[1])?.[1]); const type = (/<type>([\s\S]*?)<\/type>/.exec(m[2])?.[1] || "").trim().toLowerCase(); const words = unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] || /<name>([\s\S]*?)<\/name>/.exec(m[2])?.[1] || "").trim());
+    const type = (/<type>([\s\S]*?)<\/type>/.exec(m[2])?.[1] || "").trim().toLowerCase();
+    if (!(type.startsWith("cue:") || type.startsWith("danger") || type === "note")) continue;
+    const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A cue has a bad coordinate");
+    if (cues.length >= IMPORT_LIMITS.cues) throw new Error(`More than ${IMPORT_LIMITS.cues.toLocaleString()} cues`);
+    const words = unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] || /<name>([\s\S]*?)<\/name>/.exec(m[2])?.[1] || "").trim()).slice(0, 200);
     if (type.startsWith("cue:") && TURNS.includes(type.slice(4).toUpperCase())) cues.push({ lon, lat, turn: type.slice(4).toUpperCase(), level: 0, text: words, auto: false });
     else if (type.startsWith("danger")) cues.push({ lon, lat, turn: "DANGER", level: Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)), text: words, auto: false });
     else if (type === "note" && words) cues.push({ lon, lat, turn: "NOTE", level: 0, text: words, auto: false });
   }
-  const name = unesc((/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || /<trk>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || [, ""])[1].trim());
-  return { pts, cues, name };
+  const name = unesc((/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || /<trk>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || [, ""])[1].trim()).slice(0, 80);
+  const mode = (/<roadbook>[\s\S]*?<mode>([A-Z_]+)<\/mode>/.exec(text) || [, ""])[1];
+  return { pts, rte, cues, name, mode };
 }
 function unesc(s) { return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"); }
 function loadGpxText(text, fallbackName) {
-  const g = parseGpx(text);
+  let g;
+  try { g = parseGpx(text); } catch (e) { status(e.message, true); return; }   // the current plan is untouched by a bad file
+  if (g.pts.length < 2 && g.rte.length >= 2) {
+    // a route file with no track: its points are routing controls, so plan it here
+    S.track = null; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.cues = g.cues;
+    if (MODES.some(m => m[0] === g.mode)) { S.mode = g.mode; buildModes(); }
+    S.pts = g.rte; $("#name").value = g.name || fallbackName || "Roadbook";
+    afterPointsChange(); applyStyle();
+    status(`Loaded “${g.name || fallbackName}” as ${g.rte.length} points to route between`);
+    return;
+  }
   if (g.pts.length < 2) { status("That file has no track", true); return; }
-  S.pts = []; S.route = null; abortInflight(); S.deletedAuto = [];
+  S.pts = []; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = [];
   S.track = { coords: g.pts, name: g.name || fallbackName }; S.cues = g.cues;
   $("#name").value = S.track.name || "Roadbook";
   refreshRouteSources(); renderAll(); applyStyle();
@@ -691,7 +774,7 @@ async function openLibraryItem(id) {
     const r = await fetch(`/api/roadbooks/${id}`); const j = await r.json(); if (!r.ok) throw new Error(j.error);
     $("#rbName").textContent = j.name;
     const surf = j.paved != null && j.unpaved != null ? ` · ${Math.round(100 * j.unpaved / Math.max(1, j.paved + j.unpaved))}% unpaved` : "";
-    $("#rbBody").innerHTML = `<div class="meta">${fmtDist(j.length)} · ${j.cues} cues${j.mode ? " · " + (MODES.find(m => m[0] === j.mode) || [, j.mode])[1] : ""}${surf} · ${new Date(j.created).toLocaleDateString()}</div><div class="actions"><button id="rbOpen" class="cta">Open in planner</button><a class="cta alt" href="${esc(j.url)}">Download GPX</a></div><p class="muted small">In the app: MAPS → BROWSE ROADBOOKS shows the same library on the phone.</p>`;
+    $("#rbBody").innerHTML = `<div class="meta">${fmtDist(j.length)} · ${j.cues} cues${j.mode && MODES.find(m => m[0] === j.mode) ? " · " + MODES.find(m => m[0] === j.mode)[1] : ""}${surf} · ${new Date(j.created).toLocaleDateString()}</div><div class="actions"><button id="rbOpen" class="cta">Open in planner</button><a class="cta alt" href="${esc(j.url)}">Download GPX</a></div><p class="muted small">In the app: MAPS → BROWSE ROADBOOKS shows the same library on the phone.</p>`;
     $("#rbOpen").onclick = async () => { const t = await (await fetch(j.url)).text(); sh.hidden = true; loadGpxText(t, j.name); };
     const bb = j.bbox; if (!S.pts.length && !S.track) map.fitBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 80, duration: 600 });
   } catch (e) { $("#rbBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
@@ -711,6 +794,7 @@ function restoreHash() {
   if (pts.length) { S.pts = pts; const b = pts.reduce((bb, q) => [Math.min(bb[0], q.lon), Math.min(bb[1], q.lat), Math.max(bb[2], q.lon), Math.max(bb[3], q.lat)], [180, 90, -180, -90]); map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 80, duration: 0 }); }
 }
 
+window.addEventListener("beforeunload", e => { if (S.cues.some(c => !c.auto) || S.track) { e.preventDefault(); e.returnValue = ""; } });
 window.roadbookPlanner = { map, state: S, reroute };   // for the console and tests
 init().catch(e => { console.error(e); status("The planner could not start: " + e.message, true); });
 })();

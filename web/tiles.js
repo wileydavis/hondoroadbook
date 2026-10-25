@@ -10,13 +10,27 @@ export async function serveTile(request, env, path, loadCatalog, fetchPack) {
   if (!m || !FILES.has(m[2])) return json({ error: "not found" }, 404);
   if (request.method !== "GET" && request.method !== "HEAD") return json({ error: "method not allowed" }, 405);
   const [, id, file] = m;
-  const cat = await loadCatalog(env);
-  const pack = cat.packs.find(p => p.id === id);
-  if (!pack) return json({ error: "no such pack" }, 404);
-  const key = packKey(pack);                        // "us/montana-roads.mappack"
-  const index = await zipIndex(env, pack, key, fetchPack);
-  const entry = index.entries[file];
-  if (!entry) return json({ error: `${file} is not in this pack` }, 404);
+  let pack, key, entry;
+  if (id === "overview") {
+    // the continent overview is a bare .pmtiles on the release, not a zip: the whole file is the entry
+    if (file !== "tiles.pmtiles") return json({ error: "not found" }, 404);
+    const cat = await loadCatalog(env);
+    pack = { id: "overview", built: cat.updated || "0" }; key = "na-overview.pmtiles";
+    const size = await objectSize(env, pack, key, fetchPack);
+    if (!size) return json({ error: "no overview yet" }, 404);
+    entry = { offset: 0, size };
+  } else {
+    const cat = await loadCatalog(env);
+    pack = cat.packs.find(p => p.id === id);
+    if (!pack) return json({ error: "no such pack" }, 404);
+    key = packKey(pack);                        // "us/montana-roads.mappack"
+    // cache identity is the catalog's build date plus the archive's byte size: a same-day rebuild changes the size
+    pack = { ...pack, built: `${pack.built}-${pack.bytes || 0}` };
+    const index = await zipIndex(env, pack, key, fetchPack);
+    if (pack.bytes && index.total !== pack.bytes) return json({ error: "the pack on the shelf does not match the catalog yet; try again in a minute" }, 409);
+    entry = index.entries[file];
+    if (!entry) return json({ error: `${file} is not in this pack` }, 404);
+  }
 
   const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "Content-Range, Content-Length, ETag, Accept-Ranges", "Accept-Ranges": "bytes", "ETag": `"${pack.built}-${entry.size}"`, "Cache-Control": "public, max-age=86400", "Content-Type": file.endsWith(".pmtiles") ? "application/octet-stream" : "text/plain" };
   if (request.method === "HEAD") return new Response(null, { status: 200, headers: { ...cors, "Content-Length": String(entry.size) } });
@@ -42,6 +56,20 @@ export async function serveTile(request, env, path, loadCatalog, fetchPack) {
   }
   if (!range) return new Response(body, { status: 200, headers: { ...cors, "Content-Length": String(entry.size) } });
   return new Response(body, { status: 206, headers: { ...cors, "Content-Length": String(end - start + 1), "Content-Range": `bytes ${start}-${end}/${entry.size}` } });
+}
+
+/** The size of a bare object, learned once per catalog update. */
+async function objectSize(env, pack, key, fetchPack) {
+  const cache = caches.default;
+  const ckey = new Request(`https://zipindex.roadbook.internal/${pack.id}/${pack.built}/size`);
+  const hit = await cache.match(ckey);
+  if (hit) return Number(await hit.text());
+  const probe = await fetchPack(env, key, "bytes=0-0");
+  if (probe.status !== 206) return 0;
+  const total = Number((probe.headers.get("Content-Range") || "").split("/")[1]) || 0;
+  await probe.arrayBuffer();
+  if (total) await cache.put(ckey, new Response(String(total), { headers: { "Cache-Control": "public, max-age=3600" } }));
+  return total;
 }
 
 export function packKey(pack) { const u = new URL(pack.url); return u.pathname.replace(/^\/packs\//, ""); }

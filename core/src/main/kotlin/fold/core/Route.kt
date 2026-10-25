@@ -233,11 +233,13 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                 // segments bucketed by 0.01° cell so a thousand cues on a hundred-thousand-point track stay cheap
                 val cell = 0.01
                 val grid = HashMap<Long, IntArrayList>()
-                fun key(la: Double, lo: Double) = (Math.floor(la / cell).toLong() shl 32) xor (Math.floor(lo / cell).toLong() and 0xFFFFFFFFL)
+                // a segment spanning many cells (a long straight desert road in a sparse file) is not bucketed:
+                // it goes on a short list that every cue checks, so a hazard halfway along it is never lost
+                val longs = IntArrayList()
                 for (i in 0 until lats.size - 1) {
                     val la0 = Math.floor(Math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = Math.floor(Math.max(lats[i], lats[i + 1]) / cell).toLong()
                     val lo0 = Math.floor(Math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = Math.floor(Math.max(lons[i], lons[i + 1]) / cell).toLong()
-                    if (la1 - la0 > 20 || lo1 - lo0 > 20) continue   // a wild jump in the track; not a place for a cue anyway
+                    if ((la1 - la0 + 1) * (lo1 - lo0 + 1) > 400) { longs.add(i); continue }
                     for (a in la0..la1) for (b in lo0..lo1) grid.getOrPut((a shl 32) xor (b and 0xFFFFFFFFL)) { IntArrayList() }.add(i)
                 }
                 for (c in cues) {
@@ -251,6 +253,11 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                             Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
                             if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
                         }
+                    }
+                    for (k in 0 until longs.size) {
+                        val i = longs[k]
+                        Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
+                        if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
                     }
                     if (bi < 0 || best > 150.0) continue
                     val vertex = if (bt < 0.5) bi else bi + 1

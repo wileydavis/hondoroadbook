@@ -2,39 +2,58 @@
 // (timestamps, device extensions, anything we do not understand) and compute the library's metadata.
 // Cues follow the app's convention: a <wpt> whose <type> is cue:LEFT, danger:2 or note, words in <desc>.
 
-const TURNS = new Set(["STRAIGHT", "SLIGHT_LEFT", "SLIGHT_RIGHT", "LEFT", "RIGHT", "SHARP_LEFT", "SHARP_RIGHT", "UTURN", "KEEP_LEFT", "KEEP_RIGHT", "ROUNDABOUT"]);
+export const TURNS = new Set(["STRAIGHT", "SLIGHT_LEFT", "SLIGHT_RIGHT", "LEFT", "RIGHT", "SHARP_LEFT", "SHARP_RIGHT", "UTURN", "KEEP_LEFT", "KEEP_RIGHT", "ROUNDABOUT"]);
+export const MODES = new Set(["FAST", "TOWING", "BACKROADS", "DIRT", "RIDE", "QUIET", "GRAVEL"]);
+export const LIMITS = { points: 200_000, cues: 5_000, text: 200 };
 
+export class GpxError extends Error { constructor(m, status = 400) { super(m); this.status = status; } }
+
+/**
+ * The track (every trkpt, in order), the route points (rtept) separately, the cues, and our metadata.
+ * Everything is validated here: finite coordinates in range, bounded counts, bounded words, a known
+ * mode — the only values that ever reach storage or a page.
+ */
 export function parseGpx(text) {
-  if (!/<gpx[\s>]/.test(text)) throw new Error("not a GPX file");
+  if (!/<gpx[\s>]/.test(text)) throw new GpxError("not a GPX file");
   const name = inner(text, "name", /<metadata>[\s\S]*?<\/metadata>/) || inner(text, "name", /<trk>[\s\S]*?<\/trk>/) || "";
-  const pts = [];
-  for (const m of text.matchAll(/<trkpt\s+([^>]*)>([\s\S]*?)<\/trkpt>|<trkpt\s+([^>]*)\/>/g)) {
-    const attrs = m[1] ?? m[3]; const body = m[2] ?? "";
-    const lat = num(attr(attrs, "lat")), lon = num(attr(attrs, "lon"));
-    if (lat == null || lon == null) continue;
+  const pts = [], rte = [];
+  for (const m of text.matchAll(/<trkpt\s+([^>]*?)(\/>|>([\s\S]*?)<\/trkpt>)/g)) {
+    const attrs = m[1]; const body = m[3] ?? "";
+    const lat = coord(attr(attrs, "lat"), 90), lon = coord(attr(attrs, "lon"), 180);
+    if (lat == null || lon == null) throw new GpxError("a track point has a bad coordinate");
+    if (pts.length >= LIMITS.points) throw new GpxError(`more than ${LIMITS.points.toLocaleString()} track points`, 413);
     const ele = num(inner(body, "ele"));
-    pts.push(ele == null ? [lon, lat] : [lon, lat, ele]);
+    pts.push(ele == null || Math.abs(ele) > 20000 ? [lon, lat] : [lon, lat, ele]);
   }
-  // a <rte> from a planner that wrote no track still has a line
-  if (pts.length === 0) for (const m of text.matchAll(/<rtept\s+([^>]*)>([\s\S]*?)<\/rtept>|<rtept\s+([^>]*)\/>/g)) {
-    const attrs = m[1] ?? m[3]; const lat = num(attr(attrs, "lat")), lon = num(attr(attrs, "lon"));
-    if (lat != null && lon != null) pts.push([lon, lat]);
+  for (const m of text.matchAll(/<rtept\s+([^>]*?)(\/>|>[\s\S]*?<\/rtept>)/g)) {
+    const lat = coord(attr(m[1], "lat"), 90), lon = coord(attr(m[1], "lon"), 180);
+    if (lat == null || lon == null) throw new GpxError("a route point has a bad coordinate");
+    if (rte.length >= LIMITS.points) throw new GpxError("too many route points", 413);
+    rte.push([lon, lat]);
   }
   const cues = [];
   for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
-    const lat = num(attr(m[1], "lat")), lon = num(attr(m[1], "lon"));
-    if (lat == null || lon == null) continue;
     const type = (inner(m[2], "type") || "").trim().toLowerCase();
-    const words = (inner(m[2], "desc") || inner(m[2], "name") || "").trim();
-    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words }); }
+    const isCue = type.startsWith("cue:") || type.startsWith("danger") || type === "note";
+    if (!isCue) continue;                                           // marks and campsites in the same file are not cues
+    const lat = coord(attr(m[1], "lat"), 90), lon = coord(attr(m[1], "lon"), 180);
+    if (lat == null || lon == null) throw new GpxError("a cue has a bad coordinate");
+    if (cues.length >= LIMITS.cues) throw new GpxError(`more than ${LIMITS.cues.toLocaleString()} cues`, 413);
+    const words = unesc(inner(m[2], "desc") || inner(m[2], "name") || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, LIMITS.text);
+    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words }); else throw new GpxError(`unknown cue type ${type.slice(0, 30)}`); }
     else if (type.startsWith("danger")) { const lv = Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)); cues.push({ lon, lat, turn: "DANGER", level: lv, text: words }); }
-    else if (type === "note" && words) cues.push({ lon, lat, turn: "NOTE", text: words });
+    else if (words) cues.push({ lon, lat, turn: "NOTE", text: words });
   }
   const ext = /<roadbook>([\s\S]*?)<\/roadbook>/.exec(text);
   const meta = {};
-  if (ext) { for (const k of ["mode", "paved", "unpaved", "planner"]) { const v = inner(ext[1], k); if (v) meta[k] = v; } }
-  return { name: unesc(name).trim(), pts, cues, meta };
+  if (ext) {
+    const mode = (inner(ext[1], "mode") || "").trim().toUpperCase(); if (MODES.has(mode)) meta.mode = mode;
+    for (const k of ["paved", "unpaved"]) { const v = Number(inner(ext[1], k)); if (Number.isFinite(v) && v >= 0 && v < 1e8) meta[k] = Math.round(v); }
+    if (inner(ext[1], "planner")) meta.planner = "1";
+  }
+  return { name: unesc(name).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80), pts, rte, cues, meta };
 }
+function coord(s, max) { const v = num(s); return v != null && Math.abs(v) <= max ? v : null; }
 
 /** Length in meters and the bounding box. */
 export function measure(pts) {
@@ -48,16 +67,18 @@ export function measure(pts) {
 }
 
 /** Drops the first and last `meters` of the line so a published track does not start at someone's door. */
+/** Drops the first and last `meters` of the line so a published track does not start at someone's door. Returns null when the ride would not survive the trim: the caller must refuse, never publish untrimmed. */
 export function trimEnds(pts, meters) {
-  if (!meters || pts.length < 4) return pts;
+  if (!meters) return pts;
+  if (pts.length < 2) return null;
   const total = measure(pts).length;
-  if (total < meters * 2 + 200) return pts;                 // too short to trim without losing the ride
+  if (total < meters * 2 + 500) return null;               // under half a kilometre would be left
   const cutFront = cutAt(pts, meters);
   const back = cutAt(pts.slice().reverse(), meters).reverse();
   // the two cuts in terms of the original: keep what both agree on
   const start = pts.length - cutFront.length, end = back.length;
   const out = [cutFront[0], ...pts.slice(start + 1, end - 1), back[back.length - 1]];
-  return out.length >= 2 ? out : pts;
+  return out.length >= 2 ? out : null;
 }
 /** The line from `meters` along it to the end, starting with an interpolated point exactly there. */
 function cutAt(pts, meters) {
@@ -74,9 +95,30 @@ function cutAt(pts, meters) {
   return pts.slice(-1);
 }
 
-/** Cues that still sit on the (possibly trimmed) line. */
+/** Cues that still sit on the (possibly trimmed) line: a cell index over the segments, so 5,000 cues on 200,000 points is thousands of comparisons, not a billion. */
 export function cuesOn(pts, cues, within = 150) {
-  return cues.filter(c => { let best = Infinity; for (let i = 1; i < pts.length; i++) { const d = segDist([c.lon, c.lat], pts[i - 1], pts[i]); if (d < best) best = d; if (best < within) return true; } return best < within; });
+  if (!cues.length || pts.length < 2) return [];
+  const idx = segmentIndex(pts);
+  return cues.filter(c => idx.near([c.lon, c.lat], within));
+}
+export function segmentIndex(pts, cell = 0.01) {
+  const cells = new Map(); const longs = [];
+  const key = (cx, cy) => cx * 100003 + cy;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const x0 = Math.floor(Math.min(a[0], b[0]) / cell), x1 = Math.floor(Math.max(a[0], b[0]) / cell), y0 = Math.floor(Math.min(a[1], b[1]) / cell), y1 = Math.floor(Math.max(a[1], b[1]) / cell);
+    // a long segment covers many cells; it is still listed in all of them (bounded by a cap, then every cell gets it through `long`)
+    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 400) { longs.push(i); continue; }
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = key(x, y); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
+  }
+  return {
+    near(p, within) {
+      const r = within / 111320 / cell + 1; const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell); const R = Math.ceil(r);
+      for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { const l = cells.get(key(x, y)); if (!l) continue; for (const i of l) if (segDist(p, pts[i - 1], pts[i]) < within) return true; }
+      for (const i of longs) if (segDist(p, pts[i - 1], pts[i]) < within) return true;
+      return false;
+    },
+  };
 }
 
 /** Douglas–Peucker down to at most `max` points, for the library map. */

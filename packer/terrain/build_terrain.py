@@ -96,8 +96,10 @@ def build(name, region, bbox, out, min_zoom, max_zoom, quality, workers):
                 # coarse zooms flatten slopes; exaggerate so the ranges still read when zoomed out
                 exag = min(4.0, 1.35 ** max(0, 12 - z))
                 shade = hillshade(strip[255:513, :], res, res, exag)           # one-pixel apron around the row
+                # the strip starts one whole apron tile west of the first wanted column, and the kernel trims one
+                # pixel on each side: tile i's pixels are shade columns 255 + 256 i .. 255 + 256 (i + 1)
                 for i, x in enumerate(cols[1:-1]):
-                    img = tile_image(shade[:, i * 256:(i + 1) * 256])
+                    img = tile_image(shade[:, 255 + i * 256:255 + (i + 1) * 256])
                     buf = io.BytesIO(); img.save(buf, "WEBP", quality=90, alpha_quality=quality, method=4)
                     w.write_tile(zxy_to_tileid(z, x % (1 << z), y), buf.getvalue()); n += 1
                 if (y - y0) % 10 == 0: print(f"z{z} row {y - y0 + 1}/{y1 - y0 + 1} · {n} tiles · {time.time() - t0:.0f}s", file=sys.stderr, flush=True)

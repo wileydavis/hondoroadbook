@@ -4,27 +4,32 @@
 //   roadbooks             -> the public library: D1 for the list, R2 for the GPX files
 //   web                   -> Brave web search for the inspect panel, when BRAVE_KEY is set
 // Nothing here identifies anyone: no accounts, no cookies, uploads keep only the line and the cues.
-import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx } from "./gpx.js";
+import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError } from "./gpx.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const MAX_GPX = 6 << 20;
+const DAILY = { publish: 40, park: 60 };
 
 export async function serveApi(request, env, path, ctx, routerFetch) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Name", "Access-Control-Max-Age": "86400" }) });
   try {
-    if (path === "route" || path === "snap" || path === "search") return routerProxy(request, env, path, url, routerFetch);
-    if (path === "park" && request.method === "POST") return park(request, env, url);
-    if (path.startsWith("parked/")) return parked(request, env, path.slice(7));
-    if (path === "roadbooks") return request.method === "POST" ? publish(request, env, url) : list(request, env, url);
-    if (path.startsWith("roadbooks/")) return roadbook(request, env, path.slice(10), url);
-    if (path === "web") return webSearch(request, env, url, ctx);
+    if (path === "route" || path === "snap" || path === "search") return await routerProxy(request, env, path, url, routerFetch);
+    if (path === "park" && request.method === "POST") return await park(request, env, url);
+    if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
+    if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
+    if (path.startsWith("roadbooks/")) return await roadbook(request, env, path.slice(10), url);
+    if (path === "web") return await webSearch(request, env, url, ctx);
     if (path === "health") return json({ ok: true, router: !!(env.ROUTER || env.ROUTER_URL), library: !!env.DB, storage: !!env.PACKS, web: !!env.BRAVE_KEY });
     return json({ error: "no such endpoint" }, 404);
   } catch (e) {
-    return json({ error: String(e && e.message || e) }, 500);
+    // a bad request is the caller's; anything else is ours and is reported without its internals
+    if (e instanceof GpxError || (e && e.status >= 400 && e.status < 500)) return json({ error: e.message }, e.status || 400);
+    console.error("api", path, e && e.name, e && e.message && e.message.slice(0, 120));
+    return json({ error: "Something failed on the server; try again in a moment" }, 502);
   }
 }
+function bad(message, status = 400) { return Object.assign(new Error(message), { status }); }
 
 // ---- routing -------------------------------------------------------------------------------------
 
@@ -44,11 +49,13 @@ async function routerProxy(request, env, path, url, routerFetch) {
 
 async function park(request, env, url) {
   if (!env.PACKS) return json({ error: "storage not configured" }, 503);
+  if (!(await admit(request, env, "park", DAILY.park))) return json({ error: "That is plenty for one day; try again tomorrow" }, 429);
   const text = await readGpx(request);
   const g = parseGpx(text);
-  if (g.pts.length < 2) return json({ error: "the file has no track" }, 400);
+  const pts = g.pts.length >= 2 ? g.pts : g.rte;
+  if (pts.length < 2) return json({ error: "the file has no track" }, 400);
   const name = cleanName(url.searchParams.get("name") || g.name || "Roadbook");
-  const body = writeGpx(name, g.pts, g.cues, g.meta);
+  const body = writeGpx(name, pts, cuesOn(pts, g.cues), g.meta);
   let code;
   for (let tries = 0; tries < 5; tries++) {
     code = randomCode(6);
@@ -56,7 +63,7 @@ async function park(request, env, url) {
   }
   const expires = Date.now() + 24 * 3600 * 1000;
   await env.PACKS.put(`parked/${code}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { expires: String(expires), name } });
-  return json({ code, name, expires, bytes: body.length, cues: g.cues.length, length: Math.round(measure(g.pts).length) });
+  return json({ code, name, expires, bytes: body.length, cues: g.cues.length, length: Math.round(measure(pts).length) });
 }
 
 async function parked(request, env, code) {
@@ -75,31 +82,30 @@ async function parked(request, env, code) {
 
 async function publish(request, env, url) {
   if (!env.DB || !env.PACKS) return json({ error: "The library is not set up on this site yet" }, 503);
+  // the day's allowance is spent before any parsing, so a flood costs one query each
+  if (!(await admit(request, env, "publish", DAILY.publish))) return json({ error: "That is plenty for one day; try again tomorrow" }, 429);
   const text = await readGpx(request);
   const g = parseGpx(text);
-  const trim = Math.min(5000, Math.max(0, Number(url.searchParams.get("trim") || 0) || 0));
-  let pts = trimEnds(g.pts, trim);
-  if (pts.length < 2) return json({ error: "the file has no track" }, 400);
+  const trim = Math.min(5000, Math.max(0, Math.round(Number(url.searchParams.get("trim") || 0) || 0)));
+  const source = g.pts.length >= 2 ? g.pts : g.rte;
+  if (source.length < 2) return json({ error: "the file has no track" }, 400);
+  // trimming never fails open: a ride too short for the chosen trim is refused, not published whole
+  const pts = trimEnds(source, trim);
+  if (!pts) return json({ error: `Too short to trim ${trim} m off each end and keep a ride. Choose a smaller trim.` }, 400);
+  if (trim > 0 && (same(pts[0], source[0]) || same(pts[pts.length - 1], source[source.length - 1]))) return json({ error: "Trimming did not move the ends; not published" }, 400);
   const { length, bbox } = measure(pts);
   if (length < 500) return json({ error: "too short to publish (under 500 m)" }, 400);
   if (length > 5_000_000) return json({ error: "too long to publish (over 5,000 km)" }, 400);
   const cues = cuesOn(pts, g.cues);
   const name = cleanName(url.searchParams.get("name") || request.headers.get("X-Name") && decodeURIComponent(request.headers.get("X-Name")) || g.name || "Roadbook");
-  const source = /^[a-z]+$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
-  // a gentle cap per visitor per day, keyed by a hash that changes daily so no address is kept
-  const ip = request.headers.get("CF-Connecting-IP") || "";
-  const day = new Date().toISOString().slice(0, 10);
-  const key = await sha256(`${day}|${ip}|${env.SALT || "roadbook"}`);
-  const row = await env.DB.prepare("SELECT n FROM uploads WHERE k = ?").bind(key).first();
-  if (row && row.n >= 40) return json({ error: "That is plenty for one day; try again tomorrow" }, 429);
+  const from = /^(app|planner)$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
   const id = randomCode(8).toLowerCase();
   const body = writeGpx(name, pts, cues, { ...g.meta, planner: undefined });
   await env.PACKS.put(`library/${id}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { name } });
   const line = JSON.stringify(simplify(pts));
   await env.DB.batch([
     env.DB.prepare("INSERT INTO roadbooks (id, name, length_m, cues, min_lon, min_lat, max_lon, max_lat, line, mode, paved, unpaved, source, created, hidden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)")
-      .bind(id, name, Math.round(length), cues.length, bbox[0], bbox[1], bbox[2], bbox[3], line, g.meta.mode || null, numOrNull(g.meta.paved), numOrNull(g.meta.unpaved), source, Date.now()),
-    env.DB.prepare("INSERT INTO uploads (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1").bind(key),
+      .bind(id, name, Math.round(length), cues.length, bbox[0], bbox[1], bbox[2], bbox[3], line, g.meta.mode || null, numOrNull(g.meta.paved), numOrNull(g.meta.unpaved), from, Date.now()),
   ]);
   return json({ id, name, length: Math.round(length), cues: cues.length, url: `${url.origin}/api/roadbooks/${id}.gpx`, page: `${url.origin}/plan.html#rb=${id}` });
 }
@@ -107,9 +113,10 @@ async function publish(request, env, url) {
 async function list(request, env, url) {
   if (!env.DB) return json({ roadbooks: [], note: "The library is not set up on this site yet" });
   const bb = (url.searchParams.get("bbox") || "").split(",").map(Number);
-  const limit = Math.min(500, Number(url.searchParams.get("limit") || 300) || 300);
+  const lim = Number(url.searchParams.get("limit") || 300);
+  const limit = Number.isInteger(lim) && lim >= 1 && lim <= 500 ? lim : 300;
   let stmt;
-  if (bb.length === 4 && bb.every(Number.isFinite)) {
+  if (bb.length === 4 && bb.every(Number.isFinite) && bb[0] <= bb[2] && bb[1] <= bb[3] && Math.abs(bb[0]) <= 180 && Math.abs(bb[2]) <= 180 && Math.abs(bb[1]) <= 90 && Math.abs(bb[3]) <= 90) {
     stmt = env.DB.prepare("SELECT id, name, length_m, cues, min_lon, min_lat, max_lon, max_lat, line, mode, paved, unpaved, source, created FROM roadbooks WHERE hidden = 0 AND max_lon >= ? AND min_lon <= ? AND max_lat >= ? AND min_lat <= ? ORDER BY created DESC LIMIT ?").bind(bb[0], bb[2], bb[1], bb[3], limit);
   } else {
     stmt = env.DB.prepare("SELECT id, name, length_m, cues, min_lon, min_lat, max_lon, max_lat, line, mode, paved, unpaved, source, created FROM roadbooks WHERE hidden = 0 ORDER BY created DESC LIMIT ?").bind(limit);
@@ -165,14 +172,32 @@ async function webSearch(request, env, url, ctx) {
 
 // ---- helpers -----------------------------------------------------------------------------------------
 
+/** The body, read in chunks and abandoned the moment it passes the cap: a 7 MB upload costs 6 MB of reading, not 7. */
 async function readGpx(request) {
-  if (request.method !== "POST") throw Object.assign(new Error("POST a GPX file"), { status: 405 });
+  if (request.method !== "POST") throw bad("POST a GPX file", 405);
   const len = Number(request.headers.get("Content-Length") || 0);
-  if (len > MAX_GPX) throw new Error("GPX larger than 6 MB");
-  const buf = await request.arrayBuffer();
-  if (buf.byteLength > MAX_GPX) throw new Error("GPX larger than 6 MB");
+  if (len > MAX_GPX) throw bad("GPX larger than 6 MB", 413);
+  if (!request.body) throw bad("no body");
+  const reader = request.body.getReader(); const chunks = []; let total = 0;
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break;
+    total += value.byteLength;
+    if (total > MAX_GPX) { try { await reader.cancel(); } catch {} throw bad("GPX larger than 6 MB", 413); }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(total); let o = 0; for (const c of chunks) { buf.set(c, o); o += c.byteLength; }
   return new TextDecoder().decode(buf);
 }
+/** One row per visitor per kind per day, under a hash that changes daily so no address is kept; the increment is the check, so parallel requests cannot slip past it. */
+async function admit(request, env, kind, max) {
+  if (!env.DB) return true;
+  const ip = request.headers.get("CF-Connecting-IP") || "";
+  const day = new Date().toISOString().slice(0, 10);
+  const key = await sha256(`${day}|${kind}|${ip}|${env.SALT || "roadbook"}`);
+  const row = await env.DB.prepare("INSERT INTO uploads (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1 RETURNING n").bind(key).first();
+  return !row || row.n <= max;
+}
+function same(a, b) { return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9; }
 function cleanName(s) { return String(s).replace(/[\u0000-\u001f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "Roadbook"; }
 function safeFile(s) { return s.replace(/[^A-Za-z0-9 _.-]/g, "_").trim().slice(0, 60) || "roadbook"; }
 function numOrNull(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }

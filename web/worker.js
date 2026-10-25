@@ -24,9 +24,25 @@ export default {
     if (url.pathname.startsWith("/download/")) return serveApp(request, env, url.pathname.slice("/download/".length));
     if (url.pathname.startsWith("/tiles/")) return serveTile(request, env, url.pathname.slice("/tiles/".length), loadCatalog, fetchPack);
     if (url.pathname.startsWith("/api/")) return serveApi(request, env, url.pathname.slice("/api/".length), ctx, routerFetch(env));
-    return env.ASSETS.fetch(request);
+    return withSiteHeaders(await env.ASSETS.fetch(request));
   },
 };
+
+// The pages only ever load their own scripts; map tiles, imagery and the few third-party lookups the
+// planner makes are listed explicitly. A library entry that smuggled markup past the API would still
+// not be allowed to run anything.
+const CSP = [
+  "default-src 'self'", "script-src 'self'", "worker-src 'self' blob:", "child-src 'self' blob:", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:", "connect-src 'self' https://en.wikipedia.org https://gis.blm.gov https://s3.amazonaws.com https://imagery.nationalmap.gov https://tiles.maps.eox.at",
+  "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
+].join("; ");
+function withSiteHeaders(res) {
+  const ct = res.headers.get("Content-Type") || "";
+  if (!ct.includes("text/html")) return res;
+  const h = new Headers(res.headers);
+  h.set("Content-Security-Policy", CSP); h.set("X-Content-Type-Options", "nosniff"); h.set("Referrer-Policy", "strict-origin-when-cross-origin"); h.set("X-Frame-Options", "DENY");
+  return new Response(res.body, { status: res.status, headers: h });
+}
 
 /** A request into the routing container that holds the shard's graphs; the container wakes if asleep. */
 function routerFetch(env) {
@@ -51,11 +67,13 @@ async function fetchPack(env, key, range) {
 // /packs/<key>: the R2 object if the workflow has mirrored one there, otherwise the same file from the
 // rolling GitHub release "packs" (catalog.json, us/<state>-roads.mappack → asset <state>-roads.mappack).
 const RELEASE = "https://github.com/wileydavis/hondoroadbook/releases/download/packs/";
+// Only the catalog and pack files are reachable here: parked and library objects share the bucket but are
+// served solely by /api, which knows about expiry and hiding.
+const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery)\.(mappack|json))$/;
 async function servePackOrRelease(request, env, key) {
-  if (!key || key.endsWith("/") || key.includes("..")) return new Response("not found", { status: 404 });
+  if (!key || !PACK_KEY.test(key)) return new Response("not found", { status: 404 });
   if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("method not allowed", { status: 405 });
-  if (key.startsWith("library/") || key.startsWith("parked/")) return new Response("not found", { status: 404 });   // those live under /api
   const asset = key.split("/").pop();
   const isCatalog = asset === "catalog.json";
   const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);

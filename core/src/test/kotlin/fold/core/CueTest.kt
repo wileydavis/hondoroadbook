@@ -3,6 +3,8 @@ package fold.core
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 class CueTest {
     @Test fun gpxCuesRoundTrip() {
@@ -35,5 +37,20 @@ class CuePerfTest {
         val ms = (System.nanoTime() - t0) / 1_000_000
         kotlin.test.assertTrue(r.maneuvers.size >= 5000, "all cues snapped: ${r.maneuvers.size}")
         kotlin.test.assertTrue(ms < 4000, "100k points + 5k cues took $ms ms")
+    }
+}
+
+class LongSegmentCueTest {
+    /** A sparse file: one 33 km straight segment with a washout halfway. The hazard must survive. */
+    @Test fun hazardOnALongSparseSegmentIsKept() {
+        val lats = doubleArrayOf(45.0, 45.3); val lons = doubleArrayOf(-111.0, -111.0)      // 33 km due north
+        val cues = listOf(Cue(45.15, -111.0, Turn.DANGER, "washout", 3))
+        val r = Route.fromTrack(lats, lons, "desert", cues)
+        val danger = r.maneuvers.firstOrNull { it.turn == Turn.DANGER }
+        assertNotNull(danger, "the washout must be in the roadbook")
+        assertEquals(16_680.0, danger!!.at, 300.0)
+        // and a cue well off the line is still dropped
+        val r2 = Route.fromTrack(lats, lons, "desert", listOf(Cue(45.15, -111.1, Turn.DANGER, "elsewhere", 3)))
+        assertNull(r2.maneuvers.firstOrNull { it.turn == Turn.DANGER })
     }
 }

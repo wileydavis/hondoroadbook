@@ -21,7 +21,7 @@ class Api(private val packs: PackSet) {
     private val lock = ReentrantLock(true)
 
     private fun <T> routing(f: () -> T): T {
-        if (!lock.tryLock(90, TimeUnit.SECONDS)) throw ApiError(503, "The router is busy; try again in a moment")
+        if (!lock.tryLock(30, TimeUnit.SECONDS)) throw ApiError(503, "The router is busy; try again in a moment")
         try { return f() } finally { lock.unlock() }
     }
 
@@ -35,11 +35,14 @@ class Api(private val packs: PackSet) {
         val pts = raw.split(';', '|').filter { it.isNotBlank() }.map { s ->
             val p = s.split(','); if (p.size != 2) throw ApiError(400, "bad point '$s'")
             val lon = p[0].toDoubleOrNull(); val lat = p[1].toDoubleOrNull()
-            if (lon == null || lat == null || lat < -90 || lat > 90 || lon < -180 || lon > 180) throw ApiError(400, "bad point '$s'")
+            if (lon == null || lat == null || !lon.isFinite() || !lat.isFinite() || lat < -90 || lat > 90 || lon < -180 || lon > 180) throw ApiError(400, "bad point")
             doubleArrayOf(lat, lon)
         }
         if (pts.size < 2) throw ApiError(400, "at least two points")
         if (pts.size > 60) throw ApiError(400, "at most 60 points")
+        // a trip, not a continent: the legs together may not exceed 4,000 km as the crow flies
+        var crow = 0.0; for (i in 1 until pts.size) crow += Geo.fastDistance(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])
+        if (crow > 4_000_000.0) throw ApiError(400, "That is more than 4,000 km between the points; plan it in stages")
         return pts
     }
 
@@ -127,8 +130,8 @@ class Api(private val packs: PackSet) {
 
     /** What is under a point: the nearest road or trail of any kind and what the graph knows about it. */
     fun snap(q: Map<String, String>): String = routing {
-        val lon = q["lon"]?.toDoubleOrNull() ?: throw ApiError(400, "lon required"); val lat = q["lat"]?.toDoubleOrNull() ?: throw ApiError(400, "lat required")
-        val max = q["max"]?.toDoubleOrNull()?.coerceIn(10.0, 5000.0) ?: 1500.0
+        val lon = finite(q["lon"], 180.0) ?: throw ApiError(400, "lon required"); val lat = finite(q["lat"], 90.0) ?: throw ApiError(400, "lat required")
+        val max = q["max"]?.toDoubleOrNull()?.takeIf { it.isFinite() }?.coerceIn(10.0, 5000.0) ?: 1500.0
         val loaded = packs.forBbox(lon - 0.02, lat - 0.02, lon + 0.02, lat + 0.02)
         if (loaded.isEmpty()) throw ApiError(404, "No map pack covers this point yet")
         val mr = MultiRouter(loaded.map { it.router })
@@ -148,8 +151,14 @@ class Api(private val packs: PackSet) {
     fun search(q: Map<String, String>): String {
         var text = q["q"]?.trim() ?: throw ApiError(400, "q required")
         if (text.length < 2) return Json.obj("hits" to "[]")
-        val lon = q["lon"]?.toDoubleOrNull(); val lat = q["lat"]?.toDoubleOrNull()
-        val bbox = q["bbox"]?.split(',')?.mapNotNull { it.toDoubleOrNull() }?.takeIf { it.size == 4 }
+        val lon = finite(q["lon"], 180.0); val lat = finite(q["lat"], 90.0)
+        if ((q["lon"] != null || q["lat"] != null) && (lon == null || lat == null)) throw ApiError(400, "bad lon/lat")
+        // a bbox is four finite ordered numbers covering at most 12° on a side; anything else is refused before any pack is touched
+        val bbox = q["bbox"]?.let { raw ->
+            val b = raw.split(',').map { it.toDoubleOrNull()?.takeIf { v -> v.isFinite() } ?: throw ApiError(400, "bad bbox") }
+            if (b.size != 4 || b[0] > b[2] || b[1] > b[3] || b[2] - b[0] > 12.0 || b[3] - b[1] > 12.0 || b.any { Math.abs(it) > 180 }) throw ApiError(400, "bad bbox")
+            b
+        }
         // a state named at the end of the query picks the packs
         val words = text.lowercase().replace(Regex("[,.]"), " ").split(Regex("\\s+")).filter { it.isNotEmpty() }
         var region: String? = null
@@ -159,7 +168,7 @@ class Api(private val packs: PackSet) {
         }
         val loaded: List<Loaded> = when {
             region != null -> packs.catalog().filter { it.region.equals(region, ignoreCase = true) }.mapNotNull { try { packs.ensure(it) } catch (e: Throwable) { System.err.println("search: ${it.id} unavailable: ${e.message}"); null } }
-            bbox != null -> packs.forBbox(minOf(bbox[0], bbox[2]), minOf(bbox[1], bbox[3]), maxOf(bbox[0], bbox[2]), maxOf(bbox[1], bbox[3]))
+            bbox != null -> packs.forBbox(bbox[0], bbox[1], bbox[2], bbox[3])
             lon != null && lat != null -> packs.forBbox(lon - 2.0, lat - 2.0, lon + 2.0, lat + 2.0)
             else -> emptyList()
         }
@@ -176,6 +185,8 @@ class Api(private val packs: PackSet) {
         val best = hits.sortedWith(compareByDescending<Triple<Int, Double, Pair<fold.core.Hit, String>>> { it.first }.thenBy { it.second }).take(12)
         return Json.obj("hits" to Json.arr(best.map { (_, d, hr) -> val h = hr.first; Json.obj("kind" to Json.str(h.kind.toString()), "name" to Json.str(h.name), "context" to Json.str(h.context), "region" to Json.str(hr.second), "lon" to Json.num(h.lon), "lat" to Json.num(h.lat), "distance" to Json.num(d, 0)) }))
     }
+
+    private fun finite(s: String?, max: Double): Double? = s?.toDoubleOrNull()?.takeIf { it.isFinite() && Math.abs(it) <= max }
 
     companion object {
         /** State codes and names → the catalog's region names. */

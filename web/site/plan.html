@@ -56,7 +56,7 @@
     <p class="muted small">Name: <input id="name" value="Roadbook" maxlength="80"></p>
   </section>
 
-  <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a></footer>
+  <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it, or park it for your phone (24 hours). Your browser fetches elevation from AWS Terrain Tiles, imagery from USGS and EOX, land ownership from the BLM, and nearby articles from Wikipedia directly. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a></footer>
 </aside>
 <button id="btnSideShow" class="icon showside" title="Show panel" hidden>›</button>
 
@@ -109,7 +109,7 @@
   <div id="rbBody"></div>
 </div>
 
-<script src="/map/vendor/maplibre-gl.js"></script>
+<script src="/map/vendor/maplibre-gl-csp.js"></script>
 <script src="/map/vendor/pmtiles.js"></script>
 <script src="/plan.js"></script>
 </body>

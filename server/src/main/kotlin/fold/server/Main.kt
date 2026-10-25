@@ -25,8 +25,9 @@ fun main() {
     System.getenv("PRELOAD")?.split(' ')?.filter { it.isNotBlank() }?.forEach { id ->
         try { packs.catalog().firstOrNull { it.id == id }?.let { packs.ensure(it) } ?: System.err.println("preload: no pack $id") } catch (e: Throwable) { System.err.println("preload $id failed: ${e.message}") }
     }
-    val server = HttpServer.create(InetSocketAddress(port), 64)
-    server.executor = Executors.newFixedThreadPool(8)
+    val server = HttpServer.create(InetSocketAddress(port), 16)
+    // eight workers and a short queue: beyond that a request is refused at once (503) rather than queued for minutes
+    server.executor = java.util.concurrent.ThreadPoolExecutor(8, 8, 60, java.util.concurrent.TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(16), java.util.concurrent.ThreadPoolExecutor.AbortPolicy())
     server.createContext("/") { ex -> handle(ex, api) }
     server.start()
     System.err.println("fold-server on :$port, cache ${dir.absolutePath}")
@@ -50,12 +51,16 @@ private fun handle(ex: HttpExchange, api: Api) {
     } catch (e: ApiError) {
         status = e.status
         send(ex, e.status, Json.obj(*(listOf("error" to Json.str(e.message ?: "error")) + e.extra.map { it.key to Json.str(it.value) }).toTypedArray()))
+    } catch (e: java.util.concurrent.RejectedExecutionException) {
+        status = 503
+        send(ex, 503, Json.obj("error" to Json.str("The router is busy; try again in a moment")))
     } catch (e: Throwable) {
         status = 500
-        System.err.println("500 ${ex.requestURI}: $e"); e.printStackTrace()
-        send(ex, 500, Json.obj("error" to Json.str("Router error: " + (e.message ?: e.toString()))))
+        // the class of the failure, never the request: query strings carry people's routes
+        System.err.println("500 ${ex.requestURI.path}: ${e.javaClass.simpleName}")
+        send(ex, 500, Json.obj("error" to Json.str("Router error (" + e.javaClass.simpleName + ")")))
     } finally {
-        System.err.println("${ex.requestMethod} ${ex.requestURI} $status ${System.currentTimeMillis() - t0}ms")
+        System.err.println("${ex.requestMethod} ${ex.requestURI.path} $status ${System.currentTimeMillis() - t0}ms")
         ex.close()
     }
 }
