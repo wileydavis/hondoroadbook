@@ -19,11 +19,13 @@ async function serveApp(request, env, name) {
   if (!/^[a-z-]+\.apk$/.test(name)) return new Response("not found", { status: 404 });
   const fromR2 = await servePack(request, env, "app/" + name);
   if (fromR2.status !== 404) { const h = new Headers(fromR2.headers); h.set("Content-Type", APK_TYPE); return new Response(fromR2.body, { status: fromR2.status, headers: h }); }
-  const upstream = await fetch("https://raw.githubusercontent.com/wileydavis/hondoroadbook/main/dist/" + name, { cf: { cacheTtl: 3600, cacheEverything: true } });
-  if (!upstream.ok) return new Response("no build published yet", { status: 404 });
-  const headers = new Headers({ "Content-Type": APK_TYPE, "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "public, max-age=3600", "Access-Control-Allow-Origin": "*" });
-  const len = upstream.headers.get("Content-Length"); if (len) headers.set("Content-Length", len);
-  return new Response(upstream.body, { status: 200, headers });
+  // pass Range through so Android's download manager can resume; raw.githubusercontent honours it
+  const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);
+  const upstream = await fetch("https://raw.githubusercontent.com/wileydavis/hondoroadbook/main/dist/" + name, { headers: fwd, cf: rng ? undefined : { cacheTtl: 3600, cacheEverything: true } });
+  if (!upstream.ok) return new Response("no build published yet", { status: 404, headers: { "Cache-Control": "no-store" } });
+  const headers = new Headers({ "Content-Type": APK_TYPE, "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "public, max-age=3600", "Accept-Ranges": "bytes", "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" });
+  for (const h of ["Content-Length", "Content-Range", "ETag", "Last-Modified"]) { const v = upstream.headers.get(h); if (v) headers.set(h, v); }
+  return new Response(upstream.body, { status: upstream.status, headers });
 }
 
 async function servePack(request, env, key) {
