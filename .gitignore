@@ -16,3 +16,4 @@ build/
 # node, for wrangler
 node_modules/
 .wrangler/
+dist/*.jar
