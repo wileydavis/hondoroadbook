@@ -239,6 +239,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnLock).setOnClickListener(lock)
         findViewById<ImageButton>(R.id.btnLockNav).setOnClickListener(lock)
         updateLockButtons()
+        // the glove menu
+        findViewById<ImageButton>(R.id.btnMenu).setOnClickListener { haptic(1); openMenu() }
+        findViewById<Button>(R.id.btnMenuClose).setOnClickListener { closeMenu() }
+        findViewById<View>(R.id.menuScrim).setOnClickListener { closeMenu() }
+        findViewById<View>(R.id.menuSheet).setOnClickListener { }   // taps inside the sheet stay inside
         // Roadbook: pre-run recording and cue authoring
         panelEdit = findViewById(R.id.panelEdit); recStrip = findViewById(R.id.recStrip); recStatus = findViewById(R.id.recStatus)
         if (BuildConfig.ROADBOOK) {
@@ -1180,8 +1185,8 @@ class MainActivity : AppCompatActivity() {
         panelNav.visibility = if (m == Mode.NAV) View.VISIBLE else View.GONE
         panelCompare.visibility = if (m == Mode.COMPARE) View.VISIBLE else View.GONE
         panelEdit.visibility = if (m == Mode.EDIT) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.navSide).visibility = if (m == Mode.NAV || m == Mode.EDIT) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.btnNavCue).visibility = if (m == Mode.NAV && isTrack && BuildConfig.ROADBOOK) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnMenu).visibility = if (m == Mode.IDLE || m == Mode.NAV) View.VISIBLE else View.GONE
+        closeMenu(animate = false)
         updateRecStrip()
         if (m != Mode.NAV) { hud.visibility = View.GONE; offPanel.visibility = View.GONE; turnChip.visibility = View.GONE; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
         map?.uiSettings?.isCompassEnabled = m != Mode.NAV
@@ -1432,7 +1437,6 @@ class MainActivity : AppCompatActivity() {
         val on = Recorder.running
         recStrip.visibility = if (on && mode != Mode.COMPARE && mode != Mode.PIN) View.VISIBLE else View.GONE
         // keep the night/locate/lock stack clear of the strip
-        findViewById<View>(R.id.navSide).let { v -> (v.layoutParams as android.widget.FrameLayout.LayoutParams).bottomMargin = dp(if (recStrip.visibility == View.VISIBLE) 152 else 104); v.requestLayout() }
         findViewById<ImageButton>(R.id.btnRec).imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, if (on) R.color.accent else R.color.ink))
         if (on) {
             val s = Recorder.elapsedMs / 1000
@@ -1463,6 +1467,74 @@ class MainActivity : AppCompatActivity() {
             imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this@MainActivity, if (locked) R.color.accent else R.color.ink))
         }
     }
+
+    // ---------------------------------------------------------------- the glove menu
+
+    private class MenuItem(val label: String, val icon: Int, val accent: Boolean = false, val on: Boolean = false, val action: () -> Unit)
+
+    private fun menuItems(): List<MenuItem> {
+        val nav = mode == Mode.NAV
+        val items = ArrayList<MenuItem>()
+        if (nav) {
+            items.add(MenuItem("END", R.drawable.ic_end, accent = true) { endNavigation() })
+            items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound) { findViewById<ImageButton>(R.id.btnSound).performClick() })
+            if (BuildConfig.ROADBOOK && isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })
+            if (!isTrack) items.add(MenuItem("TURN LIST", R.drawable.ic_list) { route?.let { showTurnList(it) } })
+            if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
+        } else {
+            items.add(MenuItem("GO TO", R.drawable.ic_search) { findViewById<ImageButton>(R.id.btnGo).performClick() })
+            items.add(MenuItem("TRACK", R.drawable.ic_track) { findViewById<ImageButton>(R.id.btnTrack).performClick() })
+            items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
+            if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
+        }
+        items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night) { findViewById<ImageButton>(R.id.btnNight).performClick() })
+        items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })
+        items.add(MenuItem(if (prefs.orientation >= 0) "UNLOCK SCREEN" else "LOCK SCREEN", if (prefs.orientation >= 0) R.drawable.ic_lock else R.drawable.ic_unlock, on = prefs.orientation >= 0) { toggleOrientationLock() })
+        return items
+    }
+
+    private fun openMenu() {
+        val scrim = findViewById<View>(R.id.menuScrim); val sheet = findViewById<View>(R.id.menuSheet)
+        val grid = findViewById<android.widget.GridLayout>(R.id.menuGrid)
+        grid.removeAllViews()
+        findViewById<TextView>(R.id.menuTitle).text = if (mode == Mode.NAV) (if (isTrack) "FOLLOWING " + trackName.uppercase() else "NAVIGATING") else getString(R.string.app_name).uppercase()
+        val items = menuItems()
+        // the sheet reaches up to the HUD; giant buttons share the room in two columns
+        val top = (if (hud.visibility == View.VISIBLE) hud.bottom else hud.top) + dp(12)
+        val avail = findViewById<View>(R.id.root).height - top - dp(16 + 10 + 24 + 76 + 18 + 12)
+        val rows = (items.size + 1) / 2
+        val itemH = (avail / rows - dp(10)).coerceIn(dp(84), dp(132))
+        for ((i, item) in items.withIndex()) {
+            val it = item
+            val b = Button(this).apply {
+                text = it.label; textSize = 19f; setTypeface(typeface, android.graphics.Typeface.BOLD); letterSpacing = 0.04f; isAllCaps = false
+                background = ContextCompat.getDrawable(this@MainActivity, if (it.accent) R.drawable.bg_accent else R.drawable.bg_menu_item)
+                setTextColor(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, R.color.ink))
+                stateListAnimator = null; gravity = android.view.Gravity.CENTER
+                val icon = ContextCompat.getDrawable(this@MainActivity, it.icon)?.mutate()?.apply { setBounds(0, 0, dp(34), dp(34)); setTint(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, if (it.on) R.color.accent else R.color.ink)) }
+                setCompoundDrawables(null, icon, null, null); compoundDrawablePadding = dp(6)
+                setPadding(dp(8), dp(14), dp(8), dp(12))
+                setOnClickListener { haptic(1); closeMenu(); item.action() }
+            }
+            val lp = android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i / 2, 1f), android.widget.GridLayout.spec(i % 2, 1f)).apply { width = 0; height = itemH; setMargins(dp(5), dp(5), dp(5), dp(5)) }
+            grid.addView(b, lp)
+        }
+        scrim.visibility = View.VISIBLE
+        sheet.translationY = sheet.height.toFloat().takeIf { it > 0 } ?: dp(600).toFloat()
+        sheet.animate().translationY(0f).setDuration(180).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+        findViewById<View>(R.id.btnMenu).visibility = View.INVISIBLE
+    }
+
+    private fun closeMenu(animate: Boolean = true) {
+        val scrim = findViewById<View>(R.id.menuScrim); val sheet = findViewById<View>(R.id.menuSheet)
+        if (scrim.visibility != View.VISIBLE) return
+        val circle = findViewById<View>(R.id.btnMenu)
+        if (mode == Mode.IDLE || mode == Mode.NAV) circle.visibility = View.VISIBLE
+        if (!animate) { scrim.visibility = View.GONE; return }
+        sheet.animate().translationY(sheet.height.toFloat()).setDuration(150).withEndAction { scrim.visibility = View.GONE; sheet.translationY = 0f }.start()
+    }
+
+    override fun onBackPressed() { if (findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) closeMenu() else super.onBackPressed() }
 
     private fun onPacksChanged() { loadStyle(); if (lastFix == null) packs.packs.lastOrNull()?.let { val m = it.manifest; map?.moveCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(m.maxLat, m.maxLon, m.minLat, m.minLon), dp(40))) } }
 

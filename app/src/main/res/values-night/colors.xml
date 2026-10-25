@@ -12,4 +12,6 @@
     <color name="button">#F2F2F2</color>
     <color name="button_text">#111111</color>
     <color name="scrim">#CC000000</color>
+    <color name="glass">#D91E1E1E</color>
+    <color name="glass_edge">#33F2F2F2</color>
 </resources>

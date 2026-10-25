@@ -33,8 +33,11 @@ Everything under **Fold** below applies; Roadbook adds:
   to install, nothing sent anywhere. Each phrase is synthesized as soon as its cue becomes the next one,
   so it starts instantly when the window opens. `app/src/roadbook/assets/tts/` holds the voice;
   `PiperEngine.kt` drives it; Fold has no voice at all.
-* **Orientation lock** (padlock button, idle and while navigating): holds the screen the way it is
-  now, remembered across restarts.
+* **Built for a glove.** One big translucent button at the bottom of the screen opens a sheet of giant
+  buttons (two columns, reaching up to the HUD): GO TO, TRACK, MAPS, RECORD, NIGHT MAP, LOCATE, LOCK
+  SCREEN; while navigating END, SOUND, ADD CUE HERE, RECORD, NIGHT MAP, LOCATE, LOCK SCREEN. A full-width
+  CLOSE bar collapses it. Nothing small to hit at speed; END is two deliberate taps.
+* **Orientation lock** (LOCK SCREEN in the menu): holds the screen the way it is now, remembered across restarts.
 * **In-app packs.** MAPS → DOWNLOAD lists the catalog at `hondoroadbook.com/packs/catalog.json`,
   downloads with resume, imports automatically. IMPORT FILE still takes a `.mappack` you copied yourself.
   Packs of different kinds (roads today; terrain, imagery later) for one region install side by side.

@@ -111,9 +111,9 @@
         android:layout_height="22dp"
         android:layout_gravity="start|bottom"
         android:layout_marginStart="20dp"
-        android:layout_marginBottom="84dp" />
+        android:layout_marginBottom="40dp" />
 
-    <!-- Bottom: idle -->
+    <!-- The old small buttons: hidden, driven by the glove menu below (same handlers) -->
     <LinearLayout
         android:id="@+id/panelIdle"
         android:layout_width="match_parent"
@@ -121,6 +121,7 @@
         android:layout_gravity="bottom"
         android:orientation="horizontal"
         android:gravity="center_vertical"
+        android:visibility="gone"
         android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="12dp" android:paddingBottom="20dp">
         <ImageButton android:id="@+id/btnGo" style="@style/RoundIcon" android:src="@drawable/ic_search" android:contentDescription="@string/go_to" android:layout_marginEnd="10dp" />
         <ImageButton android:id="@+id/btnTrack" style="@style/RoundIcon" android:src="@drawable/ic_track" android:contentDescription="@string/track" android:layout_marginEnd="10dp" />
@@ -138,16 +139,16 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
-        android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:layout_marginBottom="86dp"
+        android:layout_marginStart="14dp" android:layout_marginEnd="14dp" android:layout_marginBottom="130dp"
         android:background="@drawable/bg_rec"
         android:elevation="5dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingStart="14dp" android:paddingEnd="8dp" android:paddingTop="6dp" android:paddingBottom="6dp"
+        android:paddingStart="14dp" android:paddingEnd="8dp" android:paddingTop="8dp" android:paddingBottom="8dp"
         android:visibility="gone">
         <TextView android:id="@+id/recStatus" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:text="● REC 0:00 · 0 mi · 0 cues" />
-        <Button android:id="@+id/btnRecCue" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="44dp" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:paddingStart="18dp" android:paddingEnd="18dp" android:text="CUE" android:layout_marginEnd="8dp" />
-        <Button android:id="@+id/btnRecStop" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="44dp" android:paddingStart="14dp" android:paddingEnd="14dp" android:text="STOP" />
+        <Button android:id="@+id/btnRecCue" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="64dp" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:textSize="19sp" android:paddingStart="26dp" android:paddingEnd="26dp" android:text="CUE" android:layout_marginEnd="8dp" />
+        <Button android:id="@+id/btnRecStop" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="64dp" android:textSize="17sp" android:paddingStart="18dp" android:paddingEnd="18dp" android:text="STOP" />
     </LinearLayout>
 
     <!-- Bottom: editing a track's cues -->
@@ -178,6 +179,7 @@
         android:layout_marginBottom="104dp"
         android:orientation="vertical"
         android:visibility="gone">
+        <!-- hidden: the menu drives these -->
         <ImageButton android:id="@+id/btnLockNav" style="@style/RoundIcon" android:src="@drawable/ic_unlock" android:contentDescription="Lock orientation" android:layout_marginBottom="12dp" />
         <ImageButton android:id="@+id/btnNightNav" style="@style/RoundIcon" android:src="@drawable/ic_night" android:contentDescription="Night" android:layout_marginBottom="12dp" />
         <ImageButton android:id="@+id/btnLocateNav" style="@style/RoundIcon" android:src="@drawable/ic_locate" android:contentDescription="Locate" />
@@ -228,24 +230,81 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Bottom: navigating -->
+    <!-- Bottom: navigating — the info card above the circle; END, sound, cue live in the glove menu -->
     <LinearLayout
         android:id="@+id/panelNav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="12dp" android:paddingBottom="20dp"
+        android:gravity="center"
+        android:paddingStart="20dp" android:paddingEnd="20dp" android:paddingTop="12dp" android:paddingBottom="128dp"
         android:visibility="gone">
-        <LinearLayout android:id="@+id/navCard" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:orientation="vertical" android:gravity="center_vertical" android:background="@drawable/bg_card" android:elevation="4dp" android:paddingStart="14dp" android:paddingEnd="12dp" android:layout_marginEnd="8dp" android:clickable="true" android:focusable="true">
-            <TextView android:id="@+id/navRemaining" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" android:includeFontPadding="false" android:text="12.4 km · 18 min" />
-            <TextView android:id="@+id/navSpeed" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="13sp" android:maxLines="1" android:includeFontPadding="false" android:paddingTop="2dp" android:text="45 mph" />
+        <LinearLayout android:id="@+id/navCard" android:layout_width="wrap_content" android:layout_height="52dp" android:orientation="horizontal" android:gravity="center_vertical" android:background="@drawable/bg_card" android:elevation="4dp" android:paddingStart="18dp" android:paddingEnd="18dp" android:clickable="true" android:focusable="true">
+            <TextView android:id="@+id/navRemaining" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="18sp" android:textStyle="bold" android:maxLines="1" android:includeFontPadding="false" android:text="12.4 km · 18 min" />
+            <TextView android:id="@+id/navSpeed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="18sp" android:maxLines="1" android:includeFontPadding="false" android:paddingStart="14dp" android:text="45 mph" />
         </LinearLayout>
-        <ImageButton android:id="@+id/btnNavCue" style="@style/RoundIcon" android:src="@drawable/ic_cue" android:contentDescription="Add cue here" android:layout_marginEnd="8dp" android:visibility="gone" />
-        <ImageButton android:id="@+id/btnSound" style="@style/RoundIcon" android:src="@drawable/ic_sound_off" android:contentDescription="Sound" android:layout_marginEnd="8dp" />
-        <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="64dp" android:text="@string/end" />
+        <ImageButton android:id="@+id/btnNavCue" style="@style/RoundIcon" android:src="@drawable/ic_cue" android:contentDescription="Add cue here" android:visibility="gone" />
+        <ImageButton android:id="@+id/btnSound" style="@style/RoundIcon" android:src="@drawable/ic_sound_off" android:contentDescription="Sound" android:visibility="gone" />
+        <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="64dp" android:text="@string/end" android:visibility="gone" />
     </LinearLayout>
+
+    <!-- The one button a glove needs: a big translucent circle. Opens the menu. -->
+    <ImageButton
+        android:id="@+id/btnMenu"
+        android:layout_width="96dp"
+        android:layout_height="96dp"
+        android:layout_gravity="center_horizontal|bottom"
+        android:layout_marginBottom="22dp"
+        android:background="@drawable/bg_round_glass"
+        android:src="@drawable/ic_menu"
+        android:padding="26dp"
+        android:tint="@color/ink"
+        android:elevation="6dp"
+        android:contentDescription="Menu" />
+
+    <!-- The menu: slides up to the HUD, giant buttons, giant close bar -->
+    <FrameLayout
+        android:id="@+id/menuScrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#66000000"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+        <LinearLayout
+            android:id="@+id/menuSheet"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical"
+            android:background="@drawable/bg_sheet"
+            android:elevation="12dp"
+            android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="16dp" android:paddingBottom="18dp">
+            <TextView android:id="@+id/menuTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="13sp" android:letterSpacing="0.12" android:text="ROADBOOK" android:gravity="center" android:paddingBottom="10dp" />
+            <GridLayout
+                android:id="@+id/menuGrid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:columnCount="2" />
+            <Button
+                android:id="@+id/btnMenuClose"
+                android:layout_width="match_parent"
+                android:layout_height="76dp"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_button"
+                android:textColor="@color/button_text"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.08"
+                android:stateListAnimator="@null"
+                android:drawableStart="@drawable/ic_down"
+                android:drawableTint="@color/button_text"
+                android:drawablePadding="12dp"
+                android:paddingStart="26dp" android:paddingEnd="36dp"
+                android:text="CLOSE" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- countdown chip, placed on the map at the next turn -->
     <TextView

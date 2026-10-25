@@ -68,6 +68,7 @@ const ICONS = {
   unlock: 'M7 10V7a5 5 0 0 1 9.6-1.9l-1.9.7A3 3 0 0 0 9 7v3h9a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2zM6 12v8h12v-8z',
   sound: 'M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z',
   cue: 'M6 20V4h2v7l5-5 1.4 1.4L11.8 10H20v2h-8.2l2.6 2.6L13 16 8 11v9z',
+  menu: 'M4 6h16v2.6H4zM4 10.7h16v2.6H4zM4 15.4h16V18H4z', end: 'M6 6h12v12H6z', list: 'M3 5h3v3H3zM8 5.5h13v2H8zM3 10.5h3v3H3zM8 11h13v2H8zM3 16h3v3H3zM8 16.5h13v2H8z', down: 'M12 16.5 4.5 9l1.8-1.8L12 12.9l5.7-5.7L19.5 9z',
 };
 function icon(name, size, color) { const s = svgEl('svg', { viewBox: '0 0 24 24', width: size, height: size }); s.appendChild(svgEl('path', { d: ICONS[name], fill: name === 'maps' || name === 'track' ? 'none' : color, stroke: color, 'stroke-width': name === 'maps' || name === 'track' ? 2 : 0, 'stroke-linejoin': 'round' })); return s; }
 
@@ -106,17 +107,14 @@ export function screen(container, sc) {
   if (sc.off) { const o = el('div', { position: 'absolute', left: '12px', right: '12px', top: (inset + 16) + 'px', background: T.accent, color: '#fff', borderRadius: '14px', display: 'flex', alignItems: 'center', padding: '8px 8px 8px 16px', boxShadow: '0 3px 10px rgba(0,0,0,.16)' });
     o.appendChild(el('div', { flex: 1, fontSize: '20px', fontWeight: 700 }, sc.off)); const b = el('div', { height: '40px', borderRadius: '14px', background: T.button, color: T.btext, fontSize: '13px', fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 14px' }, 'REROUTE'); o.appendChild(b); over.appendChild(o); }
   // scale bar
-  if (sc.scale !== false) { const sb = el('div', { position: 'absolute', left: '20px', bottom: (sc.scaleBottom || 84) + 'px', height: '22px', display: 'flex', alignItems: 'flex-end', gap: '6px', fontSize: '12px', fontWeight: 600, color: T.ink, textShadow: `0 0 3px ${T.paper}, 0 0 3px ${T.paper}` });
+  if (sc.scale !== false) { const sb = el('div', { position: 'absolute', left: '20px', bottom: (sc.scaleBottom || 40) + 'px', height: '22px', display: 'flex', alignItems: 'flex-end', gap: '6px', fontSize: '12px', fontWeight: 600, color: T.ink, textShadow: `0 0 3px ${T.paper}, 0 0 3px ${T.paper}` });
     const bar = el('div', { width: (sc.scalePx || 70) + 'px', height: '10px', borderLeft: `2px solid ${T.ink}`, borderRight: `2px solid ${T.ink}`, borderBottom: `2px solid ${T.ink}`, boxShadow: `0 0 0 1px ${T.paper}` }); sb.appendChild(bar); sb.appendChild(el('span', {}, sc.scaleLabel || '500 ft')); over.appendChild(sb); }
   // bottom panels
   const bottom = (sc.bottom || 'idle');
-  if (bottom === 'idle') { const p = el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 14px 20px' });
-    p.appendChild(round('search', T)); p.appendChild(round('track', T)); p.appendChild(round('maps', T)); if (sc.roadbook !== false) p.appendChild(round('rec', T, { tint: sc.recording ? T.accent : T.ink }));
-    p.appendChild(el('div', { flex: 1 })); p.appendChild(round(sc.locked ? 'lock' : 'unlock', T, { tint: sc.locked ? T.accent : T.ink })); p.appendChild(round('night', T)); p.appendChild(round('locate', T)); over.appendChild(p); }
-  if (bottom === 'nav') { const p = el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 20px 20px' });
-    const nc = card(T, { flex: '1 1 0', minWidth: 0, height: '48px', display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 12px 0 14px', overflow: 'hidden' }); nc.appendChild(el('div', { fontSize: '15px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }, sc.remaining || '17.4 mi · 31 min')); nc.appendChild(el('div', { fontSize: '13px', color: T.soft, whiteSpace: 'nowrap', lineHeight: 1.15, marginTop: '2px' }, sc.speed || '48 mph')); p.appendChild(nc);
-    if (sc.navCue) p.appendChild(round('cue', T)); p.appendChild(round('sound', T)); p.appendChild(bigButton('END', T, { width: 64 })); over.appendChild(p);
-    const side = el('div', { position: 'absolute', right: '20px', bottom: (sc.recording ? 152 : 104) + 'px', display: 'flex', flexDirection: 'column', gap: '12px' }); side.appendChild(round(sc.locked ? 'lock' : 'unlock', T, { tint: sc.locked ? T.accent : T.ink })); side.appendChild(round('night', T)); side.appendChild(round('locate', T)); over.appendChild(side); }
+  const circle = () => { const c = el('div', { position: 'absolute', left: (w / 2 - 48) + 'px', bottom: '22px', width: '96px', height: '96px', borderRadius: '48px', background: sc.dark ? 'rgba(30,30,30,.85)' : 'rgba(255,255,255,.85)', border: `3px solid ${sc.dark ? 'rgba(242,242,242,.2)' : 'rgba(27,27,27,.2)'}`, boxShadow: '0 4px 14px rgba(0,0,0,.18)', display: 'grid', placeItems: 'center' }); c.appendChild(icon('menu', 44, T.ink)); over.appendChild(c); };
+  if (bottom === 'idle') { if (!sc.menu) circle(); }
+  if (bottom === 'nav') { const nc = card(T, { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '128px', height: '52px', display: 'flex', alignItems: 'center', padding: '0 18px', gap: '14px', whiteSpace: 'nowrap' });
+    nc.appendChild(el('div', { fontSize: '18px', fontWeight: 700 }, sc.remaining || '17.4 mi · 31 min')); nc.appendChild(el('div', { fontSize: '18px', color: T.soft }, sc.speed || '48 mph')); over.appendChild(nc); if (!sc.menu) circle(); }
   if (bottom === 'compare') { const p = el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '12px 20px 20px' });
     const rows = card(T, { padding: '4px 0', marginBottom: '8px' });
     for (const r of sc.rows) { const row = el('div', { display: 'flex', alignItems: 'center', padding: '8px 16px', gap: '12px', background: r.sel ? (sc.dark ? '#2a2a2a' : '#F3EFE6') : 'transparent' }); row.appendChild(el('div', { width: '28px', height: '6px', borderRadius: '3px', background: r.color })); row.appendChild(el('div', { flex: 1, fontSize: '16px', fontWeight: r.sel ? 700 : 500 }, r.name)); row.appendChild(el('div', { fontSize: '15px', color: T.soft }, r.info)); rows.appendChild(row); }
@@ -126,8 +124,20 @@ export function screen(container, sc) {
   if (bottom === 'pin') { const p = el('div', { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '12px 20px 20px' });
     p.appendChild(card(T, { padding: '12px', fontSize: '16px', marginBottom: '8px' })).textContent = sc.pinLabel; const b = el('div', { display: 'flex', gap: '8px' }); b.appendChild(bigButton('ROUTE HERE', T, { accent: true, flex: 2 })); b.appendChild(bigButton('FROM', T, { flex: 1 })); b.appendChild(bigButton('★', T, { width: 48 })); b.appendChild(bigButton('✕', T, { width: 48 })); p.appendChild(b); over.appendChild(p); }
   // recording strip
-  if (sc.recording) { const s = el('div', { position: 'absolute', left: '14px', right: '14px', bottom: '86px', background: T.card, border: `2px solid ${T.accent}`, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px 6px 14px', boxShadow: '0 2px 8px rgba(0,0,0,.15)' });
-    s.appendChild(el('div', { flex: 1, fontSize: '15px', fontWeight: 700 }, sc.recording)); const c = bigButton('CUE', T, { accent: true }); c.style.height = '44px'; c.style.padding = '0 18px'; s.appendChild(c); const st = bigButton('STOP', T); st.style.height = '44px'; s.appendChild(st); over.appendChild(s); }
+  if (sc.recording) { const s = el('div', { position: 'absolute', left: '14px', right: '14px', bottom: '130px', background: T.card, border: `2px solid ${T.accent}`, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 8px 8px 14px', boxShadow: '0 2px 8px rgba(0,0,0,.15)' });
+    s.appendChild(el('div', { flex: 1, fontSize: '15px', fontWeight: 700 }, sc.recording)); const c = bigButton('CUE', T, { accent: true }); c.style.height = '64px'; c.style.padding = '0 26px'; c.style.fontSize = '19px'; s.appendChild(c); const st = bigButton('STOP', T); st.style.height = '64px'; st.style.padding = '0 18px'; st.style.fontSize = '17px'; s.appendChild(st); over.appendChild(s); }
+  // the glove menu: sheet up to the HUD, giant buttons, giant close bar
+  if (sc.menu) {
+    const scrim = el('div', { position: 'absolute', inset: 0, background: 'rgba(0,0,0,.4)' }); over.appendChild(scrim);
+    const top = (sc.hud ? inset + 16 + 116 : inset + 16 + 116) + 12;
+    const sheet = el('div', { position: 'absolute', left: 0, right: 0, top: top + 'px', bottom: 0, background: T.card, borderRadius: '28px 28px 0 0', boxShadow: '0 -8px 30px rgba(0,0,0,.25)', padding: '16px 14px 18px', display: 'flex', flexDirection: 'column' });
+    sheet.appendChild(el('div', { fontSize: '13px', letterSpacing: '.12em', color: T.soft, textAlign: 'center', paddingBottom: '10px' }, sc.menu.title));
+    const grid = el('div', { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', flex: 1, alignContent: 'stretch' });
+    for (const it of sc.menu.items) { const b = el('div', { background: it.accent ? T.accent : T.paper, color: it.accent ? '#fff' : T.ink, borderRadius: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '19px', fontWeight: 700, letterSpacing: '.04em' }); b.appendChild(icon(it.icon, 34, it.accent ? '#fff' : (it.on ? T.accent : T.ink))); b.appendChild(el('div', {}, it.label)); grid.appendChild(b); }
+    sheet.appendChild(grid);
+    const close = el('div', { marginTop: '12px', height: '76px', borderRadius: '14px', background: T.button, color: T.btext, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', fontSize: '20px', fontWeight: 700, letterSpacing: '.08em' }); close.appendChild(icon('down', 28, T.btext)); close.appendChild(el('span', {}, 'CLOSE')); sheet.appendChild(close);
+    over.appendChild(sheet);
+  }
   // dialogs
   if (sc.dialog) { const scrim = el('div', { position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', padding: '20px' }); const d = el('div', { background: T.card, borderRadius: '6px', width: '100%', maxWidth: '372px', padding: '18px 20px 10px', boxShadow: '0 12px 40px rgba(0,0,0,.4)' });
     d.appendChild(el('div', { fontSize: '20px', fontWeight: 600, marginBottom: '8px' }, sc.dialog.title)); sc.dialog.build(d, T); scrim.appendChild(d); over.appendChild(scrim); }
