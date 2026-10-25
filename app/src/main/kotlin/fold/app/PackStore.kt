@@ -13,17 +13,20 @@ import java.util.zip.ZipFile
 
 /** One installed region: tiles for the map, a graph for routing, an index for search. */
 class Pack(val dir: File, val manifest: PackManifest) {
-    val tiles: File get() = File(dir, PackManifest.TILES)
+    val isTerrain get() = manifest.isTerrain
+    val tiles: File get() = File(dir, if (isTerrain) PackManifest.TERRAIN else PackManifest.TILES)
     @Volatile var router: Router? = null
     @Volatile private var search: SearchFile? = null
     val name get() = manifest.name
     val sizeBytes: Long get() = dir.listFiles()?.sumOf { it.length() } ?: 0L
 
     @Synchronized fun loadRouter(): Router? {
+        if (isTerrain) return null
         router?.let { return it }
         return try { Router(Graph.open(File(dir, PackManifest.GRAPH))).also { router = it } } catch (e: Throwable) { android.util.Log.w("Fold", "graph open failed for $name", e); null }
     }
     @Synchronized fun loadSearch(): SearchFile? {
+        if (isTerrain) return null
         search?.let { return it }
         return try { SearchFile.open(File(dir, PackManifest.SEARCH)) } catch (e: Throwable) { null }?.also { search = it }
     }
@@ -43,7 +46,7 @@ class PackStore(private val ctx: Context) {
         val cur = packs
         multi?.let { if (multiFor === cur) return it }
         val errs = ArrayList<String>()
-        val routers = cur.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-import that pack"); null } }
+        val routers = cur.filter { !it.isTerrain }.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-import that pack"); null } }
         routerErrors = errs
         return MultiRouter(routers).also { multi = it; multiFor = cur }
     }
@@ -57,7 +60,7 @@ class PackStore(private val ctx: Context) {
                 val mf = File(d, PackManifest.FILE)
                 if (!mf.exists()) return@forEach
                 val m = PackManifest.parse(mf.readText()) ?: return@forEach
-                if (PackManifest.REQUIRED.all { File(d, it).exists() }) found.add(Pack(d, m))
+                if (m.required.all { File(d, it).exists() }) found.add(Pack(d, m))
             } catch (_: Throwable) {}
         }
         packs = found
@@ -85,18 +88,18 @@ class PackStore(private val ctx: Context) {
                 val manifest = PackManifest.parse(zip.getInputStream(mfEntry).readBytes().toString(Charsets.UTF_8))
                     ?: throw IllegalStateException("Bad pack.txt")
                 if (manifest.format != PackManifest.FORMAT) throw IllegalStateException(if (manifest.format < PackManifest.FORMAT) "This pack was made with an older packer — rebuild it with the current fold-packer.jar" else "Pack format ${manifest.format} is newer than this app")
-                for (req in PackManifest.REQUIRED) if (zip.getEntry(req) == null) throw IllegalStateException("Pack is missing $req")
+                for (req in manifest.required) if (zip.getEntry(req) == null) throw IllegalStateException("Pack is missing $req")
                 val safe = manifest.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "pack" }
                 // same name = same region: the new pack replaces the old one once it is fully unpacked
                 val dir = File(root, safe)
                 val replacing = dir.exists()
                 val staging = File(root, ".staging-$safe").apply { deleteRecursively(); mkdirs() }
-                val total = PackManifest.REQUIRED.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
+                val total = manifest.required.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
                 val free = root.usableSpace
                 if (free < total + (64L shl 20)) throw IllegalStateException("Not enough space: pack needs ${total / (1024 * 1024)} MB, phone has ${free / (1024 * 1024)} MB free")
                 var done = 0L
                 val buf = ByteArray(1 shl 20)
-                for (req in PackManifest.REQUIRED) {
+                for (req in manifest.required) {
                     val e = zip.getEntry(req)
                     zip.getInputStream(e).use { ins -> FileOutputStream(File(staging, req)).use { out ->
                         var lastPct = -1
@@ -129,5 +132,7 @@ class PackStore(private val ctx: Context) {
 
     fun delete(p: Pack) { p.dir.deleteRecursively(); scan() }
 
-    fun packFor(lat: Double, lon: Double): Pack? = packs.firstOrNull { it.contains(lat, lon) }
+    /** The road pack covering a point (terrain packs draw but carry no roads). */
+    fun packFor(lat: Double, lon: Double): Pack? = packs.firstOrNull { !it.isTerrain && it.contains(lat, lon) }
+    val roadPacks: List<Pack> get() = packs.filter { !it.isTerrain }
 }

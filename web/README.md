@@ -38,7 +38,8 @@ The bucket is filled by `.github/workflows/packs.yml`, which builds packs on Git
                "bytes": 471234567, "built": "2026-10-25", "bbox": [-116.05, 44.36, -104.04, 49.0] } ] }
 ```
 
-`kind` is `roads` today; `terrain` and `imagery` packs will use the same entry with a different
-kind, and the app installs them side by side (the pack `name` must differ: "Montana terrain").
+`kind` is `roads` or `terrain` (hillshade); `imagery` would use the same entry. Packs of different
+kinds for one region share `region` and the app lists them under it; the pack `name` must differ
+("Montana", "Montana terrain"). Regions come from `packer/regions.json`.
 Hand-built packs for other regions can be added by uploading the `.mappack` and a matching `.json`
 sidecar to the bucket and re-running the *packs* workflow's catalog step (or any run).

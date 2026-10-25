@@ -39,6 +39,19 @@ Everything under **Fold** below applies; Roadbook adds:
   downloads with resume, imports automatically. IMPORT FILE still takes a `.mappack` you copied yourself.
   Packs of different kinds (roads today; terrain, imagery later) for one region install side by side.
 
+### Terrain packs
+
+A second kind of pack, `kind=terrain` in `pack.txt`, carries `terrain.pmtiles`: hillshade raster tiles
+(WebP, shadow as alpha over a constant colour, so flat and sunlit ground is transparent and the paper
+shows through) built from the AWS Terrain Tiles elevation data by `packer/terrain/build_terrain.py`.
+The app draws every terrain pack in view between the land cover and the water/roads of whichever road
+pack covers the same ground; terrain packs carry no roads, routing or search, and don't count as map
+coverage. Zoom 13 in the US (10 m 3DEP data), 12 elsewhere; a mountain state is 150–300 MB.
+
+```
+python3 packer/terrain/build_terrain.py --name "Montana terrain" --region Montana --bbox="-116.1,44.3,-104.0,49.1" --out montana-terrain.mappack
+```
+
 ### The GPX cue convention
 
 A cue is a `<wpt>` whose `<type>` names it; `<desc>` (or `<name>`) carries the words.
@@ -56,9 +69,11 @@ exactly as authored: no turns are synthesized from its geometry.
 
 ### Website, packs and releases
 
-`wrangler.jsonc` + `web/` is the Cloudflare Worker for hondoroadbook.com (static site + `/packs/*`
-from an R2 bucket). `.github/workflows/packs.yml` builds state packs on GitHub's runners and uploads
-them to that bucket; `release.yml` signs and publishes the APKs on a tag. Setup steps: `web/README.md`.
+`wrangler.jsonc` + `web/` is the Cloudflare Worker for hondoroadbook.com (static site, `/download/*`
+and `/packs/*`). `.github/workflows/packs.yml` builds every region in `packer/regions.json` (the US
+states and Baja California) in both kinds on GitHub's runners and publishes them to the rolling GitHub
+release `packs`, which the Worker serves; an R2 bucket is an optional mirror. `release.yml` signs and
+publishes the APKs on a tag. Details: `web/README.md`.
 
 ---
 

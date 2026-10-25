@@ -12,12 +12,17 @@ class PackManifest(val name: String, val format: Int, val minLat: Double, val mi
     }
 
     fun contains(lat: Double, lon: Double) = lat in minLat..maxLat && lon in minLon..maxLon
+    val isTerrain: Boolean get() = kind == "terrain"
+    /** Files a pack of this kind must carry. */
+    val required: List<String> get() = if (isTerrain) listOf(FILE, TERRAIN) else REQUIRED
 
     companion object {
         const val FILE = "pack.txt"
         const val TILES = "tiles.pmtiles"
         const val GRAPH = "graph.bin"
         const val SEARCH = "search.tsv"
+        /** hillshade raster tiles of a terrain pack */
+        const val TERRAIN = "terrain.pmtiles"
         const val FORMAT = 2
         val REQUIRED = listOf(FILE, TILES, GRAPH, SEARCH)
 

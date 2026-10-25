@@ -1,0 +1,377 @@
+{
+ "alabama": {
+  "name": "Alabama",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/alabama-latest.osm.pbf",
+  "geofabrik": "us/alabama"
+ },
+ "alaska": {
+  "name": "Alaska",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/alaska-latest.osm.pbf",
+  "geofabrik": "us/alaska",
+  "max_zoom": 13
+ },
+ "arizona": {
+  "name": "Arizona",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/arizona-latest.osm.pbf",
+  "geofabrik": "us/arizona"
+ },
+ "arkansas": {
+  "name": "Arkansas",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/arkansas-latest.osm.pbf",
+  "geofabrik": "us/arkansas"
+ },
+ "california": {
+  "name": "California",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/california-latest.osm.pbf",
+  "geofabrik": "us/california",
+  "max_zoom": 14
+ },
+ "colorado": {
+  "name": "Colorado",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/colorado-latest.osm.pbf",
+  "geofabrik": "us/colorado"
+ },
+ "connecticut": {
+  "name": "Connecticut",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/connecticut-latest.osm.pbf",
+  "geofabrik": "us/connecticut"
+ },
+ "delaware": {
+  "name": "Delaware",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/delaware-latest.osm.pbf",
+  "geofabrik": "us/delaware"
+ },
+ "district-of-columbia": {
+  "name": "District of Columbia",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/district-of-columbia-latest.osm.pbf",
+  "geofabrik": "us/district-of-columbia"
+ },
+ "florida": {
+  "name": "Florida",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/florida-latest.osm.pbf",
+  "geofabrik": "us/florida",
+  "max_zoom": 14
+ },
+ "georgia": {
+  "name": "Georgia",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/georgia-latest.osm.pbf",
+  "geofabrik": "us/georgia"
+ },
+ "hawaii": {
+  "name": "Hawaii",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/hawaii-latest.osm.pbf",
+  "geofabrik": "us/hawaii"
+ },
+ "idaho": {
+  "name": "Idaho",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/idaho-latest.osm.pbf",
+  "geofabrik": "us/idaho"
+ },
+ "illinois": {
+  "name": "Illinois",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/illinois-latest.osm.pbf",
+  "geofabrik": "us/illinois"
+ },
+ "indiana": {
+  "name": "Indiana",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/indiana-latest.osm.pbf",
+  "geofabrik": "us/indiana"
+ },
+ "iowa": {
+  "name": "Iowa",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/iowa-latest.osm.pbf",
+  "geofabrik": "us/iowa"
+ },
+ "kansas": {
+  "name": "Kansas",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/kansas-latest.osm.pbf",
+  "geofabrik": "us/kansas"
+ },
+ "kentucky": {
+  "name": "Kentucky",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/kentucky-latest.osm.pbf",
+  "geofabrik": "us/kentucky"
+ },
+ "louisiana": {
+  "name": "Louisiana",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/louisiana-latest.osm.pbf",
+  "geofabrik": "us/louisiana"
+ },
+ "maine": {
+  "name": "Maine",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/maine-latest.osm.pbf",
+  "geofabrik": "us/maine"
+ },
+ "maryland": {
+  "name": "Maryland",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/maryland-latest.osm.pbf",
+  "geofabrik": "us/maryland"
+ },
+ "massachusetts": {
+  "name": "Massachusetts",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/massachusetts-latest.osm.pbf",
+  "geofabrik": "us/massachusetts"
+ },
+ "michigan": {
+  "name": "Michigan",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/michigan-latest.osm.pbf",
+  "geofabrik": "us/michigan"
+ },
+ "minnesota": {
+  "name": "Minnesota",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/minnesota-latest.osm.pbf",
+  "geofabrik": "us/minnesota"
+ },
+ "mississippi": {
+  "name": "Mississippi",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/mississippi-latest.osm.pbf",
+  "geofabrik": "us/mississippi"
+ },
+ "missouri": {
+  "name": "Missouri",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/missouri-latest.osm.pbf",
+  "geofabrik": "us/missouri"
+ },
+ "montana": {
+  "name": "Montana",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/montana-latest.osm.pbf",
+  "geofabrik": "us/montana"
+ },
+ "nebraska": {
+  "name": "Nebraska",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/nebraska-latest.osm.pbf",
+  "geofabrik": "us/nebraska"
+ },
+ "nevada": {
+  "name": "Nevada",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/nevada-latest.osm.pbf",
+  "geofabrik": "us/nevada"
+ },
+ "new-hampshire": {
+  "name": "New Hampshire",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/new-hampshire-latest.osm.pbf",
+  "geofabrik": "us/new-hampshire"
+ },
+ "new-jersey": {
+  "name": "New Jersey",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/new-jersey-latest.osm.pbf",
+  "geofabrik": "us/new-jersey"
+ },
+ "new-mexico": {
+  "name": "New Mexico",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/new-mexico-latest.osm.pbf",
+  "geofabrik": "us/new-mexico"
+ },
+ "new-york": {
+  "name": "New York",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/new-york-latest.osm.pbf",
+  "geofabrik": "us/new-york"
+ },
+ "north-carolina": {
+  "name": "North Carolina",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/north-carolina-latest.osm.pbf",
+  "geofabrik": "us/north-carolina"
+ },
+ "north-dakota": {
+  "name": "North Dakota",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/north-dakota-latest.osm.pbf",
+  "geofabrik": "us/north-dakota"
+ },
+ "ohio": {
+  "name": "Ohio",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/ohio-latest.osm.pbf",
+  "geofabrik": "us/ohio"
+ },
+ "oklahoma": {
+  "name": "Oklahoma",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/oklahoma-latest.osm.pbf",
+  "geofabrik": "us/oklahoma"
+ },
+ "oregon": {
+  "name": "Oregon",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/oregon-latest.osm.pbf",
+  "geofabrik": "us/oregon"
+ },
+ "pennsylvania": {
+  "name": "Pennsylvania",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/pennsylvania-latest.osm.pbf",
+  "geofabrik": "us/pennsylvania"
+ },
+ "rhode-island": {
+  "name": "Rhode Island",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/rhode-island-latest.osm.pbf",
+  "geofabrik": "us/rhode-island"
+ },
+ "south-carolina": {
+  "name": "South Carolina",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/south-carolina-latest.osm.pbf",
+  "geofabrik": "us/south-carolina"
+ },
+ "south-dakota": {
+  "name": "South Dakota",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/south-dakota-latest.osm.pbf",
+  "geofabrik": "us/south-dakota"
+ },
+ "tennessee": {
+  "name": "Tennessee",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/tennessee-latest.osm.pbf",
+  "geofabrik": "us/tennessee"
+ },
+ "texas": {
+  "name": "Texas",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/texas-latest.osm.pbf",
+  "geofabrik": "us/texas",
+  "max_zoom": 14
+ },
+ "utah": {
+  "name": "Utah",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/utah-latest.osm.pbf",
+  "geofabrik": "us/utah"
+ },
+ "vermont": {
+  "name": "Vermont",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/vermont-latest.osm.pbf",
+  "geofabrik": "us/vermont"
+ },
+ "virginia": {
+  "name": "Virginia",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/virginia-latest.osm.pbf",
+  "geofabrik": "us/virginia"
+ },
+ "washington": {
+  "name": "Washington",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/washington-latest.osm.pbf",
+  "geofabrik": "us/washington"
+ },
+ "west-virginia": {
+  "name": "West Virginia",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/west-virginia-latest.osm.pbf",
+  "geofabrik": "us/west-virginia"
+ },
+ "wisconsin": {
+  "name": "Wisconsin",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/wisconsin-latest.osm.pbf",
+  "geofabrik": "us/wisconsin"
+ },
+ "wyoming": {
+  "name": "Wyoming",
+  "group": "United States",
+  "path": "us",
+  "pbf": "north-america/us/wyoming-latest.osm.pbf",
+  "geofabrik": "us/wyoming"
+ },
+ "baja-california": {
+  "name": "Baja California",
+  "group": "Mexico",
+  "path": "mx",
+  "pbf": "north-america/mexico-latest.osm.pbf",
+  "bbox": [
+   -118.5,
+   22.8,
+   -109.3,
+   32.8
+  ],
+  "terrain_zoom": 12,
+  "notes": "both Baja states, one pack"
+ }
+}

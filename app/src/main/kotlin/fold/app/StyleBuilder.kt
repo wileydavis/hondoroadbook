@@ -15,7 +15,9 @@ object StyleBuilder {
         JSONArray(ctx.assets.open("style/layers_$flavor.json").bufferedReader().readText())
     }
 
-    fun build(ctx: Context, packs: List<Pack>, night: Boolean): String {
+    fun build(ctx: Context, all: List<Pack>, night: Boolean): String {
+        val packs = all.filter { !it.isTerrain }
+        val terrain = all.filter { it.isTerrain }
         val flavor = if (night) "dark" else "light"
         val template = layers(ctx, flavor)
         val style = JSONObject()
@@ -27,11 +29,23 @@ object StyleBuilder {
         packs.forEachIndexed { i, p ->
             sources.put("pack$i", JSONObject().put("type", "vector").put("url", "pmtiles://file://" + p.tiles.absolutePath))
         }
+        terrain.forEachIndexed { i, p ->
+            sources.put("terrain$i", JSONObject().put("type", "raster").put("url", "pmtiles://file://" + p.tiles.absolutePath).put("tileSize", 256))
+        }
         style.put("sources", sources)
         val out = JSONArray()
+        var hillDone = false
         for (li in 0 until template.length()) {
             val layer = template.getJSONObject(li)
             if (layer.getString("type") == "background") { out.put(layer); continue }
+            // hillshade sits over land cover and under water, roads and labels
+            if (!hillDone && (layer.getString("id") == "roads_runway" || layer.getString("id") == "water")) {
+                hillDone = true
+                terrain.forEachIndexed { i, _ ->
+                    out.put(JSONObject().put("id", "hill_t$i").put("type", "raster").put("source", "terrain$i")
+                        .put("paint", JSONObject().put("raster-opacity", if (night) 0.5 else 0.8).put("raster-resampling", "linear").put("raster-fade-duration", 0)))
+                }
+            }
             for (i in packs.indices) {
                 val clone = JSONObject(layer.toString())
                 clone.put("id", layer.getString("id") + "_p$i")

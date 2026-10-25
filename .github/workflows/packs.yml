@@ -1,21 +1,23 @@
 # Builds map packs on GitHub's runners and publishes them where hondoroadbook.com/packs/ serves them.
-# Free for a public repository; each state is its own job, so one failure never costs the others.
+# Free for a public repository; every region × kind is its own job, so one failure never costs the others.
 #
-# Where packs go: always to the rolling GitHub release tagged "packs" (no setup needed; the Worker
-# proxies /packs/* from there). Additionally to the Cloudflare R2 bucket when these secrets exist:
-#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY   (see web/README.md)
-# The last job rebuilds catalog.json from every pack's sidecar and publishes it the same way.
+# Regions live in packer/regions.json (US states + Baja California). Kinds:
+#   roads   — OSM extract → roads, routing graph, address index, vector tiles (fold-packer.jar)
+#   terrain — hillshade raster from AWS Terrain Tiles (packer/terrain/build_terrain.py)
+# Packs always go to the rolling GitHub release "packs" (no setup needed; the Worker proxies /packs/*
+# from there), and also to the Cloudflare R2 bucket when R2_ACCOUNT_ID / R2_ACCESS_KEY_ID /
+# R2_SECRET_ACCESS_KEY exist (web/README.md). The last job rebuilds catalog.json from every sidecar.
 name: packs
 
 on:
   workflow_dispatch:
     inputs:
-      states:
-        description: "Space-separated Geofabrik state slugs (montana wyoming …) or 'all'"
-        default: "montana wyoming idaho"
-      max_zoom:
-        description: "Tile detail (15 = full; 14 ≈ 40% smaller)"
-        default: "15"
+      regions:
+        description: "Space-separated region slugs from packer/regions.json, or 'all'"
+        default: "montana idaho wyoming baja-california"
+      kinds:
+        description: "Space-separated kinds: roads terrain"
+        default: "roads terrain"
   schedule:
     - cron: "17 9 3 * *"     # monthly refresh of everything
 
@@ -44,61 +46,66 @@ jobs:
         with: { name: fold-packer, path: packer/build/libs/fold-packer.jar, retention-days: 7 }
       - name: Make sure the rolling release exists
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --title "Map packs" --notes "Prebuilt map packs. The app and hondoroadbook.com/packs/ read catalog.json here. Rebuilt monthly from OpenStreetMap and Protomaps."
+        run: gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --title "Map packs" --notes "Prebuilt map packs. The app and hondoroadbook.com/packs/ read catalog.json here. Rebuilt monthly from OpenStreetMap, Protomaps and AWS Terrain Tiles."
 
   plan:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.m.outputs.matrix }}
+      roads: ${{ steps.m.outputs.roads }}
+      terrain: ${{ steps.m.outputs.terrain }}
+      has_roads: ${{ steps.m.outputs.has_roads }}
+      has_terrain: ${{ steps.m.outputs.has_terrain }}
     steps:
+      - uses: actions/checkout@v4
       - id: m
         shell: bash
         run: |
-          ALL="alabama alaska arizona arkansas california colorado connecticut delaware district-of-columbia florida georgia hawaii idaho illinois indiana iowa kansas kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada new-hampshire new-jersey new-mexico new-york north-carolina north-dakota ohio oklahoma oregon pennsylvania rhode-island south-carolina south-dakota tennessee texas utah vermont virginia washington west-virginia wisconsin wyoming"
-          WANT="${{ github.event.inputs.states || 'all' }}"
-          [ "$WANT" = "all" ] && WANT="$ALL"
-          echo "matrix=$(printf '%s\n' $WANT | jq -R . | jq -sc '{state: .}')" >> "$GITHUB_OUTPUT"
+          WANT="${{ github.event.inputs.regions || 'all' }}"
+          KINDS="${{ github.event.inputs.kinds || 'roads terrain' }}"
+          [ "$WANT" = "all" ] && WANT="$(jq -r 'keys[]' packer/regions.json | tr '\n' ' ')"
+          LIST=$(printf '%s\n' $WANT | jq -R . | jq -sc .)
+          echo "roads=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
+          echo "terrain=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
+          echo "has_roads=$([[ " $KINDS " == *" roads "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_terrain=$([[ " $KINDS " == *" terrain "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-  build:
+  roads:
     needs: [packer, plan]
+    if: needs.plan.outputs.has_roads == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 170
     strategy:
       fail-fast: false
       max-parallel: 6          # be polite to Geofabrik and Protomaps
-      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.plan.outputs.roads) }}
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
       - uses: actions/download-artifact@v4
         with: { name: fold-packer }
       - name: Free disk
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
-      - name: Download extract
-        run: curl -fL --retry 5 --retry-all-errors -o state.osm.pbf "https://download.geofabrik.de/north-america/us/${{ matrix.state }}-latest.osm.pbf"
-      - name: Build pack
+      - name: Build
         shell: bash
         run: |
-          s="${{ matrix.state }}"
-          name="$(echo "$s" | tr '-' ' ' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')"
-          extra="--max-zoom ${{ github.event.inputs.max_zoom || '15' }}"
-          [ "$s" = "alaska" ] && extra="--max-zoom 13"
-          # release assets are capped at 2 GB: the three biggest states drop one zoom level
-          case "$s" in california|texas|florida) extra="--max-zoom 14";; esac
-          java -Xmx12g -jar fold-packer.jar --pbf state.osm.pbf --out "$s-roads.mappack" --name "$name" $extra
-          rm -f state.osm.pbf
-          unzip -p "$s-roads.mappack" pack.txt > pack.txt
-          bbox=$(grep '^bbox=' pack.txt | cut -d= -f2)      # minLat,minLon,maxLat,maxLon
-          IFS=, read -r minLat minLon maxLat maxLon <<< "$bbox"
-          jq -n --arg id "us-$s-roads" --arg name "$name" --arg region "$name" --arg url "$SITE/us/$s-roads.mappack" --argjson bytes "$(stat -c %s "$s-roads.mappack")" \
+          r="${{ matrix.region }}"
+          R=$(jq -c --arg r "$r" '.[$r]' packer/regions.json); [ "$R" != "null" ] || { echo "unknown region $r"; exit 1; }
+          name=$(jq -r .name <<< "$R"); group=$(jq -r .group <<< "$R"); path=$(jq -r .path <<< "$R"); pbf=$(jq -r .pbf <<< "$R")
+          curl -fL --retry 5 --retry-all-errors -o region.osm.pbf "https://download.geofabrik.de/$pbf"
+          extra="--max-zoom $(jq -r '.max_zoom // 15' <<< "$R")"
+          bbox=$(jq -r 'if .bbox then (.bbox | map(tostring) | join(",")) else "" end' <<< "$R"); [ -n "$bbox" ] && extra="$extra --bbox $bbox"
+          java -Xmx12g -jar fold-packer.jar --pbf region.osm.pbf --out "$r-roads.mappack" --name "$name" $extra
+          rm -f region.osm.pbf
+          unzip -p "$r-roads.mappack" pack.txt > pack.txt
+          IFS=, read -r minLat minLon maxLat maxLon <<< "$(grep '^bbox=' pack.txt | cut -d= -f2)"
+          jq -n --arg id "$path-$r-roads" --arg name "$name" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-roads.mappack" --argjson bytes "$(stat -c %s "$r-roads.mappack")" \
                 --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
-                '{id:$id, name:$name, region:$region, group:"United States", kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$s-roads.json"
-          cat "$s-roads.json"
+                '{id:$id, name:$name, region:$region, group:$group, kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$r-roads.json"
+          cat "$r-roads.json"
       - name: Publish to the packs release
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: |
-          s="${{ matrix.state }}"
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "$s-roads.mappack" "$s-roads.json"
+        run: gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-roads.mappack" "${{ matrix.region }}-roads.json"
       - name: Also copy to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         env:
@@ -111,12 +118,73 @@ jobs:
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
-          s="${{ matrix.state }}"
-          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$s-roads.mappack" "r2:$BUCKET/us/$s-roads.mappack"
-          rclone copyto "$s-roads.json" "r2:$BUCKET/us/$s-roads.json"
+          r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
+          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$r-roads.mappack" "r2:$BUCKET/$path/$r-roads.mappack"
+          rclone copyto "$r-roads.json" "r2:$BUCKET/$path/$r-roads.json"
+
+  terrain:
+    needs: [packer, plan]
+    if: needs.plan.outputs.has_terrain == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      max-parallel: 4          # the elevation tiles come from a public S3 bucket; keep it civil
+      matrix: ${{ fromJson(needs.plan.outputs.terrain) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -q numpy pillow pmtiles requests
+      - name: Build
+        shell: bash
+        run: |
+          r="${{ matrix.region }}"
+          R=$(jq -c --arg r "$r" '.[$r]' packer/regions.json); [ "$R" != "null" ] || { echo "unknown region $r"; exit 1; }
+          name=$(jq -r .name <<< "$R"); group=$(jq -r .group <<< "$R"); path=$(jq -r .path <<< "$R"); zoom=$(jq -r '.terrain_zoom // 13' <<< "$R")
+          bbox=$(jq -r 'if .bbox then (.bbox | map(tostring) | join(",")) else "" end' <<< "$R")
+          if [ -z "$bbox" ]; then
+            # the region's extent from Geofabrik's index (same source as the roads pack)
+            gf=$(jq -r .geofabrik <<< "$R")
+            curl -fsSL --retry 5 -o index.json https://download.geofabrik.de/index-v1.json
+            bbox=$(python3 -c "
+          import json,sys
+          f=[x for x in json.load(open('index.json'))['features'] if x['properties']['id']=='$gf'][0]
+          def pts(c):
+              if isinstance(c[0],(int,float)): yield c
+              else:
+                  for k in c: yield from pts(k)
+          p=list(pts(f['geometry']['coordinates']))
+          print(','.join('%.4f'%v for v in (min(x for x,y in p)-0.05,min(y for x,y in p)-0.05,max(x for x,y in p)+0.05,max(y for x,y in p)+0.05)))")
+          fi
+          echo "bbox $bbox zoom $zoom"
+          python3 packer/terrain/build_terrain.py --name "$name terrain" --region "$name" --bbox="$bbox" --out "$r-terrain.mappack" --max-zoom "$zoom"
+          IFS=, read -r minLon minLat maxLon maxLat <<< "$bbox"
+          jq -n --arg id "$path-$r-terrain" --arg name "$name terrain" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-terrain.mappack" --argjson bytes "$(stat -c %s "$r-terrain.mappack")" \
+                --arg built "$(date -u +%F)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
+                '{id:$id, name:$name, region:$region, group:$group, kind:"terrain", url:$url, bytes:$bytes, built:$built, bbox:$bbox, notes:"hillshade; draws under the roads"}' > "$r-terrain.json"
+          cat "$r-terrain.json"
+      - name: Publish to the packs release
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-terrain.mappack" "${{ matrix.region }}-terrain.json"
+      - name: Also copy to R2 (when configured)
+        if: ${{ env.R2_KEY != '' }}
+        env:
+          R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
+          rclone copyto "$r-terrain.mappack" "r2:$BUCKET/$path/$r-terrain.mappack"
+          rclone copyto "$r-terrain.json" "r2:$BUCKET/$path/$r-terrain.json"
 
   catalog:
-    needs: build
+    needs: [roads, terrain]
     if: always()
     runs-on: ubuntu-latest
     env:

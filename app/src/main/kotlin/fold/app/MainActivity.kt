@@ -315,7 +315,7 @@ class MainActivity : AppCompatActivity() {
                 if (p != null && lastFix == null) {
                     val m = p.manifest
                     map?.moveCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(m.maxLat, m.maxLon, m.minLat, m.minLon), dp(40)))
-                } else if (p == null) toast("No maps yet — tap MAPS to import a .mappack")
+                } else if (p == null) toast(if (BuildConfig.ROADBOOK) "No maps yet — tap MAPS → DOWNLOAD" else "No maps yet — tap MAPS to import a .mappack")
             }
             // warm the routers in the background so the first route is instant
             try { packs.multiRouter() } catch (_: Throwable) {}
@@ -329,13 +329,17 @@ class MainActivity : AppCompatActivity() {
 
     /** Packs worth drawing for the current camera: those in view, nearest first, at most six (style size matters). */
     private fun visiblePacks(): List<Pack> {
-        val m = map ?: return packs.packs.take(6)
         val all = packs.packs
+        val roads = all.filter { !it.isTerrain }; val terrain = all.filter { it.isTerrain }
+        val m = map ?: return roads.take(6) + terrain.take(6)
         if (all.size <= 6) return all
-        val bounds = try { m.projection.visibleRegion.latLngBounds } catch (_: Throwable) { return all.take(6) }
-        val c = m.cameraPosition.target ?: return all.take(6)
-        val inView = all.filter { p -> val mf = p.manifest; mf.maxLat >= bounds.latitudeSouth && mf.minLat <= bounds.latitudeNorth && mf.maxLon >= bounds.longitudeWest && mf.minLon <= bounds.longitudeEast }
-        return inView.sortedBy { p -> val mf = p.manifest; Geo.fastDistance(c.latitude, c.longitude, (mf.minLat + mf.maxLat) / 2, (mf.minLon + mf.maxLon) / 2) }.take(6)
+        val bounds = try { m.projection.visibleRegion.latLngBounds } catch (_: Throwable) { return roads.take(6) + terrain.take(6) }
+        val c = m.cameraPosition.target ?: return roads.take(6) + terrain.take(6)
+        fun pick(list: List<Pack>): List<Pack> {
+            val inView = list.filter { p -> val mf = p.manifest; mf.maxLat >= bounds.latitudeSouth && mf.minLat <= bounds.latitudeNorth && mf.maxLon >= bounds.longitudeWest && mf.minLon <= bounds.longitudeEast }
+            return inView.sortedBy { p -> val mf = p.manifest; Geo.fastDistance(c.latitude, c.longitude, (mf.minLat + mf.maxLat) / 2, (mf.minLon + mf.maxLon) / 2) }.take(6)
+        }
+        return pick(roads) + pick(terrain)
     }
 
     private fun refreshVisiblePacks() {
@@ -389,9 +393,9 @@ class MainActivity : AppCompatActivity() {
         addUnderLabels(LineLayer("route-line", "route-src").withProperties(
             lineColor(ContextCompat.getColor(this, if (isTrack) R.color.track else R.color.route)), lineWidth(6f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND)))
         // coverage: fog over everything not in an installed pack, outlines and names of what is
-        srcFog = GeoJsonSource("fog-src", Coverage.fog(packs.packs)).also { st.addSource(it) }
-        srcCover = GeoJsonSource("cover-src", Coverage.outlines(packs.packs)).also { st.addSource(it) }
-        srcCoverLabel = GeoJsonSource("cover-label-src", Coverage.labels(packs.packs)).also { st.addSource(it) }
+        srcFog = GeoJsonSource("fog-src", Coverage.fog(packs.roadPacks)).also { st.addSource(it) }
+        srcCover = GeoJsonSource("cover-src", Coverage.outlines(packs.roadPacks)).also { st.addSource(it) }
+        srcCoverLabel = GeoJsonSource("cover-label-src", Coverage.labels(packs.roadPacks)).also { st.addSource(it) }
         st.addLayer(org.maplibre.android.style.layers.FillLayer("fog-layer", "fog-src").withProperties(
             fillColor(ContextCompat.getColor(this, R.color.ink)), fillAntialias(false),
             fillOpacity(org.maplibre.android.style.expressions.Expression.interpolate(org.maplibre.android.style.expressions.Expression.linear(), org.maplibre.android.style.expressions.Expression.zoom(),
@@ -501,7 +505,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun drawCoverage() {
-        srcFog?.setGeoJson(Coverage.fog(packs.packs)); srcCover?.setGeoJson(Coverage.outlines(packs.packs)); srcCoverLabel?.setGeoJson(Coverage.labels(packs.packs))
+        srcFog?.setGeoJson(Coverage.fog(packs.roadPacks)); srcCover?.setGeoJson(Coverage.outlines(packs.roadPacks)); srcCoverLabel?.setGeoJson(Coverage.labels(packs.roadPacks))
     }
 
     private fun drawMarks() {

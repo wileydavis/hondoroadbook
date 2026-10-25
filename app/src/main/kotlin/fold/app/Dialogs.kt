@@ -66,7 +66,7 @@ object SearchDialog {
             status.text = "Searching…"
             worker.execute {
                 val scored = ArrayList<Pair<Int, Hit>>()
-                for (p in packs.packs) {
+                for (p in packs.roadPacks) {
                     try { p.loadSearch()?.let { scored.addAll(it.queryScored(q, 20)) } } catch (_: Throwable) {}
                     if (gen != generation) return@execute
                 }
@@ -103,7 +103,7 @@ object MapsDialog {
         for (p in list) {
             val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(8), 0, ctx.dp(8)) }
             val mb = p.sizeBytes / (1024 * 1024)
-            row.addView(TextView(ctx).apply { text = "${p.name}\n${mb} MB · ${p.manifest.created}"; textSize = 17f }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(ctx).apply { text = "${p.name}\n${mb} MB · ${p.manifest.created}" + (if (p.isTerrain) " · hillshade" else ""); textSize = 17f }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             row.addView(Button(ctx).apply {
                 text = "REMOVE"; textSize = 13f
                 setOnClickListener {
