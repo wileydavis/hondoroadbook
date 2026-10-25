@@ -16,10 +16,8 @@
   "containers": [{ "class_name": "RouterContainer", "image": "./server/Dockerfile", "image_build_context": ".", "max_instances": 2, "instance_type": "standard" }],
   "durable_objects": { "bindings": [{ "name": "ROUTER", "class_name": "RouterContainer" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RouterContainer"] }],
-  // The roadbook library: `wrangler d1 create roadbook-library`, paste the printed database_id into
-  // the line below and uncomment it, then `wrangler d1 execute roadbook-library --remote --file web/schema.sql`.
-  // Until then the planner works without a library and PUBLISH / BROWSE say so.
-  // "d1_databases": [{ "binding": "DB", "database_name": "roadbook-library", "database_id": "PASTE-THE-ID-HERE" }],
+  // The roadbook library: the D1 database created in the dashboard, with web/schema.sql run in its console.
+  "d1_databases": [{ "binding": "DB", "database_name": "roadbook-library", "database_id": "69ac58ba-3033-4f01-bee6-3f274085fe5c" }],
   // Secrets (wrangler secret put …): BRAVE_KEY for the inspect panel's web search (optional),
   // ADMIN_TOKEN to hide or delete library entries, SALT for the daily upload counter.
   "routes": [
