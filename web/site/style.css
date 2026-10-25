@@ -13,12 +13,18 @@ a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset:
 .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
 header.top { display: flex; align-items: center; justify-content: space-between; padding: 22px 0 8px; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: .02em; text-decoration: none; color: var(--ink); }
-.brand .mark { width: 34px; height: 34px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
-.brand .mark svg { width: 22px; height: 22px; }
+/* the Hondo Garage octopus, as a mask so it takes the text color in both themes */
+.logo { display: inline-block; background: currentColor; -webkit-mask: url(/hondo-logo.svg) center / contain no-repeat; mask: url(/hondo-logo.svg) center / contain no-repeat; }
+.logo.small { width: 40px; height: 40px; }
+.logo.big { width: min(240px, 52vw); height: min(240px, 52vw); }
+.lockup { display: flex; flex-direction: column; align-items: center; margin: 8px 0 34px; color: var(--ink); }
+.wordmark { font-size: clamp(30px, 7vw, 46px); font-weight: 800; letter-spacing: .14em; text-transform: uppercase; margin-top: 10px; line-height: 1; }
 .brand small { display: block; font-weight: 500; color: var(--soft); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
 nav.top a { margin-left: 18px; color: var(--soft); text-decoration: none; font-size: 15px; }
 nav.top a:hover { color: var(--ink); }
-.hero { padding: 48px 0 28px; border-bottom: 1px solid var(--rule); }
+.hero { padding: 36px 0 28px; border-bottom: 1px solid var(--rule); text-align: center; }
+.hero p.lead { margin-left: auto; margin-right: auto; }
+.hero .hud { margin-left: auto; margin-right: auto; text-align: left; }
 .hero h1 { font-size: clamp(34px, 6vw, 60px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -.02em; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero p.lead { font-size: 20px; color: var(--soft); max-width: 640px; margin: 0 0 26px; }

@@ -221,7 +221,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnEnd).setOnClickListener { endNavigation() }
         findViewById<ImageButton>(R.id.btnSound).setOnClickListener {
             val on = !prefs.sound; prefs.sound = on; Tone.enabled = on; Speech.enabled = on && BuildConfig.ROADBOOK; updateSoundButton()
-            if (on) { Tone.turn(); if (BuildConfig.ROADBOOK) { if (Speech.ready) Speech.say("Sound on") else toast("Pips and chimes on. No speech engine on this phone — install one to hear the cues read aloud.", 6000) } }
+            if (on) { Tone.turn(); if (BuildConfig.ROADBOOK) { if (Speech.ready) Speech.say("Sound on") else toast("Pips and chimes on; the voice is still loading.", 4000) } }
+            else Speech.stop()
         }
         updateSoundButton()
         // orientation lock: holds the screen the way it is now, and remembers it
@@ -947,6 +948,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun endNavigation() {
+        Speech.stop()
         routeGeneration++
         route = null; follower = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); drawVias()
@@ -1161,7 +1163,7 @@ class MainActivity : AppCompatActivity() {
         if (!v.onRoute) { if (!wasOffRoute) { wasOffRoute = true; Tone.offRoute() }; return }
         if (wasOffRoute) { wasOffRoute = false; Tone.back() }
         val m = v.next ?: return
-        if (m !== cuedManeuver) { cuedManeuver = m; turnChimed = false; spoken = false; nextPipAt = 0L }
+        if (m !== cuedManeuver) { cuedManeuver = m; turnChimed = false; spoken = false; nextPipAt = 0L; if (m.turn != Turn.ARRIVE) Speech.prepare(m.phrase()) }
         if (m.turn == Turn.ARRIVE) return
         if (v.progress <= 0.0) return
         // the window just opened (~15 s out): say what is coming, then the pips take over

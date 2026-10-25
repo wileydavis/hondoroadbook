@@ -28,9 +28,11 @@ Everything under **Fold** below applies; Roadbook adds:
   the ride.
 * **Spoken cues.** With sound on, about fifteen seconds before each cue the phrase is spoken
   ("Left. onto the ranch road", a note's words, "Danger. washout"), then the pips take over; at the point:
-  chime for a turn, two soft notes for a note, a low buzz for a danger. Speech uses the phone's
-  text-to-speech engine. GrapheneOS has none by default — install one and pick it under Settings →
-  Accessibility → Text-to-speech; without one you get pips and chimes only (a toast says so).
+  chime for a turn, two soft notes for a note, a low buzz for a danger. The voice ships inside the app:
+  a Piper neural voice (en_US lessac, int8, 17 MB) run by sherpa-onnx on the phone, arm64 only. Nothing
+  to install, nothing sent anywhere. Each phrase is synthesized as soon as its cue becomes the next one,
+  so it starts instantly when the window opens. `app/src/roadbook/assets/tts/` holds the voice;
+  `PiperEngine.kt` drives it; Fold has no voice at all.
 * **Orientation lock** (padlock button, idle and while navigating): holds the screen the way it is
   now, remembered across restarts.
 * **In-app packs.** MAPS → DOWNLOAD lists the catalog at `hondoroadbook.com/packs/catalog.json`,

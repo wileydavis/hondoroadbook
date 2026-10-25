@@ -6,19 +6,23 @@
 <title>Roadbook · offline motorcycle navigation by Hondo Garage</title>
 <meta name="description" content="Roadbook is a free, open-source, offline navigation app for Android. Follow a GPX roadbook at speed with an arrow, a bar that fills to the turn, and spoken cues. No account, no tracking.">
 <link rel="stylesheet" href="/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23d8502f'/%3E%3Cpath d='M12 20V9m0 0-4 4m4-4 4 4' stroke='%23fff' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="/favicon.svg">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <a class="brand" href="/">
-      <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V9m0 0-4 4m4-4 4 4"/></svg></span>
-      <span>Roadbook<small>Hondo Garage</small></span>
+      <span class="logo small" role="img" aria-label="Hondo Garage"></span>
+      <span>Roadbook<small>by Hondo Garage</small></span>
     </a>
     <nav class="top"><a href="#how">How it works</a><a href="#packs">Map packs</a><a href="#install">Install</a><a href="https://github.com/wileydavis/hondoroadbook">Source</a></nav>
   </header>
 
   <div class="hero">
+    <div class="lockup">
+      <span class="logo big" role="img" aria-label="Hondo Garage octopus"></span>
+      <div class="wordmark">Roadbook</div>
+    </div>
     <h1>Ride the roadbook.<br><em>Never look down.</em></h1>
     <p class="lead">Offline turn-by-turn for motorcycles, on Android. Record a pre-run, drop cues and notes where they matter, then ride it at speed: an arrow, a bar that fills exactly to the turn, pips in your helmet, and the cue read aloud. No account. No tracking. No signal needed.</p>
     <a class="cta" id="dl" href="https://github.com/wileydavis/hondoroadbook/releases/latest/download/roadbook.apk">Download roadbook.apk <small>Android 10+</small></a>
@@ -36,10 +40,10 @@
     <div class="grid">
       <div class="card"><h3>1 · Pre-run and record</h3><p>Tap record, ride the course. Stop at every turn and hazard and tap <b>CUE</b>: pick the arrow, say what it is. The track and its cues are saved as one GPX.</p></div>
       <div class="card"><h3>2 · Or plan it at the table</h3><p>Route to a destination in any of seven modes (Fast, Towing, Backroads, Dirt, Ride, Quiet, Gravel) and save it. The router's turns are already in the file as cues; open it under <b>TRACK → EDIT CUES</b> and add your own.</p></div>
-      <div class="card"><h3>3 · Ride it</h3><p>About fifteen seconds out the cue is spoken, then pips rise in pitch and quicken as the bar fills; a chime at the turn. Notes are read aloud; hazards get a low buzz. Speech needs a text-to-speech engine on the phone; pips never do.</p></div>
+      <div class="card"><h3>3 · Ride it</h3><p>About fifteen seconds out the cue is spoken, then pips rise in pitch and quicken as the bar fills; a chime at the turn. Notes are read aloud; hazards get a low buzz. The voice is built into the app (a Piper neural voice running on the phone), so nothing needs installing and nothing leaves the phone.</p></div>
       <div class="card"><h3>Offline, by design</h3><p>Maps, routing and search live on the phone. The only network use is downloading map packs from this site. GrapheneOS friendly: the app asks for location and nothing else.</p></div>
       <div class="card"><h3>Built for a glove</h3><p>Round buttons, big HUD, tap the map to cycle whole-route / next-turn / close-up. An orientation lock holds the screen the way your mount sits. Sound goes out as navigation audio, so Bluetooth helmets get it.</p></div>
-      <div class="card"><h3>Open source</h3><p>Apache-licensed Kotlin. The same code ships as <b>Fold</b>, a stripped-down private version with no network permission at all.</p></div>
+      <div class="card"><h3>Open source</h3><p>Apache-licensed Kotlin, voice by <a href="https://github.com/rhasspy/piper">Piper</a> and <a href="https://github.com/k2-fsa/sherpa-onnx">sherpa-onnx</a>. The same code ships as <b>Fold</b>, a stripped-down private version with no network permission at all.</p></div>
     </div>
   </section>
 
@@ -57,7 +61,7 @@
       <li>Open it from the browser's downloads or the Files app. Allow installing from that app when Android asks, then <b>Install</b>.</li>
       <li>Open Roadbook, allow <b>Precise location</b> (while using the app). Allow notifications if you want the recording indicator while the screen is off.</li>
       <li><b>MAPS → DOWNLOAD</b> and pick your states. A big rural state is about half a gigabyte.</li>
-      <li>Optional, for spoken cues: GrapheneOS ships no speech engine. Install one (for example <a href="https://github.com/rhasspy/piper">Piper</a> via an Android TTS wrapper, or any engine from a store you trust), choose it under Settings → Accessibility → Text-to-speech, and Roadbook will use it. Without one you still get the pips and chimes.</li>
+      <li>Turn on sound with the speaker button while navigating. The voice ships inside the app; pair a helmet headset or car stereo and the cues arrive as navigation audio.</li>
     </ol>
     <h3 style="margin-top:28px">The GPX convention</h3>
     <p class="muted">A cue is a waypoint whose <code>&lt;type&gt;</code> names it; <code>&lt;desc&gt;</code> carries the words. Any GPX editor can write these.</p>

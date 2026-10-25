@@ -37,11 +37,18 @@ android {
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     sourceSets["main"].java.srcDirs("src/main/kotlin")
-    packaging { resources.excludes += setOf("META-INF/*.md", "META-INF/LICENSE*", "META-INF/NOTICE*") }
+    sourceSets["fold"].java.srcDirs("src/fold/kotlin")
+    sourceSets["roadbook"].java.srcDirs("src/roadbook/kotlin")
+    packaging {
+        resources.excludes += setOf("META-INF/*.md", "META-INF/LICENSE*", "META-INF/NOTICE*")
+        jniLibs.useLegacyPackaging = true     // compressed native libs: the voice runtime is 31 MB raw
+    }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
     implementation(project(":core"))
+    // Roadbook speaks with a bundled Piper voice through sherpa-onnx (offline, arm64 only)
+    "roadbookImplementation"("com.k2fsa.sherpa.onnx:sherpa-onnx:1.13.7@aar")
     implementation("org.maplibre.gl:android-sdk-opengl:13.7.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.core:core-ktx:1.16.0")
