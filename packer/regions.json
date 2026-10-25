@@ -12,7 +12,9 @@
   "path": "us",
   "pbf": "north-america/us/alaska-latest.osm.pbf",
   "geofabrik": "us/alaska",
-  "max_zoom": 13
+  "max_zoom": 13,
+  "terrain_zoom": 11,
+  "notes": "terrain at zoom 11: the state is a fifth of the country"
  },
  "arizona": {
   "name": "Arizona",

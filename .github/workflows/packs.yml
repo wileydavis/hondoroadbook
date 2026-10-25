@@ -105,7 +105,10 @@ jobs:
           cat "$r-roads.json"
       - name: Publish to the packs release
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-roads.mappack" "${{ matrix.region }}-roads.json"
+        # the pack first, the sidecar only once the pack is really there: a failed upload must not reach the catalog
+        run: |
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-roads.mappack"
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-roads.json"
       - name: Also copy to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         env:
@@ -166,7 +169,9 @@ jobs:
           cat "$r-terrain.json"
       - name: Publish to the packs release
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-terrain.mappack" "${{ matrix.region }}-terrain.json"
+        run: |
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-terrain.mappack"
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber "${{ matrix.region }}-terrain.json"
       - name: Also copy to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         env:
