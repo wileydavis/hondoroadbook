@@ -1344,6 +1344,8 @@ class MainActivity : AppCompatActivity() {
         if (!BuildConfig.ROADBOOK) return
         val on = Recorder.running
         recStrip.visibility = if (on && mode != Mode.COMPARE && mode != Mode.PIN) View.VISIBLE else View.GONE
+        // keep the night/locate/lock stack clear of the strip
+        findViewById<View>(R.id.navSide).let { v -> (v.layoutParams as android.widget.FrameLayout.LayoutParams).bottomMargin = dp(if (recStrip.visibility == View.VISIBLE) 152 else 104); v.requestLayout() }
         findViewById<ImageButton>(R.id.btnRec).imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, if (on) R.color.accent else R.color.ink))
         if (on) {
             val s = Recorder.elapsedMs / 1000
