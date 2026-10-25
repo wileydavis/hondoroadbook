@@ -1,3 +1,6 @@
+import java.time.ZonedDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android {
     namespace = "fold.app"
@@ -7,9 +10,9 @@ android {
         minSdk = 29
         targetSdk = 35
         // every build is a newer version: yyMMddHH, so installing over an older APK is always an update
-        val stamp = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
-        versionCode = stamp.format(java.time.format.DateTimeFormatter.ofPattern("yyMMddHH")).toInt()
-        versionName = "0.1." + stamp.format(java.time.format.DateTimeFormatter.ofPattern("yyMMdd.HHmm"))
+        val stamp = ZonedDateTime.now(ZoneOffset.UTC)
+        versionCode = stamp.format(DateTimeFormatter.ofPattern("yyMMddHH")).toInt()
+        versionName = "0.1." + stamp.format(DateTimeFormatter.ofPattern("yyMMdd.HHmm"))
         ndk { abiFilters += listOf("arm64-v8a") }
     }
     buildFeatures { buildConfig = true }
