@@ -61,6 +61,10 @@ the cues only (no timestamps, no extensions, no device names).
 2. **R2 API token** for the workflow. R2 → Manage R2 API Tokens → Create → *Object Read & Write*,
    scoped to `roadbook-packs`. Put its values in the GitHub repo (Settings → Secrets and variables →
    Actions): `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_ACCOUNT_ID` (shown on the R2 overview page).
+   **This matters for speed**: without the mirror every byte range the planner's map and the routing
+   container ask for goes through GitHub's release storage (a second or two each); from R2 it is tens of
+   milliseconds. Once the secrets exist, run Actions → *mirror* once to copy what is already built; every
+   pack run mirrors its own output from then on. The site serves from R2 first and the release second.
 3. **Worker.** The Worker you connected to the repo deploys with `npx wrangler deploy` from the repo
    root; leave the build command empty. Under the Worker's Settings → Domains & Routes make sure
    `hondoroadbook.com` and `www.hondoroadbook.com` are custom domains (the config asks for them, so

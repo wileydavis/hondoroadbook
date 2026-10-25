@@ -1,0 +1,54 @@
+# Copies everything on the rolling "packs" release into the R2 bucket, so the site, the planner's map
+# and the routing container read from Cloudflare instead of GitHub (tens of milliseconds a range
+# instead of a second or two). Run once after setting the R2_* secrets; the packs workflow mirrors
+# every build it makes from then on. Safe to rerun: only changed files are copied.
+name: mirror
+
+on:
+  workflow_dispatch:
+
+env:
+  RELEASE_TAG: packs
+  BUCKET: roadbook-packs
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the secrets are there
+        run: |
+          [ -n "${{ secrets.R2_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.R2_SECRET_ACCESS_KEY }}" ] && [ -n "${{ secrets.R2_ACCOUNT_ID }}" ] || { echo "Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_ACCOUNT_ID in the repository secrets first (web/README.md)"; exit 1; }
+      - name: Free disk
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+      - name: Copy every release asset to the bucket, one at a time, under its catalog path
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name)\t\(.size)"' > assets.tsv
+          wc -l assets.tsv
+          while IFS=$'\t' read -r name size; do
+            case "$name" in
+              catalog.json|na-overview.pmtiles) key="$name" ;;
+              *) r="${name%-roads.*}"; r="${r%-terrain.*}"; r="${r%-imagery.*}"
+                 path=$(jq -r --arg r "$r" '.[$r].path // empty' packer/regions.json)
+                 [ -n "$path" ] || { echo "skip $name: no region"; continue; }
+                 key="$path/$name" ;;
+            esac
+            # already there at the same size? rclone compares size (and modtime) and skips the copy
+            have=$(rclone lsjson "r2:$BUCKET/$key" 2>/dev/null | jq -r '.[0].Size // 0')
+            if [ "$have" = "$size" ]; then echo "ok   $key"; continue; fi
+            echo "copy $key ($size bytes)"
+            gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p "$name" -O "$name" --clobber
+            rclone copyto "$name" "r2:$BUCKET/$key" --s3-chunk-size 64M --s3-upload-concurrency 4
+            rm -f "$name"
+          done < assets.tsv
+          rclone lsjson "r2:$BUCKET" --recursive | jq -r '.[] | "\(.Size)\t\(.Path)"' | sort -k2 | tail -n +1 | awk -F'\t' '{s+=$1} END {print NR " objects, " s/1e9 " GB"}'
