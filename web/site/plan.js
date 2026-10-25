@@ -51,6 +51,7 @@ const S = {
   mode: "DIRT", pts: [], route: null, track: null,
   cues: [],            // {lon,lat,turn,level,text,auto:boolean,at}
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
+  elastic: null,
   night: matchMedia("(prefers-color-scheme: dark)").matches, terrain: true, land: false, imagery: false, library: false,
   catalog: null, activePacks: new Set(), overview: new Map(), markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
@@ -113,6 +114,7 @@ async function updatePacks(force) {
 function applyStyle() {
   const style = buildStyle();
   map.setStyle(style, { diff: true });
+  roadLayerIds = null;
 }
 
 function buildStyle() {
@@ -132,6 +134,7 @@ function buildStyle() {
   sources.library = { type: "geojson", data: S.library && S.libraryData ? S.libraryData : { type: "FeatureCollection", features: [] } };
   sources.route = { type: "geojson", data: routeGeo() };
   sources.unpaved = { type: "geojson", data: unpavedGeo() };
+  sources.elastic = { type: "geojson", data: S.elastic || { type: "FeatureCollection", features: [] } };
 
   let hillDone = false;
   for (const layer of template) {
@@ -161,6 +164,9 @@ function buildStyle() {
     { id: "route_line", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 6, 16, 9] } },
     { id: "route_unpaved", type: "line", source: "unpaved", layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": night ? "#fff" : "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 2, 16, 3], "line-dasharray": [2, 2.5], "line-opacity": 0.9 } },
     { id: "route_hit", type: "line", source: "route", paint: { "line-color": "#000", "line-width": 22, "line-opacity": 0.001 } },
+    // the rubber band while dragging: straight lines from the neighbouring stops to the cursor
+    { id: "elastic_casing", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": 7, "line-opacity": 0.8 } },
+    { id: "elastic_line", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": 4, "line-dasharray": [1.5, 1.5] } },
   ];
   layers.splice(at, 0, ...ours);
   layers.push({ id: "coverage_label", type: "symbol", source: "coverage", maxzoom: 5, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-transform": "uppercase", "text-letter-spacing": 0.1 }, paint: { "text-color": night ? "#aaa" : "#666", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1 } });
@@ -237,10 +243,20 @@ function renderPoints() {
     el.textContent = i === 0 ? "A" : last ? "B" : "";
     el.title = i === 0 ? "Start — drag to move, click to delete" : last ? "Finish — drag to move, click to delete" : "Stop — drag to move, click to delete";
     const mk = new maplibregl.Marker({ element: el, draggable: true }).setLngLat([p.lon, p.lat]).addTo(map);
-    let moved = false;
-    mk.on("dragstart", () => { moved = true; });
-    mk.on("drag", () => { const ll = mk.getLngLat(); S.pts[i] = { lon: ll.lng, lat: ll.lat }; previewRoute(); });
-    mk.on("dragend", () => { const ll = mk.getLngLat(); S.pts[i] = { lon: ll.lng, lat: ll.lat }; reroute(); });
+    let moved = false, snapped = null;
+    mk.on("dragstart", () => { moved = true; abortInflight(); fadeRoute(true); el.classList.add("dragging"); });
+    mk.on("drag", () => {
+      const ll = mk.getLngLat(); const sn = snapOnScreen(map.project(ll)); snapped = sn;
+      const at = sn ? [sn.lon, sn.lat] : [ll.lng, ll.lat];
+      el.classList.toggle("snapped", !!sn); el.title = sn ? snapLabel(sn) : "";
+      const prev = S.pts[i - 1], next = S.pts[i + 1];
+      setElastic([prev && [prev.lon, prev.lat], at, next && [next.lon, next.lat]].filter(Boolean));
+    });
+    mk.on("dragend", () => {
+      const ll = mk.getLngLat(); const at = snapped || { lon: ll.lng, lat: ll.lat };
+      S.pts[i] = { lon: at.lon, lat: at.lat }; mk.setLngLat([at.lon, at.lat]); el.classList.remove("dragging", "snapped");
+      reroute();
+    });
     el.addEventListener("click", e => { e.stopPropagation(); if (moved) { moved = false; return; } S.pts.splice(i, 1); afterPointsChange(); });
     S.markers.push(mk);
   });
@@ -250,7 +266,7 @@ function afterPointsChange() {
   S.track = null;
   renderPoints();
   if (S.pts.length >= 2) reroute();
-  else { S.route = null; abortInflight(); refreshRouteSources(); renderCues(); renderStats(); }
+  else { S.route = null; abortInflight(); refreshRouteSources(); setElastic(null); renderCues(); renderStats(); }
   saveHash();
 }
 
@@ -264,12 +280,48 @@ async function callRoute(pts, signal) {
   return j;
 }
 
-let previewT = 0;
-/** While dragging: a quick re-route at most every 350 ms, never blocking the drag. */
-function previewRoute() {
-  const now = Date.now(); if (now - previewT < 350) return; previewT = now;
-  abortInflight(); const ac = new AbortController(); S.inflight = ac;
-  callRoute(S.pts, ac.signal).then(j => { if (S.inflight === ac) { S.inflight = null; setRoute(j, true); } }).catch(() => {});
+// ---- dragging: a rubber band drawn locally, a snap to the roads on screen, one route on release ----------------------
+function setElastic(coords) {
+  S.elastic = coords ? { type: "FeatureCollection", features: [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }] } : null;
+  const src = map.getSource("elastic"); if (src) src.setData(S.elastic || { type: "FeatureCollection", features: [] });
+}
+function fadeRoute(on) {
+  for (const [id, v] of [["route_line", 1], ["route_casing", 0.9], ["route_unpaved", 0.9]]) if (map.getLayer(id)) map.setPaintProperty(id, "line-opacity", on ? v * 0.3 : v);
+}
+let roadLayerIds = null;
+/** The nearest road or trail drawn on screen within `px` pixels of a point: no round trip, the same data the router uses. */
+function snapOnScreen(point, px = 14) {
+  if (!roadLayerIds) roadLayerIds = map.getStyle().layers.filter(l => l.type === "line" && (l["source-layer"] === "roads") && /^fold_/.test(l.id)).map(l => l.id);
+  const ids = roadLayerIds.filter(id => map.getLayer(id)); if (!ids.length) return null;
+  let feats;
+  try { feats = map.queryRenderedFeatures([[point.x - px, point.y - px], [point.x + px, point.y + px]], { layers: ids }); } catch { return null; }
+  let best = null, bd = px + 1;
+  for (const f of feats) {
+    const g = f.geometry; const lines = g.type === "LineString" ? [g.coordinates] : g.type === "MultiLineString" ? g.coordinates : [];
+    for (const line of lines) {
+      let prev = map.project(line[0]);
+      for (let i = 1; i < line.length; i++) {
+        const cur = map.project(line[i]);
+        const dx = cur.x - prev.x, dy = cur.y - prev.y; const l2 = dx * dx + dy * dy;
+        let t = l2 ? ((point.x - prev.x) * dx + (point.y - prev.y) * dy) / l2 : 0; t = Math.max(0, Math.min(1, t));
+        const x = prev.x + t * dx, y = prev.y + t * dy; const d = Math.hypot(point.x - x, point.y - y);
+        if (d < bd) { bd = d; best = { x, y, name: f.properties && (f.properties.name || f.properties.ref) || "", kind: f.properties && f.properties.kind || "" }; }
+        prev = cur;
+      }
+    }
+  }
+  if (!best) return null;
+  const ll = map.unproject([best.x, best.y]);
+  return { lon: ll.lng, lat: ll.lat, name: best.name, kind: best.kind };
+}
+const KIND_WORDS = { path: "trail", track: "two-track", minor: "road", service: "road", highway: "highway", major: "road", medium: "road", rail: "rail" };
+function snapLabel(sn) { return sn.name || KIND_WORDS[sn.kind] || sn.kind || "road"; }
+function ghostMarker(lngLat) {
+  const el = document.createElement("div"); el.className = "marker-pt via ghost"; el.style.pointerEvents = "none";
+  const tag = document.createElement("div"); tag.className = "ghost-tag"; el.appendChild(tag);
+  const mk = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
+  mk.tag = (t) => { tag.textContent = t; tag.hidden = !t; el.classList.toggle("snapped", !!t); };
+  return mk;
 }
 
 async function reroute() {
@@ -283,7 +335,7 @@ async function reroute() {
     $("#status").hidden = true;
   } catch (e) {
     if (e.name === "AbortError") return;
-    S.inflight = null;
+    S.inflight = null; setElastic(null); fadeRoute(false);
     status(e.message, true);
   }
 }
@@ -291,7 +343,7 @@ async function reroute() {
 /** Takes a router answer. Auto cues are replaced; the user's own cues stay if they still touch the line. */
 function setRoute(j, preview) {
   S.route = j; S.track = null;
-  refreshRouteSources();
+  refreshRouteSources(); setElastic(null); fadeRoute(false);
   if (preview) return;
   // the points sit where the router put them: on the road or trail it found, not in the sagebrush beside it
   if (j.snapped && j.snapped.length === S.pts.length) S.pts = j.snapped.map(p => ({ lon: p.lon, lat: p.lat }));
@@ -412,22 +464,25 @@ function bindMap() {
     // which leg was grabbed decides where the new stop goes in the order
     const { index } = alongLine(S.route.coords, [lngLat.lng, lngLat.lat]);
     let leg = S.route.legs.findIndex(l => index > l.start && index <= l.end); if (leg < 0) leg = S.route.legs.length - 1;
-    const el = document.createElement("div"); el.className = "marker-pt via ghost"; el.style.pointerEvents = "none";
-    drag = { leg, insertAt: leg + 1, start: point, ghost: new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map), moved: false, pts: S.pts.slice() };
+    drag = { leg, insertAt: leg + 1, start: point, ghost: ghostMarker(lngLat), moved: false, pts: S.pts.slice(), snapped: null };
     map.dragPan.disable(); map.getCanvas().style.cursor = "grabbing";
     return true;
   };
   const move = (point, lngLat) => {
     if (!drag) return;
     if (!drag.moved && Math.hypot(point.x - drag.start.x, point.y - drag.start.y) < 4) return;
-    drag.moved = true; drag.ghost.setLngLat(lngLat);
-    S.pts = drag.pts.slice(); S.pts.splice(drag.insertAt, 0, { lon: lngLat.lng, lat: lngLat.lat });
-    previewRoute();
+    if (!drag.moved) { abortInflight(); fadeRoute(true); }
+    drag.moved = true;
+    const sn = snapOnScreen(point); drag.snapped = sn;
+    const at = sn ? [sn.lon, sn.lat] : [lngLat.lng, lngLat.lat];
+    drag.ghost.setLngLat(at); drag.ghost.tag(sn ? snapLabel(sn) : "");
+    const prev = drag.pts[drag.insertAt - 1], next = drag.pts[drag.insertAt];
+    setElastic([prev && [prev.lon, prev.lat], at, next && [next.lon, next.lat]].filter(Boolean));
   };
   const end = (lngLat) => {
     if (!drag) return;
     map.dragPan.enable(); map.getCanvas().style.cursor = ""; drag.ghost.remove();
-    if (drag.moved) { S.pts = drag.pts.slice(); S.pts.splice(drag.insertAt, 0, { lon: lngLat.lng, lat: lngLat.lat }); afterPointsChange(); }
+    if (drag.moved) { const at = drag.snapped || { lon: lngLat.lng, lat: lngLat.lat }; S.pts = drag.pts.slice(); S.pts.splice(drag.insertAt, 0, { lon: at.lon, lat: at.lat }); afterPointsChange(); }
     else { S.pts = drag.pts; }
     drag = null;
   };

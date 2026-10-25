@@ -106,7 +106,10 @@ button.icon:hover { border-color: var(--soft); }
 .marker-pt { z-index: 3; width: 26px; height: 26px; border-radius: 13px; background: var(--ink); color: var(--paper); font: 700 13px/26px var(--sans); text-align: center; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); cursor: grab; user-select: none; }
 .marker-pt.a { background: #16a34a; } .marker-pt.b { background: #dc2626; }
 .marker-pt.via { width: 18px; height: 18px; border-radius: 9px; font-size: 0; background: #fff; border: 3px solid var(--ink); }
-.marker-pt.ghost { opacity: .7; }
+.marker-pt.ghost { opacity: .8; position: relative; }
+.marker-pt.snapped { border-color: var(--accent); opacity: 1; }
+.marker-pt.dragging { cursor: grabbing; }
+.ghost-tag { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--paper); font: 600 12px/1 var(--sans); padding: 5px 8px; border-radius: 8px; pointer-events: none; }
 .marker-cue { z-index: 2; width: 30px; height: 30px; padding: 2px; border-radius: 15px; background: var(--card); border: 2px solid var(--ink); box-shadow: 0 1px 5px rgba(0,0,0,.3); cursor: pointer; --card: #fff; --ink: #1b1b1b; --accent: #d8502f; }
 .marker-cue.danger { border-color: var(--accent); }
 .marker-cue.user { border-color: var(--track); }
