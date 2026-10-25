@@ -247,7 +247,6 @@ class MainActivity : AppCompatActivity() {
         // Roadbook: pre-run recording and cue authoring
         panelEdit = findViewById(R.id.panelEdit); recStrip = findViewById(R.id.recStrip); recStatus = findViewById(R.id.recStatus)
         if (BuildConfig.ROADBOOK) {
-            findViewById<ImageButton>(R.id.btnRec).visibility = View.VISIBLE
             findViewById<ImageButton>(R.id.btnRec).setOnClickListener { startRecording() }
             findViewById<Button>(R.id.btnRecCue).setOnClickListener { addCueHere() }
             findViewById<Button>(R.id.btnRecStop).setOnClickListener { stopRecording() }
@@ -1179,7 +1178,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchMode(m: Mode) {
         mode = m
-        panelIdle.visibility = if (m == Mode.IDLE) View.VISIBLE else View.GONE
+        panelIdle.visibility = View.GONE          // the old small buttons stay hidden; the glove menu drives them
         panelPin.visibility = if (m == Mode.PIN) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnVia).visibility = if (m == Mode.PIN && destination != null && !isTrack) View.VISIBLE else View.GONE
         panelNav.visibility = if (m == Mode.NAV) View.VISIBLE else View.GONE
