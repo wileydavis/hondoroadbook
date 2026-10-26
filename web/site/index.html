@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Roadbook · plan your own route, keep your eyes up · Hondo Garage</title>
-<meta name="description" content="Free route planning and offline Android navigation for motorcycle rides and overland travel. Shape your route, add your roadbook cues, and follow it with spoken directions, rising pips, and controls built for gloved hands.">
+<meta name="description" content="Free route planning and offline Android navigation for motorcycles and overland trips. Build your roadbook, then follow it with spoken cues, rising pips, and big controls for gloved hands.">
 <meta property="og:title" content="Roadbook — plan your own route, keep your eyes up">
-<meta property="og:description" content="Free route planning and offline Android navigation for motorcycle rides and overland travel. No account, nothing tracked.">
+<meta property="og:description" content="Free route planning and offline Android navigation for motorcycles and overland trips. No account, nothing tracked.">
 <meta property="og:image" content="https://hondoroadbook.com/img/feat-hero.jpg">
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="/favicon.svg">
@@ -23,7 +23,7 @@
     <div class="hero2-text">
       <p class="eyebrow">Built for the bars and the dashboard</p>
       <h1>Plan your own route.<br><em>Keep your eyes up.</em></h1>
-      <p class="lead">Free route planning and offline Android navigation for motorcycle rides and overland travel. Shape your route, add your roadbook cues, and follow it with spoken directions, rising audio pips, and controls built for gloved hands. The app routes on its own, offline, when the plan changes.</p>
+      <p class="lead">Free route planning and offline Android navigation for motorcycles and overland trips. Build your roadbook, then follow it with spoken cues, rising pips, and big controls for gloved hands.</p>
       <p class="ctas"><a class="cta" href="/plan.html">Open the free planner</a><a class="cta alt" href="#get">Get the Android app</a></p>
       <p class="fine">Free to use. No account. Android 10+. Download your regional maps before heading out.</p>
     </div>
@@ -37,8 +37,9 @@
   <section id="hear" class="demo">
     <div class="demo-text">
       <h2>Hear the turn coming.</h2>
-      <p class="sub">About fifteen seconds out the cue is spoken. Then short pips rise one octave and come faster as the arrow fills. A two-note chime at the turn. Play one approach — the pips and chime are the app's own sounds, synthesized here the same way; your browser's voice stands in for the app's.</p>
+      <p class="sub">Hear the cue, then follow the rising pips as the turn approaches. A chime marks the turn.</p>
       <p><button class="cta" id="demoPlay" type="button">▶ Play a turn</button> <span id="demoCap" class="muted small" aria-live="polite"></span></p>
+      <p class="fine">Demo uses your browser's voice. Pips and chime match the app.</p>
     </div>
     <div class="hud-demo" id="hudDemo" aria-hidden="true">
       <svg viewBox="0 0 100 100" width="84" height="84"><defs><clipPath id="fillClip"><rect id="fillRect" x="0" y="100" width="100" height="100"/></clipPath></defs>
@@ -55,12 +56,10 @@
     <h2>Built for use in a vehicle.</h2>
     <p class="sub">The riding screen stays simple: the next cue, the distance to it, the road. Everything else waits behind one big button.</p>
     <div class="benefits">
-      <figure><img src="/img/phone-cuepick.png" alt="The cue picker: arrows, note, danger" loading="lazy"><figcaption><b>Your cues, when you need them.</b> Turns, notes and hazards, placed where they matter along your route.</figcaption></figure>
-      <figure><img src="/img/phone-night.png" alt="Night mode with a spoken cue" loading="lazy"><figcaption><b>Hear the approach.</b> Spoken cues, rising pips and a chime at the turn — to a helmet headset or the stereo.</figcaption></figure>
-      <figure><img src="/img/phone-menu.png" alt="The glove menu while navigating" loading="lazy"><figcaption><b>Built for gloved hands.</b> Extra-large controls and a simple menu make the essentials easy to reach.</figcaption></figure>
-      <figure><img src="/img/phone-hero.png" alt="The riding screen: next cue, distance, the route" loading="lazy"><figcaption><b>Read it at a glance.</b> Your next cue, the distance to it, and a clear view of the route.</figcaption></figure>
+      <figure><img src="/img/phone-hero.png" alt="The riding screen: left in 350 ft onto Dry Creek Road, the route ahead" loading="lazy" width="560" height="1120"><figcaption><b>Your cues, at a glance.</b> The next cue, the distance to it, and a clear view of the route — heading-up, next turn on top.</figcaption></figure>
+      <figure><img src="/img/phone-menu.png" alt="The menu while navigating: End, Sound, Add cue here, Record, Night map, Locate, Lock screen" loading="lazy" width="560" height="1120"><figcaption><b>Built for gloved hands.</b> One button opens a menu of extra-large controls. The essentials, nothing to hunt for.</figcaption></figure>
       <figure class="tapdemo">
-        <div class="fakephone" id="tapPhone" role="button" tabindex="0" aria-label="Tap to cycle the three riding views">
+        <div class="fakephone" id="tapPhone" role="button" tabindex="0" aria-label="Tap to cycle the three riding views" aria-describedby="tapStatus">
           <svg viewBox="0 0 280 560" width="100%" aria-hidden="true">
             <rect width="280" height="560" fill="#f4efe6"/>
             <g id="tapWorld" style="transform-origin:0 0">
@@ -82,59 +81,43 @@
               <text x="70" y="58" font-size="13" fill="#5a5a5a" font-family="Inter, system-ui, sans-serif">Dry Creek Road</text></g>
             <!-- the view's name and the buzz -->
             <g transform="translate(14 500)"><rect width="252" height="40" rx="12" fill="#fff" stroke="#e2dccf"/><text id="tapLabel" x="126" y="25" text-anchor="middle" font-size="14" font-weight="700" fill="#1b1b1b" font-family="Inter, system-ui, sans-serif">Tap the map</text></g>
-            <circle cx="140" cy="530" r="0" fill="#000" opacity="0"/>
           </svg>
         </div>
-        <figcaption><b>One tap to zoom.</b> Tap the map while moving to loop whole route → next turn → close up. A buzz tells you which view you landed in, so you don't have to look. <i>Try it on the phone above.</i></figcaption>
+        <p class="tapstatus" id="tapStatus" role="status" aria-live="polite">Try it: tap the map</p>
+        <figcaption><b>One tap changes the view.</b> Cycle between the next turn, a close-up, and the whole route. Each view has its own buzz, so you know where you landed without looking.</figcaption>
       </figure>
     </div>
     <div class="roadbook-def">
-      <h3>What's a roadbook?</h3>
-      <p>Your route, with turns, notes and hazards placed along the way. Three cues from one:</p>
-      <ul class="cues-ex">
-        <li><svg viewBox="0 0 100 100" width="36" height="36"><path d="M68 92 L68 48 Q68 32 52 32 L26 32 M34 20 L22 32 L34 44" fill="none" stroke="#d8502f" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Left</b> onto Dry Creek Road</span><em>2.4 mi</em></li>
-        <li><svg viewBox="0 0 100 100" width="36" height="36"><circle cx="50" cy="50" r="30" fill="none" stroke="#d8502f" stroke-width="10"/><path d="M50 36 v4 M50 48 v18" stroke="#d8502f" stroke-width="10" stroke-linecap="round"/></svg><span><b>Note</b> last fuel for 90 miles — Town Pump, on the right</span><em>6.1 mi</em></li>
-        <li><svg viewBox="0 0 100 100" width="36" height="36"><path d="M50 18 L84 78 L16 78 Z" fill="#d8502f"/><path d="M50 40 v18 M50 66 v4" stroke="#fff" stroke-width="9" stroke-linecap="round"/></svg><span><b>Danger</b> washout after the cattle guard</span><em>11 mi</em></li>
-      </ul>
-      <p class="muted small">The app's router writes the turns for you; you add the notes and hazards that make it yours. It's an ordinary GPX file — yours to keep, share or edit.</p>
+      <div>
+        <h3>What's a roadbook?</h3>
+        <p>Your route, with turns, notes and hazards placed along the way. Three cues from one:</p>
+        <ul class="cues-ex">
+          <li><svg viewBox="0 0 100 100" width="36" height="36"><path d="M68 92 L68 48 Q68 32 52 32 L26 32 M34 20 L22 32 L34 44" fill="none" stroke="#d8502f" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Left</b> onto Dry Creek Road</span><em>2.4 mi</em></li>
+          <li><svg viewBox="0 0 100 100" width="36" height="36"><circle cx="50" cy="50" r="30" fill="none" stroke="#d8502f" stroke-width="10"/><path d="M50 36 v4 M50 48 v18" stroke="#d8502f" stroke-width="10" stroke-linecap="round"/></svg><span><b>Note</b> last fuel for 90 miles — Town Pump, on the right</span><em>6.1 mi</em></li>
+          <li><svg viewBox="0 0 100 100" width="36" height="36"><path d="M50 18 L84 78 L16 78 Z" fill="#d8502f"/><path d="M50 40 v18 M50 66 v4" stroke="#fff" stroke-width="9" stroke-linecap="round"/></svg><span><b>Danger</b> washout after the cattle guard</span><em>11 mi</em></li>
+        </ul>
+        <p class="muted small">The router writes the turns for you; you add the notes and hazards that make it yours — at the desk, or from the bars with <b>ADD CUE HERE</b>. It's an ordinary GPX file: yours to keep, share or edit.</p>
+      </div>
+      <figure class="cuepick"><img src="/img/phone-cuepick.png" alt="Adding a cue on the phone: a grid of turn arrows, note and danger, with a line of text" loading="lazy" width="560" height="1120"><figcaption>Adding a cue from the phone</figcaption></figure>
     </div>
   </section>
 
   <!-- 4 · make the route yours -->
   <section id="planner" class="plan">
-    <div class="plan-text">
-      <h2>You choose the roads. Hondo helps connect them.</h2>
-      <p class="sub">Start with a route, then make it yours. Pull the line onto the roads you want, inspect the terrain and surface, and add the cues you'll want along the way. Save the roadbook and take it with you.</p>
-      <ol class="steps">
-        <li><b>Start with a route.</b> Click two points; pick Fast, Backroads, Dirt, Towing, or a bike mode.</li>
-        <li><b>Notice an interesting road.</b> Terrain, land ownership and the surface bar show what it is.</li>
-        <li><b>Inspect it.</b> Aerial imagery, what the map knows about the road, fuel, food and camping nearby, the web searched by section.</li>
-        <li><b>Pull the route through it.</b> Drag the line onto any road or trail; the cues rewrite themselves.</li>
-        <li><b>Add a note.</b> A finding becomes a cue at that spot, link included. Paste a coordinate from anywhere.</li>
-        <li><b>Take it to the phone.</b> <i>Send to phone</i> gives a six-letter code; in the app, <b>TRACK → FETCH CODE</b>. Or download the GPX.</li>
-      </ol>
-      <p class="ctas"><a class="cta" href="/plan.html">Open the planner</a> <a class="cta alt" href="/plan.html#m=DIRT&amp;p=-111.0429,45.677;-110.78,45.85">Try an example route</a></p>
-      <p class="fine">The example is a dirt loop out of Bozeman; everything in it can be dragged, inspected and edited, then cleared for your own.</p>
-      <div class="callout"><b>And when the plan changes on the road,</b> the app routes by itself, offline: pick a new destination on the map, compare seven ways to get there side by side, add a stop, reroute when you want to. The same router and the same maps as the planner, on the phone, with no signal.</div>
-    </div>
+    <h2>You choose the roads. Hondo helps connect them.</h2>
+    <p class="sub">Start with a route, then make it yours. Pull the line onto the roads you want, check what they are, add the cues you'll want along the way, and take the roadbook with you.</p>
+    <ol class="stages">
+      <li><b>Shape the route.</b> Click two points and pick a mode — Fast, Backroads, Dirt, Towing, or a bike mode. Then drag the line onto the roads you want; the cues rewrite themselves.</li>
+      <li><b>Inspect and annotate.</b> Terrain, surface and land ownership along the way. Aerial imagery, what the map knows, fuel, food and camping nearby. A finding becomes a cue at that spot, link included.</li>
+      <li><b>Take it with you.</b> <i>Send to phone</i> gives a six-letter code, and <b>TRACK&nbsp;→&nbsp;FETCH&nbsp;CODE</b> in the app picks it up. Or download the GPX.</li>
+    </ol>
+    <p class="ctas"><a class="cta" href="/plan.html">Open the planner</a> <a class="cta alt" href="/plan.html#m=DIRT&amp;p=-111.0429,45.677;-110.78,45.85">Try an example route</a></p>
+    <p class="fine">The example is a dirt loop out of Bozeman; everything in it can be dragged, inspected and edited, then cleared for your own.</p>
     <a href="/plan.html" class="plan-art"><img src="/img/planner.jpg" alt="The planner: a dirt route out of Bozeman with cues, surface bar, elevation and land ownership" width="1600" height="1000" loading="lazy"></a>
+    <div class="callout"><b>When the plan changes on the road,</b> change your destination and calculate a new route — even without a signal. The app routes on your phone, using your downloaded maps: pick a point on the map, compare seven ways to get there, add a stop. You choose when to reroute.</div>
   </section>
 
-  <!-- 5 · offline, private, yours -->
-  <section id="yours">
-    <h2>Offline, private, and yours to keep.</h2>
-    <div class="specs">
-      <div><b>Navigation and routing run on your device.</b><span>Download the maps you need before leaving coverage. The Android app uses those maps and the phone's GPS to follow your route offline, and routes new ones offline too — airplane mode is fine. Online features connect only when you choose to download, transfer or share.</span></div>
-      <div><b>Your movements are your own.</b><span>Most navigation apps are built around an account, and your rides — where you went, when, how fast — sync to their servers; that's what their activity pages, heatmaps and feeds run on. Roadbook has no account to sync to. Your position never leaves the phone; a recording is a file in your folder. We collect nothing about where you go.</span></div>
-      <div><b>Your data isn't the product.</b><span>We don't collect data to sell it, or to feed anyone else's. No location history, no crash reporting; the app has no Google services in it. The site sets no cookies and runs no analytics script today. The routing service logs a path and a status code, never a position.</span></div>
-      <div><b>Three ways out of the planner, kept distinct.</b><span><i>Download GPX</i> gives you a file. <i>Send to phone</i> parks the roadbook under a six-letter code for 24 hours, then it's gone. <i>Publish</i> puts it in the public library, anonymously: the line and the cues, rewritten without timestamps, device names or anything about who made it. Sharing a planner link shares the points in that link.</span></div>
-      <div><b>Keep the app. Keep your maps. Keep your roadbooks.</b><span>The app installs from a file on this page, the map packs live on your phone, and a roadbook is an ordinary GPX that any other app can read. Open source, Apache-2.0.</span></div>
-      <div><b>The planner is online.</b><span>It runs in the browser on the same maps and router as the app, and fetches imagery, elevation, land ownership and web results from their sources as you ask for them. It's the desk; the phone is the ride.</span></div>
-      <div><b>No surprise rerouting.</b><span>Off the line, the app shows where the route is and how far; a planned route offers <i>REROUTE</i> as a button, a fixed roadbook never changes. Your route stays the one you planned.</span></div>
-    </div>
-  </section>
-
-  <!-- 6 · why it's free -->
+  <!-- 5 · why it's free -->
   <section id="mounts" class="mounts">
     <div class="mounts-text">
       <h2>We make mounts. Roadbook is on us.</h2>
@@ -144,8 +127,27 @@
     </div>
     <div class="mounts-art">
       <a href="https://hondogarage.com/pages/motorcycle-adventure-products"><img src="/img/hondo-moto.jpg" alt="A rider on a dirt bike in the desert — Hondo Garage motorcycle mounts" loading="lazy" width="1000" height="1333"></a>
-      <a href="https://hondogarage.com/pages/4x4-adventure-products"><img src="/img/hondo-dash.jpg" alt="A phone and a tablet on Hondo mounts in a Tacoma dash, a map on the tablet" loading="lazy" width="1080" height="720"></a>
+      <a href="https://hondogarage.com/pages/4x4-adventure-products"><img src="/img/hondo-dash-roadbook.jpg" alt="Roadbook's riding screen on a phone in a Hondo mount on a Tacoma dash: left in 350 ft onto Dry Creek Road" loading="lazy" width="1080" height="720"></a>
     </div>
+  </section>
+
+  <!-- 6 · offline, private, yours -->
+  <section id="yours">
+    <h2>Offline, private, and yours to keep.</h2>
+    <div class="specs three">
+      <div><b>Works beyond coverage.</b><span>Download the maps you need before you leave. The app follows your route, and calculates new ones, on the phone — airplane mode is fine. It goes online only when you choose to download, transfer or share.</span></div>
+      <div><b>Your movements stay private.</b><span>Roadbook works without an account. Your position never leaves the phone; a recording is a file in your folder. You choose what to export or publish. We collect nothing about where you go.</span></div>
+      <div><b>Files you can keep.</b><span>The app installs from a file on this page, the maps live on your phone, and a roadbook is an ordinary GPX file that other apps that support GPX can open. Open source, Apache-2.0.</span></div>
+    </div>
+    <details class="faq more"><summary>How privacy and sharing work</summary>
+      <dl class="fineprint">
+        <dt>Nothing to sell</dt><dd>We don't collect data to sell it, or to feed anyone else's. No location history, no crash reporting, no Google services in the app. This site sets no cookies.</dd>
+        <dt>The planner is online</dt><dd>It runs in the browser on the same maps and router as the app, and fetches imagery, elevation, land ownership and web results from their sources as you ask for them. Routing requests go to our router; its own log records the request path and a status code, not coordinates. It's the desk; the phone is the ride.</dd>
+        <dt>Three ways out of the planner, kept distinct</dt><dd><i>Download GPX</i> gives you a file. <i>Send to phone</i> parks the roadbook under a six-letter code for 24 hours, then deletes it. <i>Publish</i> puts a public copy of the route and cues in the library, with timestamps, device names and recording metadata removed — the line itself and the words in your cues are public, so write them with that in mind. Sharing a planner link shares the points in that link.</dd>
+        <dt>Your cues in other apps</dt><dd>Turns, notes and hazards are stored as GPX waypoints with a type tag. Apps that read GPX will show them as plain waypoints; Roadbook speaks them.</dd>
+        <dt>No surprise rerouting</dt><dd>Off the line, the app shows where the route is and how far. A planned route offers <i>REROUTE</i> as a button; a fixed roadbook never changes. Your route stays the one you planned.</dd>
+      </dl>
+    </details>
   </section>
 
   <!-- 7 · get ready to go -->
@@ -156,7 +158,7 @@
         <h3>Get the Android app</h3>
         <p><a class="cta" href="/download/roadbook.apk">Get the Android app <small>free · Android 10+</small></a></p>
         <ol class="steps">
-          <li>On the phone, open the downloaded <code>roadbook.apk</code>; allow installs from that app; <b>Install</b>. No store, no account.</li>
+          <li>On the phone, open the downloaded <code>roadbook.apk</code>. If Android asks, allow your browser to install apps, then follow the prompts. No store, no account.</li>
           <li>Allow <b>Precise location</b> — the GPS is how it follows you. Allow notifications if you want the next cue shown while the screen is off.</li>
           <li><b>MAPS → DOWNLOAD</b> your states before the trip. Then ride.</li>
         </ol>
@@ -169,14 +171,14 @@
         <p class="muted small">Roads: ½–1 GB per Western state. Terrain: ¼–½ GB more. A 128 GB phone holds the whole West with room to spare. Downloads happen inside the app; the <a href="/packs.html">coverage page</a> has the files too.</p>
       </div>
     </div>
-    <details class="faq"><summary>Why Android only, for now?</summary><p>Roadbook is handed to you directly: download the file, install it, done. Android allows that; iOS doesn't. An iPhone version would go through the App Store, with an Apple developer account on our side, review on theirs, and their rules about what an app may do in the background. The navigation core is portable and the maps are the same, so it isn't never — if you ride with an iPhone and want this, <a href="mailto:hello@hondogarage.com?subject=Roadbook%20for%20iPhone">tell us</a>; the number of those emails decides when.</p></details>
+    <details class="faq"><summary>Why Android only, for now?</summary><p>The navigation app is Android-only for now. The planner works in any browser on your computer, and exports routes as GPX for whatever you navigate with. Roadbook is handed to you directly — download the file, install it, done — and Android allows that; an iPhone version would go through the App Store, with an Apple developer account on our side and review on theirs. The navigation core is portable and the maps are the same, so it isn't never: if you ride with an iPhone and want this, <a href="mailto:hello@hondogarage.com?subject=Roadbook%20for%20iPhone">tell us</a>. The number of those emails decides when.</p></details>
     <details class="faq"><summary>What does it need?</summary><p>Android 10 or newer on a 64-bit phone (any from about 2019 on). The phone's own GPS — no SIM or signal needed once the maps are on it. Audio is optional: a Bluetooth helmet headset or earbuds for the spoken cues and pips; the screen works alone. A mount, so it sits where you can glance at it — heading-up, next turn on top.</p></details>
     <details class="faq"><summary>Does it keep going with the screen off?</summary><p>Yes. On a bicycle, press the power button and ride by ear: the voice, the pips and the chimes carry on, and so does a recording. A quiet notification shows the next cue with an <i>End navigation</i> button. Some phones (Samsung, Xiaomi) need the app set to <i>Unrestricted</i> in battery settings to let that run.</p></details>
     <details class="faq"><summary>Where's the manual?</summary><p><a href="/manual.html">Nine screens</a>: install and maps, going somewhere, the screen while you ride, sound, off the line, recording a pre-run, editing cues, the GPX file, and the planner.</p></details>
   </section>
 
   <section id="go" class="final">
-    <h2>Plan it at the table. Ride it from the bars.</h2>
+    <h2>Plan it at the table. Follow it from the bars or the dash.</h2>
     <p class="ctas"><a class="cta" href="/plan.html">Open the free planner</a><a class="cta alt" href="/download/roadbook.apk">Get the Android app</a></p>
     <p class="fine">Free, open source, no account. <a href="https://hondogarage.com/pages/motorcycle-adventure-products" class="dim">Hondo mounts</a> · <a href="/manual.html" class="dim">Manual</a> · <a href="https://github.com/wileydavis/hondoroadbook" class="dim">Source</a></p>
   </section>

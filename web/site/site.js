@@ -87,7 +87,8 @@
 // ---- tap to zoom: the three riding views, live, with the app's buzz pattern -----------------------------
 (() => {
   const phone = document.querySelector('#tapPhone'); if (!phone) return;
-  const world = document.querySelector('#tapWorld'), label = document.querySelector('#tapLabel');
+  const world = document.querySelector('#tapWorld'), label = document.querySelector('#tapLabel'), status = document.querySelector('#tapStatus');
+  const tell = (text) => { label.textContent = text; if (status) status.textContent = text; };
   // the screen is 280×560; the puck sits at world (160,520) heading north; the first turn is at (160,300)
   const puck = [160, 520];
   // whole route: fit the route (world 160..470 × 40..760), north up; next turn: puck at 70% down, the turn on screen; close up: tighter
@@ -102,7 +103,8 @@
     if (v.center) { tx = 140 - v.center[0] * v.scale; ty = 300 - v.center[1] * v.scale; }
     else { tx = 140 - puck[0] * v.scale; ty = 560 * 0.7 - puck[1] * v.scale; }   // you in the lower third, the turn above
     world.style.transform = `translate(${tx}px, ${ty}px) scale(${v.scale})`;
-    label.textContent = first ? 'Tap the map' : v.name;
+    tell(first ? 'Tap the map' : v.name);
+    if (first && status) status.textContent = 'Try it: tap the map';
   };
   apply(views[1], true);
   i = 1;
@@ -111,8 +113,8 @@
     i = (i + 1) % views.length; const v = views[i];
     apply(v, false);
     phone.classList.remove('buzzing', 'twice', 'long'); void phone.offsetWidth; phone.classList.add('buzzing'); if (v.kind) phone.classList.add(v.kind);
-    label.textContent = v.name + (v.kind === 'long' ? ' · one long buzz' : v.kind === 'twice' ? ' · two buzzes' : ' · one buzz');
-    clearTimeout(t); t = setTimeout(() => { label.textContent = v.name; }, 1600);
+    tell(v.name + (v.kind === 'long' ? ' · one long buzz' : v.kind === 'twice' ? ' · two buzzes' : ' · one buzz'));
+    clearTimeout(t); t = setTimeout(() => { tell(v.name); }, 1600);
     try { if (navigator.vibrate) navigator.vibrate(v.buzz); } catch {}
   };
   phone.addEventListener('click', go);

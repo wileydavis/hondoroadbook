@@ -64,7 +64,20 @@ async function park(request, env, url) {
   }
   const expires = Date.now() + 24 * 3600 * 1000;
   await env.PACKS.put(`parked/${code}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { expires: String(expires), name } });
+  await sweepParked(env).catch(() => {});
   return json({ code, name, expires, bytes: body.length, cues: g.cues.length, length: Math.round(measure(pts).length) });
+}
+
+// Each park sweeps out the codes that have expired, so a parked roadbook is actually gone after
+// 24 hours rather than lingering until someone asks for it. Parked files are few; one list suffices.
+async function sweepParked(env) {
+  const now = Date.now();
+  const list = await env.PACKS.list({ prefix: "parked/", limit: 500, include: ["customMetadata"] });
+  const dead = list.objects.filter(o => {
+    const exp = Number(o.customMetadata?.expires || 0);
+    return exp ? now > exp : now - o.uploaded.getTime() > 24 * 3600 * 1000;
+  }).map(o => o.key);
+  if (dead.length) await env.PACKS.delete(dead);
 }
 
 async function parked(request, env, code) {
