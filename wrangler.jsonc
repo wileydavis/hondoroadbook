@@ -13,7 +13,7 @@
   // /api/route of the day and asleep twenty minutes after the last. Graphs download on demand from
   // the packs and stay on the instance's disk. "standard" is 4 GB of memory; raise it if a region's
   // graphs stop fitting. Deploying builds the image from the repo root (needs Docker locally).
-  "containers": [{ "class_name": "RouterContainer", "image": "./server/Dockerfile", "image_build_context": ".", "max_instances": 2, "instance_type": "standard" }],
+  "containers": [{ "class_name": "RouterContainer", "image": "./server/Dockerfile", "image_build_context": ".", "max_instances": 2, "instance_type": "standard-1" }],
   "durable_objects": { "bindings": [{ "name": "ROUTER", "class_name": "RouterContainer" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RouterContainer"] }],
   // The roadbook library: the D1 database created in the dashboard, with web/schema.sql run in its console.

@@ -4,7 +4,7 @@
   "type": "module",
   "description": "hondoroadbook.com: the Cloudflare Worker (web/worker.js), its routing container and the planner",
   "scripts": {
-    "deploy": "wrangler deploy",
+    "deploy": "node deploy.mjs",
     "dev": "wrangler dev"
   },
   "dependencies": {
