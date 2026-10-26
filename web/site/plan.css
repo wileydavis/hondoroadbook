@@ -146,3 +146,5 @@ button.icon:hover { border-color: var(--soft); }
 .sections .ask input { flex: 1; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink); }
 .sections .row small i { font-style: normal; color: var(--ink); opacity: .8; }
 #sourceGroups textarea::placeholder { color: var(--soft); }
+.sections h4 .mini, .web h4 .mini { text-transform: none; letter-spacing: 0; margin-left: 6px; vertical-align: middle; }
+.sections h4 a.muted, .web h4 a.muted { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; margin-left: 4px; display: inline; }

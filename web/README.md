@@ -48,8 +48,12 @@ library is not set up; everything else works.
 Secrets (`npx wrangler secret put NAME`):
 
 * `ADMIN_TOKEN` — to moderate: `curl -X POST -H "Authorization: Bearer $TOKEN" https://hondoroadbook.com/api/roadbooks/<id>/hide` (`unhide`, `delete` likewise).
-* `BRAVE_KEY` — a Brave Search API key (free tier, 2,000 queries a month) for the inspect panel's
-  web search. Without it the panel shows a link to a web search instead.
+* `BRAVE_KEY` — a Brave Search API key ($5 per 1,000 queries, $5 of credit free each month) for the
+  inspect panel's web search. Without it the panel shows a link to a web search instead. Nothing is
+  searched until a rider presses a section's button; each query is cached a week site-wide; and a
+  site-wide daily budget (`WEB_DAILY` var, default 2,000 cache misses ≈ $10) caps the bill — past it,
+  sections offer the same search as a link into the rider's own browser. The counter is one row per day
+  with nothing about who asked.
 * `SALT` — any string; it salts the daily per-visitor upload counter so no address is stored.
 
 Uploads are capped at 6 MB and 40 a day per visitor; published files are rewritten to the line and

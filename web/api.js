@@ -165,11 +165,14 @@ async function webSearch(request, env, url, ctx) {
   const ckey = new Request("https://websearch.roadbook.internal/?q=" + encodeURIComponent(q.toLowerCase()));
   const hit = await cache.match(ckey);
   if (hit) return withCors(hit);
+  // a cache miss costs money: one counter for the whole site per day (no visitor in the key), and past the
+  // budget the planner falls back to links the rider opens in their own browser
+  if (!(await budget(env, "web", Number(env.WEB_DAILY) || 2000))) return json({ error: "Today's web-search budget on this site is spent; the links below open the same searches in your browser", budget: true }, 429, { "Cache-Control": "no-store" });
   const r = await fetch("https://api.search.brave.com/res/v1/web/search?count=8&safesearch=moderate&text_decorations=false&q=" + encodeURIComponent(q), { headers: { Accept: "application/json", "X-Subscription-Token": env.BRAVE_KEY } });
   if (!r.ok) return json({ error: `search answered ${r.status}` }, 502);
   const data = await r.json();
   const results = ((data.web && data.web.results) || []).slice(0, 8).map(w => ({ title: w.title, url: w.url, description: w.description, site: w.meta_url && w.meta_url.hostname }));
-  const res = json({ q: q0, sites, results }, 200, { "Cache-Control": "public, max-age=86400" });
+  const res = json({ q: q0, sites, results }, 200, { "Cache-Control": "public, max-age=604800" });   // a week: a campground's pages do not change by the day
   ctx && ctx.waitUntil(cache.put(ckey, res.clone()));
   return res;
 }
@@ -199,6 +202,13 @@ async function admit(request, env, kind, max) {
   const day = new Date().toISOString().slice(0, 10);
   const key = await sha256(`${day}|${kind}|${ip}|${env.SALT || "roadbook"}`);
   const row = await env.DB.prepare("INSERT INTO uploads (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1 RETURNING n").bind(key).first();
+  return !row || row.n <= max;
+}
+/** A site-wide counter per kind per day — nothing about who asked — so a paid upstream has a ceiling. */
+async function budget(env, kind, max) {
+  if (!env.DB) return true;
+  const day = new Date().toISOString().slice(0, 10);
+  const row = await env.DB.prepare("INSERT INTO uploads (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1 RETURNING n").bind(`${kind}|${day}`).first();
   return !row || row.n <= max;
 }
 function same(a, b) { return Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9; }

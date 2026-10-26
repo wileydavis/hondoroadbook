@@ -866,31 +866,43 @@ async function inspect(lon, lat) {
   add("forums", "Trip reports & forums", [name].filter(Boolean), name ? `"${name}" ${region}` : `${town} ${region} dual sport OR adventure ride`);
   add("guides", "Trail & road guides", [name].filter(Boolean), name ? `${name} ${region}` : `${town} ${region} trail OR road`);
   const box = $("#inspSections");
-  box.innerHTML = `<div class="ask"><input id="inspAsk" placeholder="Search this area for… (hot springs, bike shop, swimming hole)" maxlength="80"><button id="inspAskGo" class="mini">search</button></div><div id="secAsk"></div>` + secs.map((x, i) => `<div id="sec${i}"><h4>${x.title}</h4><span class="muted">Searching…</span></div>`).join("");
+  // nothing on the web is searched until asked: a section runs when its button is pressed (a query per named
+  // place, each cached a week on the site, so a popular campground is looked up once for everyone); the plain
+  // link under each is the same search in the rider's own browser and costs the site nothing
+  const ddg = (q, sites) => `https://duckduckgo.com/?q=${encodeURIComponent(q + (sites && sites.length ? " (" + sites.map(s => "site:" + s).join(" OR ") + ")" : ""))}`;
+  box.innerHTML = `<div class="ask"><input id="inspAsk" placeholder="Search this area for… (hot springs, bike shop, swimming hole)" maxlength="80"><button id="inspAskGo" class="mini">search</button></div><div id="secAsk"></div>`
+    + secs.map((x, i) => `<div id="sec${i}" class="sec"><h4>${x.title} <button class="mini" data-run="${i}">search</button> <a class="muted" target="_blank" rel="noopener" href="${ddg(x.q, x.sites)}">in your browser</a></h4></div>`).join("")
+    + `<div class="muted small"><button class="mini" id="secAll">search every section</button></div>`;
   const rowHtml = (w, via) => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")}${via ? ` · <i>via ${esc(via)}</i>` : ""} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}" title="Add this finding as a note on the route here">+ note</button></div>`;
-  const runSection = async (el, title, sites, q, list) => {
-    const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(q + (sites.length ? " (" + sites.map(s => "site:" + s).join(" OR ") + ")" : ""))}">open this search</a>`;
+  const ask = async (q, sites) => { const r = await fetch(`/api/web?q=${encodeURIComponent(q)}${sites.length ? "&sites=" + encodeURIComponent(sites.join(",")) : ""}`); const j = await r.json(); return { ok: r.ok, status: r.status, j }; };
+  const runSection = async (el, title, sites, q, list, queries) => {
+    const ext = `<a target="_blank" rel="noopener" href="${ddg(q, sites)}">open this search in your browser</a>`;
+    el.innerHTML = `<h4>${title}</h4><span class="muted">Searching…</span>`;
     try {
-      const r = await fetch(`/api/web?q=${encodeURIComponent(q)}${sites.length ? "&sites=" + encodeURIComponent(sites.join(",")) : ""}`); const j = await r.json();
-      if (r.ok && j.results && j.results.length) {
+      // one query per named place (two at most), then the section's own wording if the names found nothing
+      const qs = queries && queries.length ? queries : [q];
+      const answers = await Promise.all(qs.map(x => ask(x, sites).catch(() => null)));
+      const budgetOut = answers.find(a => a && a.status === 429); const unset = answers.find(a => a && a.status === 501);
+      let results = []; const seen = new Set();
+      for (const a of answers) if (a && a.ok && a.j.results) for (const w of a.j.results) { const k = w.url.replace(/[#?].*$/, ""); if (!seen.has(k)) { seen.add(k); results.push(w); } }
+      if (!results.length && queries && queries.length && !budgetOut && !unset) { const a = await ask(q, sites).catch(() => null); if (a && a.ok) results = a.j.results || []; }
+      if (results.length) {
         // a result that names a place the map knows ranks by how close that place is; the rest keep the engine's order
-        const hits = j.results.map((w, i) => { const text = (w.title + " " + (w.description || "")).toLowerCase(); const k = list.findIndex(n => text.includes(n.toLowerCase())); return { w, i, k: k < 0 ? 99 : k, via: k < 0 ? "" : list[k] }; }).sort((a, b) => a.k - b.k || a.i - b.i);
-        el.innerHTML = `<h4>${title}</h4>` + hits.slice(0, 5).map(h => rowHtml(h.w, h.via)).join("") + `<div class="muted small">${ext}</div>`;
-      } else el.innerHTML = `<h4>${title}</h4><span class="muted">${r.status === 501 ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
+        const hits = results.map((w, i) => { const text = (w.title + " " + (w.description || "")).toLowerCase(); const k = list.findIndex(n => text.includes(n.toLowerCase())); return { w, i, k: k < 0 ? 99 : k, via: k < 0 ? "" : list[k] }; }).sort((a, b) => a.k - b.k || a.i - b.i);
+        el.innerHTML = `<h4>${title}</h4>` + hits.slice(0, 6).map(h => rowHtml(h.w, h.via)).join("") + `<div class="muted small">${ext}</div>`;
+      } else el.innerHTML = `<h4>${title}</h4><span class="muted">${budgetOut ? "this site's search budget for today is spent · " : unset ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
     } catch { el.innerHTML = `<h4>${title}</h4>${ext}`; }
     el.querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
   };
-  $("#inspAskGo").onclick = () => { const q = $("#inspAsk").value.trim(); if (!q) return; const el = $("#secAsk"); el.innerHTML = `<h4>${esc(q)}</h4><span class="muted">Searching…</span>`; runSection(el, esc(q), [], `${q} ${anchor || place}`, [...names("food"), ...names("camping"), ...names("lodging")]); };
+  const perName = (x) => x.names.slice(0, 2).map(n => `"${n.replace(/"/g, "")}" ${x.key === "forums" || x.key === "guides" || x.key === "lodging" || x.key === "camping" ? region : anchor}`);
+  const run = (i) => { const x = secs[i]; runSection($("#sec" + i), x.title, x.sites, x.q, x.names, perName(x)); };
+  box.querySelectorAll("button[data-run]").forEach(b => b.onclick = () => run(Number(b.dataset.run)));
+  $("#secAll").onclick = () => secs.forEach((_, i) => run(i));
+  $("#inspAskGo").onclick = () => { const q = $("#inspAsk").value.trim(); if (!q) return; runSection($("#secAsk"), esc(q), [], `${q} ${anchor || place}`, [...names("food"), ...names("camping"), ...names("lodging")], []); };
   $("#inspAsk").onkeydown = e => { if (e.key === "Enter") $("#inspAskGo").onclick(); };
-  await Promise.all(secs.map((x, i) => runSection($("#sec" + i), x.title, x.sites, x.q, x.names)));
-  // and the open web, last
-  const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(place)}">Search the web for “${esc(place)}”</a>`;
-  try {
-    const r = await fetch(`/api/web?q=${encodeURIComponent(place + (name ? " road" : ""))}`); const j = await r.json();
-    if (r.ok && j.results && j.results.length) $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>` + j.results.slice(0, 5).map(w => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}">+ note</button></div>`).join("") + `<div class="muted small">${ext}</div>`;
-    else $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>${ext}`;
-    $("#inspWeb").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
-  } catch { $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>${ext}`; }
+  // the open web, also on request
+  $("#inspWeb").innerHTML = `<h4>Elsewhere on the web <button class="mini" id="webGo">search</button> <a class="muted" target="_blank" rel="noopener" href="${ddg(place)}">in your browser</a></h4>`;
+  $("#webGo").onclick = () => runSection($("#inspWeb"), "Elsewhere on the web", [], place + (name ? " road" : ""), [name].filter(Boolean), []);
 }
 // ---- POIs out of the pack tiles -------------------------------------------------------------------------------------
 const POI_KIND = { fuel: "fuel", restaurant: "food", cafe: "food", fast_food: "food", bar: "food", pub: "food", food_court: "food", supermarket: "food", convenience: "food", general: "food", bakery: "food", grocery: "food",
