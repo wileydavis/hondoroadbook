@@ -1098,7 +1098,7 @@ $("#btnPublish").onclick = async () => {
     try {
       const r = await fetch(`/api/roadbooks?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}&source=planner`, { method: "POST", body: gpxOut(), headers: { "Content-Type": "application/gpx+xml" } });
       const j = await r.json(); if (!r.ok) throw new Error(j.error);
-      $("#codeBody").innerHTML = `<p>Published. <a href="${esc(j.page)}">Link to it</a> · <a href="${esc(j.url)}">GPX</a></p><p class="muted small">If it should come down, email hello@hondogarage.com with the link.</p>`;
+      $("#codeBody").innerHTML = `<p>Published. <a href="${esc(j.page)}">Link to it</a> · <a href="${esc(j.url)}">GPX</a></p><p class="muted small">If it should come down, email wiley@machinenusa.com with the link.</p>`;
       if (S.library) loadLibrary();
     } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   };
@@ -1208,7 +1208,7 @@ async function openLibraryItem(id) {
 
 // ---- the URL carries the plan ------------------------------------------------------------------------------------------
 function saveHash() {
-  const fb = document.getElementById("fb"); if (fb) fb.href = "mailto:hello@hondogarage.com?subject=Planner%20feedback&body=" + encodeURIComponent("What happened:\n\n\nThe route I was looking at: " + location.href + "\n");
+  const fb = document.getElementById("fb"); if (fb) fb.href = "mailto:wiley@machinenusa.com?subject=Planner%20feedback&body=" + encodeURIComponent("What happened:\n\n\nThe route I was looking at: " + location.href + "\n");
   const p = new URLSearchParams();
   if (S.pts.length) { p.set("m", S.mode); p.set("p", S.pts.map(x => `${x.lon.toFixed(5)},${x.lat.toFixed(5)}`).join(";")); }
   const rb = new URLSearchParams(location.hash.slice(1)).get("rb"); if (rb && !S.pts.length) p.set("rb", rb);

@@ -34,8 +34,8 @@ class FoldApp : Application() {
                 if (extra.isNotEmpty()) append(extra).append('\n')
                 if (crash != null) append("\nThe app's last crash (delete this if you would rather not send it):\n").append(crash)
             }
-            val i = android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:")).putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("hello@hondogarage.com")).putExtra(android.content.Intent.EXTRA_SUBJECT, "Roadbook feedback").putExtra(android.content.Intent.EXTRA_TEXT, body)
-            try { ctx.startActivity(i) } catch (_: Throwable) { android.widget.Toast.makeText(ctx, "No mail app — write to hello@hondogarage.com", android.widget.Toast.LENGTH_LONG).show() }
+            val i = android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:")).putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("wiley@machinenusa.com")).putExtra(android.content.Intent.EXTRA_SUBJECT, "Roadbook feedback").putExtra(android.content.Intent.EXTRA_TEXT, body)
+            try { ctx.startActivity(i) } catch (_: Throwable) { android.widget.Toast.makeText(ctx, "No mail app — write to wiley@machinenusa.com", android.widget.Toast.LENGTH_LONG).show() }
         }
     }
 }

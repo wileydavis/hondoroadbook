@@ -88,7 +88,7 @@ object Library {
                         dlg.dismiss()
                         r.onSuccess { j ->
                             val page = j.optString("page")
-                            AlertDialog.Builder(ctx).setTitle("Published").setMessage("${j.optString("name")} · ${Units.distance(j.optDouble("length", 0.0))} · ${j.optInt("cues")} cues\n\n$page\n\nIf it should come down, email hello@hondogarage.com with that link.")
+                            AlertDialog.Builder(ctx).setTitle("Published").setMessage("${j.optString("name")} · ${Units.distance(j.optDouble("length", 0.0))} · ${j.optInt("cues")} cues\n\n$page\n\nIf it should come down, email wiley@machinenusa.com with that link.")
                                 .setPositiveButton("COPY LINK") { _, _ -> (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Roadbook", page)) }
                                 .setNegativeButton("CLOSE", null).show()
                         }.onFailure { e -> AlertDialog.Builder(ctx).setTitle("Not published").setMessage(e.message ?: e.toString()).setPositiveButton("OK", null).show() }
