@@ -56,7 +56,8 @@ was changed. Status: **verified & fixed**, **verified & mitigated** (reduced, wi
 | WEB-10 | Permanent negative cache for missing packs; stale viewport commits | **fixed** | a 404 is remembered for two minutes; transient failures are not; a viewport generation counter drops stale results. The style is applied before the checks run, so first paint no longer waits on fifty HEADs. |
 | CORE-01 | Same-road out-and-back | **open** (Tier 2) | stateful matcher, as before. |
 | CORE-03 | Cross-pack bridge hops to an edge endpoint up to ~1 km away and omits that geometry from the length | **open** (Tier 2) | needs a virtual node at the true join; planned with the matcher work. |
-| CORE-04 / CORE-06 / APP-01..05 / NAV-05 / NAV-06 / ROUTE-01 | as in round 1 | **open** (Tier 2) | unchanged; APP-04 (navigation foreground service) remains the biggest app-side gap. |
+| CORE-04 / CORE-06 / APP-01..03, APP-05 / NAV-05 / NAV-06 / ROUTE-01 | as in round 1 | **open** (Tier 2) | unchanged. |
+| APP-04 | navigation stops with the screen off (no foreground service; GPS throttled in the background) | **fixed** (26 Oct) | `NavService`: foreground service of type location for the whole navigation, its own 1 Hz GPS request, a partial wake lock, a notification with the next cue and an End button; the HUD tick drops to 4 Hz and camera moves pause while the activity is stopped. Route state already lived in `NavSession`. Remaining gap: if the system destroys the stopped activity under memory pressure the follower keeps its place but the sound logic, which lives in the activity, pauses until it is reopened. |
 | BACKEND-09 | Undici advisories in dev tooling | **deferred** | dev-only; bump with the next wrangler release. |
 
 Tests: `./gradlew :core:test :packer:test` — 37 tests, 0 failures. The six dataset-dependent tests now report as

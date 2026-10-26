@@ -189,6 +189,8 @@ class MainActivity : AppCompatActivity() {
         packs = PackStore(this)
         marks = MarkStore(this)
         Tone.enabled = prefs.sound
+        // the notification's End button, when the screen is off and the phone is in a pocket
+        NavService.onStopRequested = { ui.post { if (mode == Mode.NAV) endNavigation() } }
         if (prefs.orientation >= 0) requestedOrientation = prefs.orientation
         if (BuildConfig.ROADBOOK) { Speech.init(this); Speech.enabled = prefs.sound }
         setContentView(R.layout.activity_main)
@@ -613,7 +615,7 @@ class MainActivity : AppCompatActivity() {
             if (mode == Mode.NAV) { updatePuck(v.lat, v.lon, if (v.onRoute && v.speed > 1.5) f.route.segmentBearing(v.segment) else heading); handleOffRoute(v, fix) }
             else updatePuck(fix.lat, fix.lon, heading)
         } else updatePuck(fix.lat, fix.lon, heading)
-        if (follow || first) moveCamera(fix.lat, fix.lon, animate = !first)
+        if ((follow || first) && uiVisible) moveCamera(fix.lat, fix.lon, animate = !first)
     }
 
     private fun haptic(times: Int, long: Boolean = false) {
@@ -963,6 +965,9 @@ class MainActivity : AppCompatActivity() {
         zoomMode = ZoomMode.TURN; manualZoom = -1.0; overviewDone = false
         switchMode(Mode.NAV)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // guidance survives the screen going dark: a foreground service keeps GPS at 1 Hz and the CPU awake for the chimes
+        NavService.start(this, if (destName.isNotEmpty()) "To " + destName else if (track) trackName else "Navigating", "Starting…")
+        if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) askNavNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
         lastFix?.let { moveCamera(it.lat, it.lon, animate = true) }
         if (!track) { trackLats = null; trackLons = null; trackUri = null; trackCues.clear(); drawCues() }
         if (track) {
@@ -974,8 +979,13 @@ class MainActivity : AppCompatActivity() {
         ui.removeCallbacks(hudTick); ui.post(hudTick)
     }
 
+    /** the notification is a courtesy; navigation runs with or without permission to show it */
+    private val askNavNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private var lastNavNotify = 0L
+
     private fun endNavigation() {
         Speech.stop()
+        NavService.stop(this)
         routeGeneration++
         route = null; follower = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); drawVias()
@@ -1014,7 +1024,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             val f = follower ?: return
             try { renderHud(f.view(android.os.SystemClock.elapsedRealtime())) } catch (_: Throwable) {}
-            ui.postDelayed(this, 50)
+            ui.postDelayed(this, if (uiVisible) 50 else 250)
         }
     }
 
@@ -1031,6 +1041,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderHud(v: NavView) {
         soundTick(v, android.os.SystemClock.elapsedRealtime())
+        if (mode == Mode.NAV && NavService.running) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastNavNotify > 5000) {
+                lastNavNotify = now
+                val m = v.next
+                val line = when {
+                    v.arrived -> getString(R.string.arrived)
+                    v.fixState == FixState.NONE || v.fixState == FixState.STALE -> "Waiting for GPS"
+                    !v.onRoute -> getString(R.string.off_track) + " · " + Units.cue(v.offDist)
+                    m == null -> Units.distance(v.remaining) + " to go"
+                    else -> Units.cue(v.distToNext) + " · " + (if (m.turn == Turn.ARRIVE) "Destination" else v.phrase()) + " · " + Units.distance(v.remaining) + " to go"
+                }
+                NavService.update(this, if (destName.isNotEmpty()) "To " + destName else if (isTrack) trackName else "Navigating", line)
+            }
+        }
         if (mode != Mode.NAV) { if (v.onRoute) updatePuck(v.lat, v.lon, follower?.route?.segmentBearing(v.segment) ?: heading); return }
         if (v.arrived) {
             hud.visibility = View.VISIBLE; offPanel.visibility = View.GONE
@@ -1631,10 +1656,12 @@ class MainActivity : AppCompatActivity() {
     private inline fun safe(block: () -> Unit) { try { block() } catch (e: Throwable) { toast(e.message ?: "Error") } }
     fun dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
 
-    override fun onStart() { super.onStart(); mapView.onStart() }
+    /** false while the screen is off or the app is behind another: no camera work, a slower HUD tick, the service keeps the fixes coming */
+    private var uiVisible = true
+    override fun onStart() { super.onStart(); mapView.onStart(); uiVisible = true; if (follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { super.onPause(); mapView.onPause() }
-    override fun onStop() { super.onStop(); mapView.onStop() }
+    override fun onStop() { uiVisible = false; super.onStop(); mapView.onStop() }
     override fun onLowMemory() { super.onLowMemory(); mapView.onLowMemory() }
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
     override fun onDestroy() {

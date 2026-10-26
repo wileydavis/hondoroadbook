@@ -2,10 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <!-- Roadbook: the network is used for exactly one thing, downloading map packs from the catalog. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Recording keeps writing with the screen off -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- (foreground-service and notification permissions are in the main manifest: navigation and recording both run with the screen off) -->
     <application>
         <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="location" />
     </application>
