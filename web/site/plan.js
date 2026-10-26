@@ -716,6 +716,7 @@ async function elevation() {
   try {
     const el = await Promise.all(samples.map(p => elevAt(p[0], p[1])));
     if (run !== elevRun) return;
+    S.profile = { samples, el, total };
     // gain with a 5 m hysteresis so GPS-scale noise does not count as climbing
     let gain = 0, loss = 0, ref = el[0];
     for (const e of el) { if (e - ref > 5) { gain += e - ref; ref = e; } else if (ref - e > 5) { loss += ref - e; ref = e; } }
