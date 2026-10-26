@@ -43,6 +43,7 @@ private fun handle(ex: HttpExchange, api: Api) {
         val body = when (ex.requestURI.path.trimEnd('/')) {
             "/health", "" -> api.health()
             "/warm" -> api.warm(q)
+            "/near" -> api.near(q)
             "/route" -> api.route(q)
             "/snap" -> api.snap(q)
             "/search" -> api.search(q)

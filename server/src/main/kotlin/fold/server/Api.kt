@@ -66,6 +66,37 @@ class Api(private val packs: PackSet) {
         return list
     }
 
+    /**
+     * Places around a spot from the packs' place index, the bar rising with distance: anything within 3 km,
+     * prominence 2 and up to 15 km, only the most prominent (fuel, campgrounds, towns, motorcycle shops) to 60 km.
+     * Per category the nearest few, with distance and bearing; "reach" is how far the farthest answer came from.
+     */
+    fun near(q: Map<String, String>): String {
+        val lon = finite(q["lon"], 180.0) ?: throw ApiError(400, "lon required"); val lat = finite(q["lat"], 90.0) ?: throw ApiError(400, "lat required")
+        val loaded = packs.forBbox(lon - 0.8, lat - 0.6, lon + 0.8, lat + 0.6)
+        if (loaded.isEmpty()) throw ApiError(404, "No map pack covers this point yet")
+        val indexed = loaded.filter { it.pois != null }
+        if (indexed.isEmpty()) throw ApiError(410, "These packs carry no place index yet")
+        val cats = listOf("fuel", "food", "camping", "water", "lodging", "repair", "town")
+        val best = HashMap<String, ArrayList<PoiHit>>(); for (c in cats) best[c] = ArrayList()
+        for (l in indexed) for (p in l.pois!!) {
+            val d = Geo.fastDistance(lat, lon, p.lat, p.lon)
+            val limit = when (p.prom) { 3 -> 60_000.0; 2 -> 15_000.0; else -> 3_000.0 }
+            if (d > limit) continue
+            best[p.cat]?.add(PoiHit(p, d, Geo.bearing(lat, lon, p.lat, p.lon)))
+        }
+        var reach = 0.0
+        val out = cats.map { c ->
+            // the same name twice within 2 km (a town's node and its area, a store mapped as point and building) is one place
+            val list = ArrayList<PoiHit>()
+            for (h in best[c]!!.sortedBy { it.d }) { if (list.none { it.p.name.isNotEmpty() && it.p.name.equals(h.p.name, true) && Geo.fastDistance(it.p.lat, it.p.lon, h.p.lat, h.p.lon) < 2000 }) list.add(h); if (list.size >= (if (c == "town") 3 else 6)) break }
+            for (h in list) if (h.d > reach) reach = h.d
+            c to Json.arr(list.map { h -> Json.obj("name" to Json.str(h.p.name), "kind" to Json.str(h.p.kind), "lon" to Json.num(h.p.lon), "lat" to Json.num(h.p.lat), "d" to Json.num(h.d, 0), "bearing" to Json.num(h.bearing, 0), "prom" to h.p.prom.toString(), "extra" to Json.str(h.p.extra)) })
+        }
+        return Json.obj(*(out + listOf("reach" to Json.num(reach, 0), "source" to Json.str("pack index"), "built" to Json.str(indexed.first().pack.built))).toTypedArray())
+    }
+    private class PoiHit(val p: PoiEntry, val d: Double, val bearing: Double)
+
     /** Wakes the service and starts loading the packs under a box; cheap to call on every map move. */
     fun warm(q: Map<String, String>): String {
         val bbox = q["bbox"]?.let { raw ->
@@ -121,14 +152,14 @@ class Api(private val packs: PackSet) {
         }
         // runs of one road class and surface along the line, for the surface bar and the coloured line
         val runs = ArrayList<String>()
-        var runStart = 0; var runCls = -1; var runUnpaved = false; var runM = 0.0; var runName = ""
-        fun flush(end: Int) { if (end > runStart) runs.add(Json.obj("i" to runStart.toString(), "j" to end.toString(), "cls" to Json.str(GraphFormat.CLASSES.getOrElse(runCls) { "road" }), "unpaved" to runUnpaved.toString(), "m" to Json.num(runM, 1), "name" to Json.str(runName))) }
+        var runStart = 0; var runCls = -1; var runUnpaved = false; var runPrivate = false; var runM = 0.0; var runName = ""
+        fun flush(end: Int) { if (end > runStart) runs.add(Json.obj("i" to runStart.toString(), "j" to end.toString(), "cls" to Json.str(GraphFormat.CLASSES.getOrElse(runCls) { "road" }), "unpaved" to runUnpaved.toString(), "private" to runPrivate.toString(), "m" to Json.num(runM, 1), "name" to Json.str(runName))) }
         for (i in 1 until rr.lats.size) {
             val e = rr.segEdge[i]; val p = rr.segPack[i]
             val flags = if (e >= 0 && p >= 0) mr.graph(p).edgeFlags(e) else 0
-            val cls = flags and GraphFormat.CLASS_MASK; val unp = flags and GraphFormat.UNPAVED != 0
+            val cls = flags and GraphFormat.CLASS_MASK; val unp = flags and GraphFormat.UNPAVED != 0; val prv = flags and GraphFormat.PRIVATE != 0
             val name = if (e >= 0 && p >= 0) mr.graph(p).edgeName(e) else ""
-            if (cls != runCls || unp != runUnpaved || name != runName) { flush(i - 1); runStart = i - 1; runCls = cls; runUnpaved = unp; runM = 0.0; runName = name }
+            if (cls != runCls || unp != runUnpaved || prv != runPrivate || name != runName) { flush(i - 1); runStart = i - 1; runCls = cls; runUnpaved = unp; runPrivate = prv; runM = 0.0; runName = name }
             runM += Geo.fastDistance(rr.lats[i - 1], rr.lons[i - 1], rr.lats[i], rr.lons[i])
         }
         flush(rr.lats.size - 1)
@@ -155,6 +186,7 @@ class Api(private val packs: PackSet) {
         Json.obj("lon" to Json.num(s.lon), "lat" to Json.num(s.lat), "distance" to Json.num(s.distance, 1), "name" to Json.str(g.edgeName(s.edge)),
             "cls" to Json.str(GraphFormat.CLASSES.getOrElse(flags and GraphFormat.CLASS_MASK) { "road" }), "unpaved" to (flags and GraphFormat.UNPAVED != 0).toString(),
             "oneway" to (flags and GraphFormat.ONEWAY != 0).toString(), "car" to (flags and GraphFormat.CAR != 0).toString(), "bike" to (flags and GraphFormat.BIKE != 0).toString(),
+            "private" to (flags and GraphFormat.PRIVATE != 0).toString(),
             "pack" to Json.str(loaded[s.pack].pack.id), "region" to Json.str(loaded[s.pack].pack.region))
     }
 

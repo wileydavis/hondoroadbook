@@ -70,3 +70,17 @@ damaged packs listed under MAPS. GPX format: unchanged. Privacy/storage: unchang
 
 Still needs real hardware: GPS replay of a looped course with crossings; fix loss in a canyon and reacquisition;
 process death mid-ride and mid-recording; a read-only folder after reboot; helmet audio on END; a multi-hour soak.
+
+## Access evidence (26 Oct 2026, overnight pack rebuild)
+
+ROUTE-01, first slice: the packer now reads OpenStreetMap access tags. A car-class way tagged
+`access=private` (or `motor_vehicle` / `vehicle` / `motorcar` `=private`), and any way through a locked or
+private gate, stays routable but carries a `PRIVATE` edge flag (`GraphFormat.PRIVATE`). The router weights
+those edges ×8 (`Speeds.PRIVATE_PENALTY`), so a route only uses them when nothing else connects; the planner
+draws such runs red-dashed, lists "Posted private" in the surface bar, and Inspect says so for the road under
+the point. Packs also carry `pois.tsv` (fuel, food, camping, water, lodging, repair, towns with a 1–3
+prominence) that `/near` serves with distance tiers (everything within 3 km, prominent places to 15 km,
+towns/fuel/campgrounds to 60 km). Turn restrictions and barrier transitions remain open. The model is
+evidence, not verdict: the tag is shown as what OSM says, never as a legal ruling; PAD-US and MVUM are the
+next sources, to be shown the same way.
+

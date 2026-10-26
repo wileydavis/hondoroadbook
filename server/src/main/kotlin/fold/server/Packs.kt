@@ -15,7 +15,8 @@ class CatalogPack(val id: String, val name: String, val region: String, val url:
     fun intersects(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double) = !(bbox[2] < minLon || bbox[0] > maxLon || bbox[3] < minLat || bbox[1] > maxLat)
 }
 
-class Loaded(val pack: CatalogPack, val graph: Graph, val router: Router, val search: SearchFile?) { @Volatile var lastUsed = System.currentTimeMillis() }
+class PoiEntry(val lat: Double, val lon: Double, val prom: Int, val cat: String, val kind: String, val name: String, val extra: String)
+class Loaded(val pack: CatalogPack, val graph: Graph, val router: Router, val search: SearchFile?, val pois: List<PoiEntry>? = null) { @Volatile var lastUsed = System.currentTimeMillis() }
 
 /**
  * The packs this instance can route on. Graphs are fetched on first use straight out of the .mappack
@@ -85,7 +86,7 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
 
     private fun load(p: CatalogPack): Loaded {
         val d = File(dir, p.id)
-        val stamp = File(d, "built"); val graphFile = File(d, "graph.bin"); val searchFile = File(d, "search.tsv")
+        val stamp = File(d, "built"); val graphFile = File(d, "graph.bin"); val searchFile = File(d, "search.tsv"); val poisFile = File(d, "pois.tsv")
         val fresh = stamp.exists() && stamp.readText().trim() == p.built && graphFile.exists()
         if (!fresh) {
             d.deleteRecursively(); d.mkdirs()
@@ -94,13 +95,15 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
             ZipRange(p.url).use { z ->
                 z.extract("graph.bin", graphFile)
                 try { z.extract("search.tsv", searchFile) } catch (e: Throwable) { System.err.println("${p.id}: no search file (${e.javaClass.simpleName})") }
+                if (z.has("pois.tsv")) try { z.extract("pois.tsv", poisFile) } catch (e: Throwable) { System.err.println("${p.id}: no place index (${e.javaClass.simpleName})") }
             }
             stamp.writeText(p.built)
             System.err.println("loaded ${p.id}: ${graphFile.length() / 1_000_000} MB in ${(System.currentTimeMillis() - t0) / 1000} s")
         }
         val g = Graph.open(graphFile)
         val s = if (searchFile.exists()) try { SearchFile.open(searchFile) } catch (_: Throwable) { null } else null
-        return Loaded(p, g, Router(g), s)
+        val pois = if (poisFile.exists()) try { poisFile.useLines { lines -> lines.mapNotNull { ln -> val t = ln.split('\t'); if (t.size < 6) null else PoiEntry(t[0].toInt() / 1e7, t[1].toInt() / 1e7, t[2].toIntOrNull() ?: 1, t[3], t[4], t[5], t.getOrElse(6) { "" }) }.toList() } } catch (_: Throwable) { null } else null
+        return Loaded(p, g, Router(g), s, pois)
     }
 
     /** Drops the least recently used packs from memory and disk until there is room. */

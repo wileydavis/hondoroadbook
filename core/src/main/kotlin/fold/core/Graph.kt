@@ -38,6 +38,8 @@ object GraphFormat {
     const val ROUNDABOUT = 1 shl 8
     const val UNPAVED = 1 shl 9
     const val FOOT = 1 shl 10
+    /** OpenStreetMap says access=private (or the edge passes a locked / private gate): routable only under a heavy penalty, shown as posted private */
+    const val PRIVATE = 1 shl 11
 
     val CLASSES = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",

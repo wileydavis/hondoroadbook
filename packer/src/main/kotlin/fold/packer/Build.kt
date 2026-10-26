@@ -19,6 +19,11 @@ object Tagging {
         for (k in keys) { val v = tags[k] ?: continue; return !noAccess.contains(v) }
         return default
     }
+    /** access=private (the owner's say-so) for motor vehicles: kept in the graph, flagged, penalised. "no" and the rest stay out. */
+    private fun isPrivate(tags: Map<String, String>): Boolean {
+        for (k in listOf("motorcar", "motor_vehicle", "vehicle", "access")) { val v = tags[k] ?: continue; return v == "private" }
+        return false
+    }
 
     /** Returns flags for the way, or -1 if it is not a routable road. Handles direction normalization via [reverse]. */
     class WayInfo(val flags: Int, val reverse: Boolean, val name: String)
@@ -33,12 +38,15 @@ object Tagging {
         val bikeDefault = cls !in setOf(0, 1, 21)
         var car = resolve(tags, listOf("motorcar", "motor_vehicle", "vehicle", "access"), carDefault)
         var bike = resolve(tags, listOf("bicycle", "vehicle", "access"), bikeDefault)
+        val private = cls <= 15 && !car && isPrivate(tags)
+        if (private) car = true
         if (cls > 15) car = false
         if (cls == 21) bike = false
         if (tags["motorroad"] == "yes") bike = false
         if (!car && !bike) return null
         if (car) flags = flags or GraphFormat.CAR
         if (bike) flags = flags or GraphFormat.BIKE
+        if (private) flags = flags or GraphFormat.PRIVATE
         if (resolve(tags, listOf("foot", "access"), cls != 0 && cls != 1)) flags = flags or GraphFormat.FOOT
 
         var reverse = false
@@ -67,6 +75,37 @@ object Tagging {
 class RoadWay(val nodes: LongArray, val flags: Int, val name: String)
 class AddrWay(val firstNode: Long, val label: String, val city: String)
 
+/** A place a rider asks about. Prominence 1–3: how far away it is still worth hearing of (a cafe: close; fuel: far). */
+class Poi(val cat: String, val name: String, val kind: String, val prom: Int, val extra: String) {
+    companion object {
+        fun of(tags: Map<String, String>): Poi? {
+            val amenity = tags["amenity"]; val shop = tags["shop"]; val tourism = tags["tourism"]; val natural = tags["natural"]; val place = tags["place"]
+            val name = (tags["name"] ?: tags["brand"] ?: tags["operator"] ?: "").replace('\t', ' ').replace('\n', ' ').trim().take(80)
+            val hours = (tags["opening_hours"] ?: "").take(60).replace('\t', ' ')
+            fun extra(vararg parts: String) = parts.filter { it.isNotEmpty() }.joinToString(" · ")
+            return when {
+                amenity == "fuel" -> Poi("fuel", name, "fuel", 3, hours)
+                tourism == "camp_site" -> Poi("camping", name, if (tags["backcountry"] == "yes") "backcountry" else "campground", 3, extra(when (tags["fee"]) { "no" -> "free"; "yes" -> "fee"; else -> "" }, tags["operator"]?.take(40) ?: ""))
+                tourism == "caravan_site" -> Poi("camping", name, "RV park", 2, extra(when (tags["fee"]) { "no" -> "free"; else -> "" }))
+                tourism == "camp_pitch" -> Poi("camping", name, "camp pitch", 1, "")
+                tourism in setOf("hotel", "motel", "hostel", "guest_house", "chalet", "alpine_hut") -> Poi("lodging", name, tourism!!.replace('_', ' '), 2, tags["phone"]?.take(24) ?: "")
+                amenity == "drinking_water" -> Poi("water", name, if (tags["drinking_water"] == "no") "tap, not potable" else "tap", 1, "")
+                natural == "spring" -> Poi("water", name, "spring", 1, "")
+                tags["man_made"] == "water_well" -> Poi("water", name, "well", 1, "")
+                shop == "motorcycle" || shop == "motorcycle_repair" -> Poi("repair", name, if (shop == "motorcycle") "motorcycle shop" else "motorcycle repair", 3, hours)
+                shop == "car_repair" || amenity == "car_repair" || shop == "tyres" -> Poi("repair", name, "car repair", 2, hours)
+                shop in setOf("supermarket", "convenience", "general") -> Poi("food", name, shop!!, 2, hours)
+                shop == "bakery" -> Poi("food", name, "bakery", 1, hours)
+                amenity in setOf("restaurant", "cafe", "fast_food", "bar", "pub", "food_court") -> Poi("food", name, amenity!!.replace('_', ' '), 1, hours)
+                place == "city" || place == "town" -> Poi("town", name, place, 3, tags["population"]?.take(9) ?: "")
+                place == "village" -> Poi("town", name, "village", 2, tags["population"]?.take(9) ?: "")
+                place == "hamlet" -> Poi("town", name, "hamlet", 1, "")
+                else -> null
+            }?.takeIf { it.name.isNotEmpty() || it.cat in setOf("water", "camping") }
+        }
+    }
+}
+
 /** Two-pass build of graph.bin and search.tsv from an OSM file. */
 class Packer(private val osm: File, private val log: (String) -> Unit, private val clip: DoubleArray? = null) {
     /** [minLon, minLat, maxLon, maxLat] clip, or null for the whole extract. */
@@ -76,6 +115,9 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
     private val addrWays = ArrayList<AddrWay>()
     private val places = ArrayList<Place>()
     private val addrNodes = ArrayList<Place>()
+    private val pois = ArrayList<Pair<Poi, Long>>()                 // a place and the node that locates it (its own id, or a way's first node)
+    private val poiNodes = ArrayList<Triple<Poi, Double, Double>>()
+    private val privateGates = HashSet<Long>()
 
     class Place(val name: String, val kind: String, val lat: Double, val lon: Double)
 
@@ -102,8 +144,10 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
                 useCount.increment(wn[0].nodeId) // ensure we keep its coordinate
                 useCount.increment(wn[0].nodeId)
             }
+            // a campground or a store drawn as an area: located by its first node
+            if (info == null && wn.isNotEmpty()) Poi.of(tags)?.let { pois.add(it to wn[0].nodeId); useCount.increment(wn[0].nodeId); useCount.increment(wn[0].nodeId) }
         }
-        log("pass 1: ${ways.size} road ways, ${addrWays.size} addressed buildings, ${useCount.size} nodes referenced")
+        log("pass 1: ${ways.size} road ways, ${addrWays.size} addressed buildings, ${pois.size} places as areas, ${useCount.size} nodes referenced")
     }
 
     private var clipEast = false
@@ -125,14 +169,18 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
                 if (place != null && name != null && place in placeKinds) places.add(Place(name, place, n.latitude, n.longitude))
                 val hn = tags["addr:housenumber"]; val st = tags["addr:street"]
                 if (hn != null && st != null) addrNodes.add(Place("$hn $st", tags["addr:city"] ?: "", n.latitude, n.longitude))
+                Poi.of(tags)?.let { poiNodes.add(Triple(it, n.latitude, n.longitude)) }
+                // a locked or private gate on a road marks the road it sits on as posted private
+                val barrier = tags["barrier"]
+                if (barrier != null && (barrier == "gate" || barrier == "lift_gate" || barrier == "swing_gate" || barrier == "barrier") && (tags["locked"] == "yes" || tags["access"] == "private" || tags["motor_vehicle"] == "private")) privateGates.add(id)
             }
         }, null)
-        log("pass 2: ${coordLat.size} coordinates, ${places.size} places, ${addrNodes.size} address points")
+        log("pass 2: ${coordLat.size} coordinates, ${places.size} places, ${addrNodes.size} address points, ${poiNodes.size} places as points, ${privateGates.size} private gates")
     }
 
     private val placeKinds = setOf("city", "town", "village", "hamlet", "suburb", "neighbourhood", "locality", "isolated_dwelling")
 
-    fun build(graphOut: File, searchOut: File) {
+    fun build(graphOut: File, searchOut: File, poisOut: File? = null) {
         pass1(); pass2()
         // An extract that wraps the antimeridian (Alaska's Aleutians) would make the bounding box span the planet.
         // Keep the western-hemisphere part only; the islands past 180° have no roads worth routing.
@@ -144,6 +192,21 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
         }
         buildGraph(graphOut)
         buildSearch(searchOut)
+        if (poisOut != null) buildPois(poisOut)
+    }
+
+    /** pois.tsv: lat_e7, lon_e7, prominence, category, kind, name, extra — one place per line, for the planner's nearby lookup. */
+    private fun buildPois(out: File) {
+        var n = 0
+        PrintWriter(out.bufferedWriter()).use { pw ->
+            fun line(p: Poi, lat: Double, lon: Double) {
+                if (!inside(lat, lon)) return
+                pw.print((lat * 1e7).roundToInt()); pw.print('\t'); pw.print((lon * 1e7).roundToInt()); pw.print('\t'); pw.print(p.prom); pw.print('\t'); pw.print(p.cat); pw.print('\t'); pw.print(p.kind); pw.print('\t'); pw.print(p.name); pw.print('\t'); pw.print(p.extra); pw.print('\n'); n++
+            }
+            for ((p, la, lo) in poiNodes) line(p, la, lo)
+            for ((p, nodeId) in pois) { val ci = coordIndex.get(nodeId); if (ci >= 0) line(p, coordLat[ci] / 1e7, coordLon[ci] / 1e7) }
+        }
+        log("pois.tsv: $n places, ${out.length() / 1024} KB")
     }
 
     private fun buildGraph(out: File) {
@@ -180,7 +243,9 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
                         len += Geo.fastDistance(pLat, pLon, coordLat[ci] / 1e7, coordLon[ci] / 1e7)
                         if (a != b || geomN > 0) {
                             if (geomN > 65535) { geomN = 65535 }
-                            gw.addEdge(a, b, (len * 100).roundToInt().coerceAtLeast(1), w.flags, nameIdx, tmpLat, tmpLon, geomN)
+                            var flags = w.flags
+                            if (privateGates.isNotEmpty()) for (k in startI..i) if (privateGates.contains(ids[k])) { flags = flags or GraphFormat.PRIVATE; break }
+                            gw.addEdge(a, b, (len * 100).roundToInt().coerceAtLeast(1), flags, nameIdx, tmpLat, tmpLon, geomN)
                         }
                     }
                 }

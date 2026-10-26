@@ -55,15 +55,16 @@ fun main(args: Array<String>) {
     val log: (String) -> Unit = { println("[${(System.currentTimeMillis() - t0) / 1000}s] $it") }
 
     val work = File(outFile.absoluteFile.parentFile, ".fold-packer-tmp").apply { mkdirs() }
-    val graph = File(work, PackManifest.GRAPH); val search = File(work, PackManifest.SEARCH)
+    val graph = File(work, PackManifest.GRAPH); val search = File(work, PackManifest.SEARCH); val poisFile = File(work, PackManifest.POIS)
     val clip = opts["bbox"]?.split(',')?.map { it.trim().toDouble() }?.takeIf { it.size == 4 }?.toDoubleArray()
     if (clip != null) log("clipping roads, places and tiles to bbox %.3f,%.3f,%.3f,%.3f".format(clip[0], clip[1], clip[2], clip[3]))
     val packer = Packer(pbf, log, clip)
-    packer.build(graph, search)
+    packer.build(graph, search, poisFile)
 
     if (opts.containsKey("graph-only")) {
         graph.copyTo(File(outFile.parentFile ?: File("."), "graph.bin"), true)
         search.copyTo(File(outFile.parentFile ?: File("."), "search.tsv"), true)
+        if (poisFile.exists()) poisFile.copyTo(File(outFile.parentFile ?: File("."), "pois.tsv"), true)
         work.deleteRecursively(); log("done (graph only)"); return
     }
     val tilesFile: File = if (tiles != null && tiles.exists()) tiles else {
@@ -87,7 +88,7 @@ fun main(args: Array<String>) {
     log("writing ${outFile.name}")
     ZipOutputStream(outFile.outputStream().buffered(1 shl 20)).use { zip ->
         zip.setMethod(ZipOutputStream.STORED)
-        for ((entryName, f) in listOf(PackManifest.FILE to manifestFile, PackManifest.GRAPH to graph, PackManifest.SEARCH to search, PackManifest.TILES to tilesFile, PackManifest.OVERVIEW to overview)) {
+        for ((entryName, f) in listOf(PackManifest.FILE to manifestFile, PackManifest.GRAPH to graph, PackManifest.SEARCH to search, PackManifest.POIS to poisFile, PackManifest.TILES to tilesFile, PackManifest.OVERVIEW to overview)) {
             val e = ZipEntry(entryName)
             e.method = ZipEntry.STORED; e.size = f.length(); e.compressedSize = f.length(); e.crc = crc(f)
             zip.putNextEntry(e)

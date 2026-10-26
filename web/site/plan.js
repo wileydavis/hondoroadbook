@@ -188,7 +188,7 @@ function buildStyle() {
     { id: "library_line", type: "line", source: "library", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#7c3aed", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 10, 3, 14, 5], "line-opacity": 0.75 } },
     { id: "route_casing", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 5, 12, 9, 16, 13], "line-opacity": 0.9 } },
     { id: "route_line", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 6, 16, 9] } },
-    { id: "route_unpaved", type: "line", source: "unpaved", layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": night ? "#fff" : "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 2, 16, 3], "line-dasharray": [2, 2.5], "line-opacity": 0.9 } },
+    { id: "route_unpaved", type: "line", source: "unpaved", layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": ["case", ["get", "private"], "#dc2626", "#fff"], "line-width": ["case", ["get", "private"], ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 5, 16, 8], ["interpolate", ["linear"], ["zoom"], 5, 1, 12, 2, 16, 3]], "line-dasharray": [2, 2.5], "line-opacity": 0.9 } },
     { id: "route_hit", type: "line", source: "route", paint: { "line-color": "#000", "line-width": 22, "line-opacity": 0.001 } },
     // the rubber band while dragging: straight lines from the neighbouring stops to the cursor
     { id: "elastic_casing", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": 7, "line-opacity": 0.8 } },
@@ -222,7 +222,7 @@ function lineCoords() { return S.route ? S.route.coords : S.track ? S.track.coor
 function routeGeo() { const c = lineCoords(); return { type: "FeatureCollection", features: c ? [{ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: c } }] : [] }; }
 function unpavedGeo() {
   if (!S.route) return { type: "FeatureCollection", features: [] };
-  return { type: "FeatureCollection", features: S.route.surface.filter(r => r.unpaved || r.cls === "track" || r.cls === "path").map(r => ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: S.route.coords.slice(r.i, r.j + 1) } })) };
+  return { type: "FeatureCollection", features: S.route.surface.filter(r => r.private || r.unpaved || r.cls === "track" || r.cls === "path").map(r => ({ type: "Feature", properties: { private: !!r.private }, geometry: { type: "LineString", coordinates: S.route.coords.slice(r.i, r.j + 1) } })) };
 }
 function refreshRouteSources() {
   const r = map.getSource("route"); if (r) r.setData(routeGeo());
@@ -453,8 +453,9 @@ function renderStats() {
   const bar = $("#surface"), key = $("#surfaceKey"); bar.innerHTML = ""; key.innerHTML = "";
   if (S.route) {
     const groups = new Map();
-    for (const r of S.route.surface) { const k = SURF[r.cls] || ["Other", "#999"]; const label = r.unpaved && k[0] !== "Two-track" && k[0] !== "Trail" ? "Unpaved road" : k[0]; const color = label === "Unpaved road" ? "#b45309" : k[1]; const g = groups.get(label) || { m: 0, color }; g.m += r.m; groups.set(label, g); }
-    const order = ["Highway", "Paved", "Minor", "Unpaved road", "Two-track", "Trail", "Path", "Other"];
+    for (const r of S.route.surface) { const k = SURF[r.cls] || ["Other", "#999"]; const label = r.private ? "Posted private" : r.unpaved && k[0] !== "Two-track" && k[0] !== "Trail" ? "Unpaved road" : k[0]; const color = label === "Posted private" ? "#dc2626" : label === "Unpaved road" ? "#b45309" : k[1]; const g = groups.get(label) || { m: 0, color }; g.m += r.m; groups.set(label, g); }
+    const order = ["Posted private", "Highway", "Paved", "Minor", "Unpaved road", "Two-track", "Trail", "Path", "Other"];
+    const prv = groups.get("Posted private"); if (prv) status(`${fmtDist(prv.m)} of this route is on roads OpenStreetMap marks private — ask, or drag the line off them`, true);
     for (const label of order) { const g = groups.get(label); if (!g) continue; const sp = document.createElement("span"); sp.style.width = (100 * g.m / len) + "%"; sp.style.background = g.color; sp.title = `${label}: ${fmtDist(g.m)}`; bar.appendChild(sp); const k = document.createElement("span"); k.innerHTML = `<i style="background:${g.color}"></i>${label} ${fmtDist(g.m)}`; key.appendChild(k); }
     const legs = $("#legs"); legs.innerHTML = S.route.legs.length > 1 ? S.route.legs.map((l, i) => `${i === 0 ? "A" : i} → ${i === S.route.legs.length - 1 ? "B" : i + 1}: ${fmtDist(l.length)}, ${fmtTime(l.time)}`).join(" · ") : "";
   } else $("#legs").innerHTML = "";
@@ -615,13 +616,37 @@ function addStopAt(lon, lat, noteText) {
   if (S.pts.length < 2) status("Added as the start; click the map for the finish");
 }
 let placePop = null;
+function parseCoords(str) {
+  const t = String(str).trim().replace(/[()\[\]]/g, "");
+  let m = /^(-?\d{1,2}(?:\.\d+)?)\s*°?\s*([NS])?\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)\s*°?\s*([EW])?$/i.exec(t);
+  if (m) { let lat = Number(m[1]), lon = Number(m[3]); if (/s/i.test(m[2] || "")) lat = -Math.abs(lat); if (/w/i.test(m[4] || "")) lon = -Math.abs(lon); if (Math.abs(lat) <= 90 && Math.abs(lon) <= 180) return [lon, lat]; }
+  // 48°04'24.0"N 123°39'44.1"W
+  m = /^(\d{1,2})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([NS])\s*,?\s*(\d{1,3})°\s*(\d{1,2})['′]\s*(\d{1,2}(?:\.\d+)?)?["″]?\s*([EW])$/i.exec(t);
+  if (m) { const lat = (Number(m[1]) + Number(m[2]) / 60 + Number(m[3] || 0) / 3600) * (/s/i.test(m[4]) ? -1 : 1); const lon = (Number(m[5]) + Number(m[6]) / 60 + Number(m[7] || 0) / 3600) * (/w/i.test(m[8]) ? -1 : 1); return [lon, lat]; }
+  return null;
+}
+function goToCoords(c) {
+  map.flyTo({ center: c, zoom: Math.max(map.getZoom(), 14) });
+  map.once("moveend", () => pointPopup(c, `${c[1].toFixed(5)}, ${c[0].toFixed(5)}`, "pasted coordinate", "Point"));
+}
+// paste anywhere that is not a text box: coordinates from Google Maps or a forum post land on the map
+document.addEventListener("paste", e => {
+  const tag = (e.target && e.target.tagName || "").toLowerCase(); if (tag === "input" || tag === "textarea" || e.target.isContentEditable) return;
+  const c = parseCoords((e.clipboardData || window.clipboardData).getData("text")); if (!c) return;
+  e.preventDefault(); goToCoords(c);
+});
 /** A place on the map, clicked: add it as a note on the route (at the nearest point, with distance and direction) or as a stop. */
 function placePopup(f, lngLat) {
   const p = f.properties || {}; let c = f.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
   const name = p.name || p.kind.replace(/_/g, " "); const cat = POI_KIND[p.kind] || "place"; const label = { fuel: "Fuel", food: "Food", camping: "Camp", water: "Water", lodging: "Lodging", repair: "Repair" }[cat] || "Place";
+  pointPopup(c, name, p.kind.replace(/_/g, " "), label);
+}
+/** A point with a name: a note on the route pointing at it, a stop through it, or a look at it. */
+function pointPopup(c, name, kind, label) {
   if (placePop) placePop.remove();
   const el = document.createElement("div"); el.className = "placepop";
-  el.innerHTML = `<b>${esc(name)}</b><div class="muted small">${esc(p.kind.replace(/_/g, " "))}</div><div class="placepop-actions"><button data-act="note">+ note on route</button><button data-act="stop">+ stop here</button></div>`;
+  el.innerHTML = `<b>${esc(name)}</b><div class="muted small">${esc(kind)}</div><div class="placepop-actions"><button data-act="note">+ note on route</button><button data-act="stop">+ stop here</button><button data-act="inspect">inspect</button></div>`;
+  el.querySelector('[data-act="inspect"]').onclick = () => { placePop.remove(); inspect(c[0], c[1]); };
   el.querySelector('[data-act="note"]').onclick = () => {
     const line = lineCoords(); if (!line) { status("Plan a route first; then places can go on it as notes", true); return; }
     const a = alongLine(line, c); const d = dist(a.point, c); const b = Math.round(bearingDeg(a.point[1], a.point[0], c[1], c[0]));
@@ -729,8 +754,16 @@ async function inspect(lon, lat) {
       $("#inspNear").querySelectorAll("button[data-stop]").forEach(b => b.onclick = () => { $("#inspect").hidden = true; addStopAt(Number(b.dataset.lon), Number(b.dataset.lat), b.dataset.stop); });
     };
     try {
-      const say = (near, done) => render(near, `${done ? "Searched" : "Searching…"} about ${fmtDist(near.reachKm * 1000)} out, from the map pack${done && near.reachKm > 8 ? " — it kept widening because fuel, camping or beds were not close" : ""}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`);
-      const near = await peekPois(lon, lat, (partial) => say(partial, false));
+      // the pack's place index (any distance, a rider's prominence) when the pack carries one; the tiles otherwise
+      let near = null;
+      try {
+        const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
+        if (r.ok) { near = { fuel: j.fuel, food: j.food, camping: j.camping, water: j.water, lodging: j.lodging, repair: j.repair, town: j.town, reachKm: Math.round(j.reach / 1000), index: true };
+          for (const k of Object.keys(near)) if (Array.isArray(near[k])) for (const i of near[k]) { if (i.extra) { if (/^free\b/.test(i.extra)) i.fee = "free"; else if (/^fee\b/.test(i.extra)) i.fee = "fee"; i.hours = i.extra.replace(/^(free|fee)( · )?/, ""); } } }
+      } catch {}
+      if (near) { $("#inspAt").textContent = "from the map pack's place index"; render(near, `From the pack's place index: everything close, the prominent places (fuel, campgrounds, towns, repair) out to about ${fmtDist(60000)}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`); return; }
+      const say = (n, done) => render(n, `${done ? "Searched" : "Searching…"} about ${fmtDist(n.reachKm * 1000)} out, from the map tiles${done && n.reachKm > 8 ? " — it kept widening because fuel, camping or beds were not close" : ""}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`);
+      near = await peekPois(lon, lat, (partial) => say(partial, false));
       if (!near) { $("#inspNear").innerHTML = `<span class="muted">No map pack covers this spot.</span>`; return; }
       $("#inspAt").textContent = "from the map pack";
       say(near, true);
@@ -870,6 +903,8 @@ async function search() {
   const q = $("#q").value.trim(); const box = $("#hits");
   if (q.length < 2) { box.hidden = true; return; }
   if ($("#q") !== document.activeElement && box.hidden) return;
+  const cc = parseCoords(q);
+  if (cc) { box.innerHTML = `<div data-lon="${cc[0]}" data-lat="${cc[1]}">Go to ${cc[1].toFixed(5)}, ${cc[0].toFixed(5)}<small>a coordinate — then add it as a stop, a note, or inspect it</small></div>`; box.hidden = false; box.querySelector("div").onclick = () => { box.hidden = true; goToCoords(cc); }; return; }
   const c = map.getCenter(); const b = map.getBounds();
   box.innerHTML = `<div class="muted">Searching…</div>`; box.hidden = false;
   try {
@@ -1019,6 +1054,6 @@ function restoreHash() {
 }
 
 window.addEventListener("beforeunload", e => { if (S.cues.some(c => !c.auto) || S.track) { e.preventDefault(); e.returnValue = ""; } });
-window.roadbookPlanner = { map, state: S, reroute, peekPois };   // for the console and tests
+window.roadbookPlanner = { map, state: S, reroute, peekPois, inspect };   // for the console and tests
 init().catch(e => { console.error(e); status("The planner could not start: " + e.message, true); });
 })();

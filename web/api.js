@@ -14,13 +14,12 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Name", "Access-Control-Max-Age": "86400" }) });
   try {
-    if (path === "route" || path === "snap" || path === "search" || path === "warm") return await routerProxy(request, env, path, url, routerFetch);
+    if (path === "route" || path === "snap" || path === "search" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
     if (path === "park" && request.method === "POST") return await park(request, env, url);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
     if (path.startsWith("roadbooks/")) return await roadbook(request, env, path.slice(10), url);
     if (path === "web") return await webSearch(request, env, url, ctx);
-    if (path === "near") return await near(request, env, url, ctx);
     if (path === "health") return json({ ok: true, router: !!(env.ROUTER || env.ROUTER_URL), library: !!env.DB, storage: !!env.PACKS, web: !!env.BRAVE_KEY });
     return json({ error: "no such endpoint" }, 404);
   } catch (e) {
@@ -174,12 +173,6 @@ async function webSearch(request, env, url, ctx) {
   ctx && ctx.waitUntil(cache.put(ckey, res.clone()));
   return res;
 }
-
-// ---- what is around a spot ----------------------------------------------------------------------------------------
-// The planner reads places straight out of the pack tiles in the browser. The public Overpass instances do not
-// answer requests from Cloudflare's edge (every one times out), so there is no server-side lookup for now; a
-// POI index inside the packs is the planned replacement for the wider ring.
-async function near() { return json({ error: "Nearby places come from the map pack in the planner; there is no server lookup" }, 410); }
 
 // ---- helpers -----------------------------------------------------------------------------------------
 

@@ -51,7 +51,12 @@ object Speeds {
     fun minWeight(p: Profile) = when (p) { Profile.FAST, Profile.TOWING, Profile.BACKROADS -> 1.0; Profile.DIRT -> 0.6; Profile.RIDE -> 0.8; Profile.QUIET -> 0.5; Profile.GRAVEL -> 0.5 }
 
     /** Extra weight multiplier used only for route choice (not ETA). Tables are per road class (see GraphFormat.CLASSES). */
-    fun weight(p: Profile, flags: Int): Double {
+    /** A posted-private road costs eight times its length in every mode: never chosen when any public way exists, still there to be dragged onto on purpose. */
+    const val PRIVATE_PENALTY = 8.0
+
+    fun weight(p: Profile, flags: Int): Double = base(p, flags) * (if (flags and F.PRIVATE != 0) PRIVATE_PENALTY else 1.0)
+
+    private fun base(p: Profile, flags: Int): Double {
         val cls = flags and F.CLASS_MASK
         val unpaved = flags and F.UNPAVED != 0
         return when (p) {
