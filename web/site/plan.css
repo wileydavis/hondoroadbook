@@ -126,10 +126,14 @@ button.icon:hover { border-color: var(--soft); }
 .placepop-actions button { font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 99px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
 .placepop-actions button:hover { border-color: var(--track); color: var(--track); }
 .marker-pt { z-index: 3; width: 26px; height: 26px; border-radius: 13px; background: var(--ink); color: var(--paper); font: 700 13px/26px var(--sans); text-align: center; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); cursor: grab; user-select: none; }
+/* the ends are words on pills; stops are lettered blue discs; cues (white, arrow) look like neither */
+.marker-pt.a, .marker-pt.b { width: auto; padding: 0 9px; height: 24px; line-height: 24px; border-radius: 12px; font-size: 11px; letter-spacing: .08em; }
 .marker-pt.a { background: #16a34a; } .marker-pt.b { background: #dc2626; }
-.marker-pt.via { width: 18px; height: 18px; border-radius: 9px; font-size: 0; background: #fff; border: 3px solid var(--ink); }
+.marker-pt.via { width: 24px; height: 24px; border-radius: 12px; line-height: 24px; font-size: 12px; background: #2563eb; color: #fff; border: 2px solid #fff; }
+.marker-pt.dot { width: 18px; height: 18px; border-radius: 9px; font-size: 0; background: #fff; border: 3px solid var(--ink); }
 .marker-pt.ghost { opacity: .8; position: relative; }
 .marker-pt.snapped { border-color: var(--accent); opacity: 1; }
+.marker-pt.dot.snapped { border-color: var(--accent); }
 .marker-pt.dragging { cursor: grabbing; }
 .ghost-tag { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--paper); font: 600 12px/1 var(--sans); padding: 5px 8px; border-radius: 8px; pointer-events: none; }
 .marker-cue { z-index: 2; width: 30px; height: 30px; padding: 2px; border-radius: 15px; background: var(--card); border: 2px solid var(--ink); box-shadow: 0 1px 5px rgba(0,0,0,.3); cursor: pointer; --card: #fff; --ink: #1b1b1b; --accent: #d8502f; }

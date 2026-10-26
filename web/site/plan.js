@@ -292,8 +292,8 @@ function renderPoints() {
     const el = document.createElement("div");
     const last = i === S.pts.length - 1;
     el.className = "marker-pt " + (i === 0 ? "a" : last ? "b" : "via");
-    el.textContent = i === 0 ? "A" : last ? "B" : "";
-    el.title = i === 0 ? "Start — drag to move, click to delete" : last ? "Finish — drag to move, click to delete" : "Stop — drag to move, click to delete";
+    el.textContent = i === 0 ? "START" : last ? "END" : viaLetter(i - 1);
+    el.title = i === 0 ? "Start — drag to move, click to delete" : last ? "End — drag to move, click to delete" : `Stop ${viaLetter(i - 1)} — drag to move, click to delete`;
     const mk = new maplibregl.Marker({ element: el, draggable: true }).setLngLat([p.lon, p.lat]).addTo(map);
     let moved = false, snapped = null;
     mk.on("dragstart", () => { moved = true; abortInflight(); fadeRoute(true); el.classList.add("dragging"); });
@@ -316,6 +316,8 @@ function renderPoints() {
   });
 }
 
+/** Stops are lettered A, B, C… (then AA, AB) so they read apart from the cue markers; the ends are words. */
+function viaLetter(n) { let s = ""; n = Math.max(0, n); do { s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26) - 1; } while (n >= 0); return s; }
 function afterPointsChange() {
   S.track = null;
   renderPoints();
@@ -371,7 +373,7 @@ function snapOnScreen(point, px = 14) {
 const KIND_WORDS = { path: "trail", track: "two-track", minor: "road", service: "road", highway: "highway", major: "road", medium: "road", rail: "rail" };
 function snapLabel(sn) { return sn.name || KIND_WORDS[sn.kind] || sn.kind || "road"; }
 function ghostMarker(lngLat) {
-  const el = document.createElement("div"); el.className = "marker-pt via ghost"; el.style.pointerEvents = "none";
+  const el = document.createElement("div"); el.className = "marker-pt dot ghost"; el.style.pointerEvents = "none";
   const tag = document.createElement("div"); tag.className = "ghost-tag"; el.appendChild(tag);
   const mk = new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map);
   mk.tag = (t) => { tag.textContent = t; tag.hidden = !t; el.classList.toggle("snapped", !!t); };
@@ -478,7 +480,7 @@ function renderStats() {
     const order = ["Posted private", "Highway", "Paved", "Minor", "Unpaved road", "Two-track", "Trail", "Path", "Other"];
     const prv = groups.get("Posted private"); if (prv) status(`${fmtDist(prv.m)} of this route is on roads OpenStreetMap marks private — ask, or drag the line off them`, true);
     for (const label of order) { const g = groups.get(label); if (!g) continue; const sp = document.createElement("span"); sp.style.width = (100 * g.m / len) + "%"; sp.style.background = g.color; sp.title = `${label}: ${fmtDist(g.m)}`; bar.appendChild(sp); const k = document.createElement("span"); k.innerHTML = `<i style="background:${g.color}"></i>${label} ${fmtDist(g.m)}`; key.appendChild(k); }
-    const legs = $("#legs"); legs.innerHTML = S.route.legs.length > 1 ? S.route.legs.map((l, i) => `${i === 0 ? "A" : i} → ${i === S.route.legs.length - 1 ? "B" : i + 1}: ${fmtDist(l.length)}, ${fmtTime(l.time)}`).join(" · ") : "";
+    const legs = $("#legs"); legs.innerHTML = S.route.legs.length > 1 ? S.route.legs.map((l, i) => `${i === 0 ? "Start" : viaLetter(i - 1)} → ${i === S.route.legs.length - 1 ? "End" : viaLetter(i)}: ${fmtDist(l.length)}, ${fmtTime(l.time)}`).join(" · ") : "";
   } else $("#legs").innerHTML = "";
 }
 function lineLength(c) { let m = 0; for (let i = 1; i < c.length; i++) m += dist(c[i - 1], c[i]); return m; }
@@ -798,7 +800,7 @@ async function inspect(lon, lat) {
   else { inspMap.setStyle(style(inUS ? "naip" : "s2")); inspMap.jumpTo({ center: [lon, lat], zoom: inUS ? 16 : 13 }); }
   setTimeout(() => inspMap.resize(), 50);
   if (inspMap._mk) inspMap._mk.remove();
-  const el = document.createElement("div"); el.className = "marker-pt via"; inspMap._mk = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(inspMap);
+  const el = document.createElement("div"); el.className = "marker-pt dot"; inspMap._mk = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(inspMap);
   $("#inspS2").onclick = () => { inspMap.setStyle(style("s2")); inspMap.jumpTo({ zoom: Math.min(inspMap.getZoom(), 14) }); };
   // what the graph knows
   $("#inspFacts").innerHTML = `<span class="muted">Looking up…</span>`; $("#inspNear").innerHTML = `<span class="muted">Asking OpenStreetMap what is nearby…</span>`; $("#inspSections").innerHTML = ""; $("#inspWiki").innerHTML = ""; $("#inspWeb").innerHTML = "";
