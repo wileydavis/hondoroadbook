@@ -1,8 +1,7 @@
-# Builds and signs both APKs when a tag like v0.2 is pushed, and attaches them to a GitHub release.
+# Builds and signs the APK when a tag like v0.2 is pushed, and attaches it to a GitHub release.
 # The site links to .../releases/latest/download/roadbook.apk, so a new tag is a new download.
 #
-# Secrets: ROADBOOK_KEYSTORE_B64 (base64 of keys/roadbook-release.jks), ROADBOOK_KEYSTORE_PASSWORD,
-#          FOLD_KEYSTORE_B64, FOLD_KEYSTORE_PASSWORD (optional; Fold is skipped without them).
+# Secrets: ROADBOOK_KEYSTORE_B64 (base64 of keys/roadbook-release.jks), ROADBOOK_KEYSTORE_PASSWORD.
 name: release
 on:
   push:
@@ -20,13 +19,11 @@ jobs:
       - uses: android-actions/setup-android@v3
       - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew --no-daemon -q :core:test :app:assembleFoldRelease :app:assembleRoadbookRelease :packer:fatJar
+      - run: ./gradlew --no-daemon -q :core:test :app:assembleRelease :packer:fatJar
       - name: Sign
         env:
           RB_KS: ${{ secrets.ROADBOOK_KEYSTORE_B64 }}
           RB_PW: ${{ secrets.ROADBOOK_KEYSTORE_PASSWORD }}
-          FD_KS: ${{ secrets.FOLD_KEYSTORE_B64 }}
-          FD_PW: ${{ secrets.FOLD_KEYSTORE_PASSWORD }}
         run: |
           BT="$ANDROID_HOME/build-tools/35.0.0"; mkdir -p out
           sign() { # unsigned apk, keystore b64, password, alias, out
@@ -36,8 +33,7 @@ jobs:
             "$BT/apksigner" sign --ks ks.jks --ks-key-alias "$4" --ks-pass "pass:$3" --key-pass "pass:$3" --out "out/$5" aligned.apk
             "$BT/apksigner" verify "out/$5"; rm -f ks.jks aligned.apk
           }
-          sign app/build/outputs/apk/roadbook/release/app-roadbook-release-unsigned.apk "$RB_KS" "$RB_PW" roadbook roadbook.apk
-          sign app/build/outputs/apk/fold/release/app-fold-release-unsigned.apk "$FD_KS" "$FD_PW" fold fold.apk
+          sign app/build/outputs/apk/release/app-release-unsigned.apk "$RB_KS" "$RB_PW" roadbook roadbook.apk
           cp packer/build/libs/fold-packer.jar out/; cp dist/build-states.sh out/
           ls -la out
       - name: Publish to hondoroadbook.com/download/

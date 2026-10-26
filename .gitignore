@@ -9,7 +9,6 @@ build/
 .kotlin/
 *.apk
 !dist/roadbook.apk
-!dist/fold.apk
 *.apk.idsig
 *.mappack
 *.osm.pbf

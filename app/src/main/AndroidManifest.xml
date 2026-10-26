@@ -2,8 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Deliberately no network permissions: this app cannot open a socket. The map library's own
-         manifest asks for them, so they are explicitly stripped from the merged manifest here. -->
+    <!-- The network is used for exactly the things a button asks for: map packs from the catalog, a roadbook
+         fetched by code, the library. Nothing else; the state permissions the map library asks for are stripped. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
     <uses-feature android:name="android.hardware.wifi" tools:node="remove" />
@@ -36,6 +37,7 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
         <service android:name=".NavService" android:exported="false" android:foregroundServiceType="location" />
+        <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="location" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

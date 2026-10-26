@@ -178,7 +178,7 @@ class MainActivity : AppCompatActivity() {
     private val browseGpx = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) loadGpx(uri) }
     private fun showTrackPicker() {
         FilePicker.show(this, "Follow a track", listOf(".gpx"), "GPX tracks", { chooseFolder { showTrackPicker() } }, { e -> loadGpx(e.uri) }, null, { safe { browseGpx.launch(arrayOf("*/*")) } },
-            extra = if (BuildConfig.ROADBOOK) ("FETCH CODE FROM THE PLANNER" to { Library.fetchCode(this) { name, text -> onFetchedGpx(name, text) } }) else null)
+            extra = "FETCH CODE FROM THE PLANNER" to { Library.fetchCode(this) { name, text -> onFetchedGpx(name, text) } })
     }
     private fun showPackPicker() {
         FilePicker.show(this, "Import map packs", listOf(".mappack", ".zip"), "map packs", { chooseFolder { showPackPicker() } }, { e -> importPacks(listOf(e.uri)) }, { all -> importPacks(all.map { it.uri }) }, { safe { browsePack.launch(arrayOf("*/*")) } })
@@ -201,7 +201,7 @@ class MainActivity : AppCompatActivity() {
         // under 15 % while navigating, the saver turns itself on rather than let the ride die on a long leg
         registerReceiver(batteryRx, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         if (prefs.orientation >= 0) requestedOrientation = prefs.orientation
-        if (BuildConfig.ROADBOOK) { Speech.init(this); Speech.enabled = prefs.sound }
+        { Speech.init(this); Speech.enabled = prefs.sound }
         setContentView(R.layout.activity_main)
 
         mapView = findViewById(R.id.map)
@@ -231,8 +231,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnMaps).setOnClickListener { MapsDialog.show(this, packs, marks, { showPackPicker() }, { p -> deletePack(p) }, { metric -> prefs.metric = metric; Units.metric = metric },
             onExportMarks = { val tree = FilePicker.folder(this); if (tree == null) chooseFolder { exportMarks() } else exportMarks() },
             onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
-            onDownload = if (BuildConfig.ROADBOOK) ({ Catalog.show(this, packs) { onPacksChanged() } }) else null,
-            onBrowse = if (BuildConfig.ROADBOOK) ({ showLibrary(true) }) else null,
+            onDownload = { Catalog.show(this, packs) { onPacksChanged() } },
+            onBrowse = { showLibrary(true) },
             terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
@@ -243,8 +243,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnSavePin).setOnClickListener { pin?.let { ll -> MarkDialog.edit(this, null, if (pinName.isEmpty() || pinName.first().isDigit() || pinName.first() == '-') "" else pinName) { name, note -> safe { marks.add(name, note, ll.latitude, ll.longitude); drawMarks(); clearPin(); toast("Saved: $name") } } } }
         findViewById<Button>(R.id.btnEnd).setOnClickListener { endNavigation() }
         findViewById<ImageButton>(R.id.btnSound).setOnClickListener {
-            val on = !prefs.sound; prefs.sound = on; Tone.enabled = on; Speech.enabled = on && BuildConfig.ROADBOOK; updateSoundButton()
-            if (on) { Tone.turn(); if (BuildConfig.ROADBOOK) { if (Speech.ready) Speech.say("Sound on") else toast("Pips and chimes on; the voice is still loading.", 4000) } }
+            val on = !prefs.sound; prefs.sound = on; Tone.enabled = on; Speech.enabled = on; updateSoundButton()
+            if (on) { Tone.turn(); if (Speech.ready) Speech.say("Sound on") else toast("Pips and chimes on; the voice is still loading.", 4000) }
             else Speech.stop()
         }
         updateSoundButton()
@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.menuSheet).setOnClickListener { }   // taps inside the sheet stay inside
         // Roadbook: pre-run recording and cue authoring
         panelEdit = findViewById(R.id.panelEdit); recStrip = findViewById(R.id.recStrip); recStatus = findViewById(R.id.recStatus)
-        if (BuildConfig.ROADBOOK) {
+        run {
             findViewById<ImageButton>(R.id.btnRec).setOnClickListener { startRecording() }
             findViewById<Button>(R.id.btnRecCue).setOnClickListener { addCueHere() }
             findViewById<Button>(R.id.btnRecStop).setOnClickListener { stopRecording() }
@@ -347,7 +347,7 @@ class MainActivity : AppCompatActivity() {
                 if (p != null && lastFix == null) {
                     val m = p.manifest
                     map?.moveCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(m.maxLat, m.maxLon, m.minLat, m.minLon), dp(40)))
-                } else if (p == null) toast(if (BuildConfig.ROADBOOK) "No maps yet — tap MAPS → DOWNLOAD" else "No maps yet — tap MAPS to import a .mappack")
+                } else if (p == null) toast("No maps yet — tap MAPS → DOWNLOAD")
             }
             // warm the routers in the background so the first route is instant
             try { packs.multiRouter() } catch (_: Throwable) {}
@@ -418,7 +418,7 @@ class MainActivity : AppCompatActivity() {
         st.addImage("cue", cueBitmap(false)); st.addImage("cue-danger", cueBitmap(true))
         srcPin = GeoJsonSource("pin-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         srcPuck = GeoJsonSource("puck-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
-        if (BuildConfig.ROADBOOK) addLibraryLayers(st)
+        addLibraryLayers(st)
         val casing = ContextCompat.getColor(this, R.color.route_casing)
         // Route lines go under the map's labels (road names, shields, towns), so a route never hides the name of the road it follows.
         val firstLabel = st.layers.firstOrNull { it is SymbolLayer }?.id
@@ -896,8 +896,7 @@ class MainActivity : AppCompatActivity() {
         val names = ArrayList<String>(); names.add("Start"); for (i in vias.indices) names.add("Via ${i + 1}"); names.add(destName.ifEmpty { "End" })
         val title = (destName.ifEmpty { "Route" }) + " (" + profile.label + ")"
         val text = Gpx.writeRoute(title, profile.name, pts.map { it.latitude }.toDoubleArray(), pts.map { it.longitude }.toDoubleArray(), names, r.lats, r.lons)
-        if (!BuildConfig.ROADBOOK) return text
-        // Roadbook: the router's turns go in as cues, so the file is a roadbook you can annotate and follow as a track
+                // Roadbook: the router's turns go in as cues, so the file is a roadbook you can annotate and follow as a track
         val cues = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, if (m.turn == Turn.ROUNDABOUT) "exit ${m.exit}" else m.name) }
         return text.replace("  <rte>", cues.joinToString("") { Gpx.cueXml(it) } + "  <rte>")
     }
@@ -1239,7 +1238,7 @@ class MainActivity : AppCompatActivity() {
 
     /** A GPX with route points is re-routed on this phone's maps; a bare track is followed as a line. */
     private fun onGpxLoaded(tr: Gpx.Track, uri: Uri? = null) {
-        if (BuildConfig.ROADBOOK && tr.hasTrack) {
+        if (tr.hasTrack) {
             // Roadbook: a track is something you author as well as follow
             val n = tr.cues.size
             val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
@@ -1548,8 +1547,7 @@ class MainActivity : AppCompatActivity() {
 
     private val recTick = object : Runnable { override fun run() { if (Recorder.running) { updateRecStrip(); ui.postDelayed(this, 1000) } } }
     private fun updateRecStrip() {
-        if (!BuildConfig.ROADBOOK) return
-        val on = Recorder.running
+                val on = Recorder.running
         recStrip.visibility = if (on && mode != Mode.COMPARE && mode != Mode.PIN) View.VISIBLE else View.GONE
         // keep the night/locate/lock stack clear of the strip
         findViewById<ImageButton>(R.id.btnRec).imageTintList = android.content.res.ColorStateList.valueOf(ContextCompat.getColor(this, if (on) R.color.accent else R.color.ink))
@@ -1664,14 +1662,14 @@ class MainActivity : AppCompatActivity() {
             items.add(MenuItem("END", R.drawable.ic_end, accent = true) { endNavigation() })
             items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound) { findViewById<ImageButton>(R.id.btnSound).performClick() })
             items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
-            if (BuildConfig.ROADBOOK && isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })
+            if (isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })
             if (!isTrack) items.add(MenuItem("TURN LIST", R.drawable.ic_list) { route?.let { showTurnList(it) } })
-            if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
+            items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
         } else {
             items.add(MenuItem("GO TO", R.drawable.ic_search) { findViewById<ImageButton>(R.id.btnGo).performClick() })
             items.add(MenuItem("TRACK", R.drawable.ic_track) { findViewById<ImageButton>(R.id.btnTrack).performClick() })
             items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
-            if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
+            items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
             if (libraryOn) items.add(MenuItem("HIDE ROADBOOKS", R.drawable.ic_list, on = true) { showLibrary(false) })
             if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain) { prefs.terrain = !prefs.terrain; loadStyle() })
             items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })

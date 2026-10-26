@@ -1,19 +1,15 @@
-# Roadbook / Fold
+# Roadbook
 
-One codebase, two apps:
+Offline motorcycle and bicycle navigation that rides a GPX roadbook at speed, by Hondo Garage
+(`com.hondogarage.roadbook`): plan a route on the web planner or record a pre-run, drop cues and notes,
+then follow it with the arrow, the fill-to-the-turn bar, pips in the helmet and the cue read aloud. Map packs
+download in-app from https://hondoroadbook.com. Website and pipeline: `web/`, `.github/workflows/`.
 
-* **Roadbook** (`com.hondogarage.roadbook`, by Hondo Garage) — offline motorcycle navigation that
-  rides a GPX roadbook at speed: record a pre-run, drop cues and notes, then follow it with the arrow,
-  the fill-to-the-turn bar, pips in the helmet and the cue read aloud. Map packs download in-app from
-  https://hondoroadbook.com. Website and pipeline: `web/`, `.github/workflows/`.
-* **Fold** (`fold.app`) — the stripped-down private version. Same maps, routing and HUD; **no network
-  permission at all**, no recording, no speech. Packs are copied to the phone by hand.
+Built with `./gradlew :app:assembleRelease`. (Until October 2026 the same code also produced **Fold**, a
+network-less flavour with no recording and no voice; Roadbook superseded it in every way and the flavour was
+retired. The Kotlin packages are still named `fold.*`.)
 
-Both are built from `app/` as product flavors (`assembleRoadbookRelease`, `assembleFoldRelease`).
-
-## Roadbook
-
-Everything under **Fold** below applies; Roadbook adds:
+## What it does
 
 * **Record a pre-run.** The ● button starts recording (a foreground service keeps GPS going with the
   screen off; a notification shows distance and cue count). A strip appears with **CUE** and **STOP**.
@@ -32,7 +28,7 @@ Everything under **Fold** below applies; Roadbook adds:
   a Piper neural voice (en_US lessac, int8, 17 MB) run by sherpa-onnx on the phone, arm64 only. Nothing
   to install, nothing sent anywhere. Each phrase is synthesized as soon as its cue becomes the next one,
   so it starts instantly when the window opens. `app/src/roadbook/assets/tts/` holds the voice;
-  `PiperEngine.kt` drives it; Fold has no voice at all.
+  `PiperEngine.kt` drives it.
 * **Built for a glove.** One big translucent button at the bottom of the screen opens a sheet of giant
   buttons (two columns, reaching up to the HUD): GO TO, TRACK, MAPS, RECORD, NIGHT MAP, LOCATE, LOCK
   SCREEN; while navigating END, SOUND, ADD CUE HERE, RECORD, NIGHT MAP, LOCATE, LOCK SCREEN. A full-width
@@ -105,13 +101,11 @@ publishes the APKs on a tag. Details: `web/README.md`.
 
 ---
 
-# Fold
+# The base: a paper-map substitute for a phone
 
-A paper-map substitute for a phone. Offline. No account. No network permission at all.
-
-Fold shows a map, follows a GPX track, or routes you to an address or a point you long-press,
-with a turn cue (arrow + distance + a bar that fills as the turn approaches and lands exactly at the turn).
-That's the whole feature list, on purpose.
+Offline. No account. Roadbook shows a map, follows a GPX track, or routes you to an address or a point you
+long-press, with a turn cue (arrow + distance + a bar that fills as the turn approaches and lands exactly at
+the turn). Everything else is built on that.
 
 ```
 fold/
@@ -120,34 +114,29 @@ fold/
   packer/   Desktop tool: OSM extract → .mappack (tiles + routing graph + address index).
   server/   The core as an HTTP routing service, for the planner (a Cloudflare Container).
   web/      hondoroadbook.com: Worker, tile proxy, API, the planner page.
-  dist/     fold.apk, roadbook.apk (signed), fold-packer.jar
-  keys/     fold-release.jks — the signing key. Keep it; updates must be signed with the same key.
+  dist/     roadbook.apk (signed), fold-packer.jar
+  keys/     roadbook-release.jks — the signing key (never committed). Updates must be signed with the same key.
 ```
 
 ## Privacy model
 
-* The merged Android manifest contains **only** `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION`.
-  `INTERNET`, `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` (which the map library asks for) are
-  stripped with `tools:node="remove"`. The app cannot open a socket, so there is nothing for a
-  firewall to block. GrapheneOS will not even show a Network toggle for it.
-* Map data is read from files you put on the phone yourself (`.mappack`). Fonts, sprites and the
-  style are inside the APK.
-* Nothing is written except your packs and two settings (night mode, drive/ride, units).
-  No history, no recent searches, no saved destinations, no track logs. A seized phone reveals
-  that you own maps of a region and nothing else.
-* GPS is receive-only. Put the phone in airplane mode and Fold works exactly the same.
+* The network is used only when you press a button that needs it: downloading packs, fetching a
+  roadbook by code, publishing one, browsing the library. Nothing is sent otherwise — no analytics, no
+  crash reports, no position. `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` (which the map library asks
+  for) are stripped with `tools:node="remove"`.
+* Map data is read from packs on the phone. Fonts, sprites and the style are inside the APK.
+* Nothing is written except your packs, settings, marks you save on purpose, recordings you keep and the
+  checkpoint of a ride in progress. No history, no recent searches, no track logs.
+* GPS is receive-only. Put the phone in airplane mode and navigation works exactly the same.
 
 ## Install on GrapheneOS (or any Android 10+)
 
-1. Get `fold.apk` onto the phone — download it from this chat in Vanadium, or copy it over USB.
-2. Open **Files → Downloads**, tap `fold.apk`.
-3. Android asks to allow installs from that app (Files or Vanadium) — allow it, then **Install**.
-4. Open Fold. Allow **Precise location** ("While using the app"). That is the only permission it will ever ask for.
-5. Tap **MAPS → IMPORT .MAPPACK**. The first time Fold asks for the folder that holds your packs
-   (pick Downloads); then it lists the `.mappack` files there — tap one, or **IMPORT ALL**.
-   Import is a straight unzip into the app's private storage: a 450 MB pack takes under a minute.
+1. Download `roadbook.apk` from https://hondoroadbook.com on the phone, or copy it over USB.
+2. Open **Files → Downloads**, tap `roadbook.apk`. Android asks to allow installs from that app — allow it, then **Install**.
+3. Open Roadbook. Allow **Precise location**; notifications are optional (the next cue while the screen is off).
+4. **MAPS → DOWNLOAD** your states. (**MAPS → IMPORT .MAPPACK** still takes a pack copied over by hand.)
 
-Updating later: install the new `fold.apk` over the old one; packs and settings stay.
+Updating later: install the new `roadbook.apk` over the old one; packs and settings stay.
 
 ## Using it
 
@@ -157,17 +146,17 @@ Updating later: install the new `fold.apk` over the old one; packs and settings 
   Modes: Fast (interstates), Towing (big roads only, no dirt, no tight streets), Backroads (paved two-lanes,
   avoids the interstate), Dirt (gravel and tracks wherever they go), Ride, Quiet ride, Gravel ride.
 * **GO TO** → type an address, street or town. Results come from the pack's offline index.
-* **TRACK** → pick a GPX file from your folder (the first time, Fold asks which folder on the phone
-  holds your files — Downloads is fine — and remembers it). Fold follows the track and synthesizes turn cues from its geometry.
+* **TRACK** → pick a GPX file from your folder (the first time, Roadbook asks which folder on the phone
+  holds your files — Downloads is fine — and remembers it). Roadbook follows the track and synthesizes turn cues from its geometry.
   If you leave the track it shows an arrow and distance back to it.
 * **Routes you make and keep.** Long-press → **FROM** sets a start anywhere (a green dot), so you can plan at
   the kitchen table; ROUTE HERE / VIA build it; **SAVE** on the compare screen (or tap the bottom card while
   navigating for the written turn list and SAVE / SHARE) writes a GPX to your folder or hands it to any app
   to send. The file holds the points as a route and the line as a track: any map app shows the line, and when
-  a Fold user opens it under TRACK it is re-routed through the same points on *their* maps, in the same mode.
+  a Roadbook user opens it under TRACK it is re-routed through the same points on *their* maps, in the same mode.
 * **★ on the pin panel** saves a mark with a name and a note (water here, gate code…). Marks show on the
   map; tap one to route there, edit or delete it; GO TO lists them. MAPS has EXPORT GPX and BURN for all of them.
-  This is the only thing Fold writes beyond packs and settings, and only when you ask.
+  This is the only thing written beyond packs, settings and recordings, and only when you ask.
 * The profile button cycles DRIVE → RIDE → QUIET RIDE. Drive leans on interstates: a two-lane highway
   hour counts about 1.65× a motorway hour when choosing, so it takes I-90 round rather than a mountain pass
   that is a little shorter. (ETA is still computed from real speeds.) Use VIA to pull a route anywhere else. Quiet ride treats a bike path as half the cost of its
@@ -199,7 +188,7 @@ Updating later: install the new `fold.apk` over the old one; packs and settings 
 
 ## Packs: one per state, load as many as you like
 
-Fold draws every installed pack and **routes across them**: each pack's road graph carries the
+Roadbook draws every installed pack and **routes across them**: each pack's road graph carries the
 OpenStreetMap node ids, so the same junction in Montana's and Wyoming's packs is one node to the
 router and a Manhattan→Cheyenne route (tested: 988 km, 66 ms) just crosses the line. When more than
 six packs are installed the map draws the six nearest to the camera and swaps them as you move.
@@ -212,7 +201,7 @@ To build every state: put `fold-packer.jar` and `build-states.sh` in a folder on
 FOLD_PACKER_ARGS="--max-zoom 14" ./build-states.sh   # ~40% smaller packs, same roads and names
 ```
 
-Copy the `.mappack` files to the phone's Downloads folder (USB, or a USB-C drive), open Fold,
+Copy the `.mappack` files to the phone's Downloads folder (USB, or a USB-C drive), open Roadbook,
 **MAPS → IMPORT** → the first time, pick the Downloads folder when asked → **IMPORT ALL**.
 A 450 MB pack imports in under a minute from the phone's own storage. A 2.5 GB one (Texas,
 California) takes a few minutes. Importing straight from a USB-C drive avoids copying the pack
@@ -264,7 +253,7 @@ the whole US ~25 GB, the planet 100+ GB. Packs can be copied phone-to-phone; the
 export ANDROID_HOME=/path/to/android-sdk     # platform 35 + build-tools 35
 ./gradlew :core:test :packer:test               # routing/GPX/HUD tests (set FOLD_GRAPH to a graph.bin for the real-data tests)
 ./gradlew :packer:fatJar                        # packer/build/libs/fold-packer.jar
-./gradlew :app:assembleFoldRelease :app:assembleRoadbookRelease   # then zipalign + apksigner (keys/ is git-ignored; see release.yml)
+./gradlew :app:assembleRelease   # then zipalign + apksigner (keys/ is git-ignored; see release.yml)
 ```
 
 ## Credits

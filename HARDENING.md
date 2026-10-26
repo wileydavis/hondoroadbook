@@ -119,3 +119,9 @@ regression criteria ask and a test or probe covers it; "partial" names what rema
 | CORE-01 / CORE-03 / CORE-06 / NAV-05 / NAV-06 | open | unchanged, deferred. |
 | Lint | **fixed** | `app:tint` on the two ImageButtons; `lintRoadbookRelease` reports 0 errors. |
 
+## Fold retired (26 Oct 2026)
+
+The network-less Fold flavour was retired: Roadbook does everything it did. The app is built as one
+product (`assembleRelease`); the installed id is unchanged (`com.hondogarage.roadbook`), so updates install
+over earlier builds. Earlier audit text that mentions "the Fold flavor" refers to the retired build.
+

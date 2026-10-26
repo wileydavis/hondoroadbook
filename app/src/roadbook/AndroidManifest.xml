@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-    <!-- Roadbook: the network is used for exactly one thing, downloading map packs from the catalog. -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- (foreground-service and notification permissions are in the main manifest: navigation and recording both run with the screen off) -->
-    <application>
-        <service android:name=".RecordService" android:exported="false" android:foregroundServiceType="location" />
-    </application>
-</manifest>

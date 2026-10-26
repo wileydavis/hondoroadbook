@@ -142,8 +142,8 @@ object MapsDialog {
             root.addView(Button(ctx).apply { text = "BROWSE ROADBOOKS"; textSize = 13f; tag = "browse" })
         }
         root.addView(TextView(ctx).apply { text = ctx.getString(R.string.credits); textSize = 12f; setPadding(0, ctx.dp(12), 0, 0) })
-        root.addView(TextView(ctx).apply { text = (if (BuildConfig.ROADBOOK) "Roadbook " else "Fold ") + BuildConfig.VERSION_NAME + (if (BuildConfig.ROADBOOK) " · hondoroadbook.com" else ""); textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
-        root.addView(TextView(ctx).apply { text = if (BuildConfig.ROADBOOK) "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. No accounts, no history." else "Fold stores only your map packs, these settings, and marks you save on purpose. No history, no accounts, no network permission."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
+        root.addView(TextView(ctx).apply { text = "Roadbook " + BuildConfig.VERSION_NAME + " · hondoroadbook.com"; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
+        root.addView(TextView(ctx).apply { text = "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. No accounts, no history."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
         val b = AlertDialog.Builder(ctx).setTitle("Maps on this phone").setView(scroll)
             .setPositiveButton(if (onDownload != null) "DOWNLOAD" else ctx.getString(R.string.import_pack)) { _, _ -> if (onDownload != null) onDownload() else onImport() }
