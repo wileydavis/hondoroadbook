@@ -41,7 +41,7 @@ object Recorder {
 
     fun start(ctx: Context) {
         if (running) return
-        clear(); running = true; startedAt = System.currentTimeMillis()
+        clear(); lastFailure = null; running = true; startedAt = System.currentTimeMillis()
         try { ctx.startForegroundService(Intent(ctx, RecordService::class.java)) } catch (_: Throwable) { running = false; throw IllegalStateException("Could not start recording service") }
         onChange?.invoke()
     }
@@ -55,6 +55,10 @@ object Recorder {
 
     /** After Android restarted the service (process death mid-ride): the journal is the recording; keep going. */
     fun resumeAfterRestart() { running = true; dirty = true; onChange?.invoke() }
+
+    /** Acquisition never started: not recording, whatever start() said a moment ago. What was already journaled stays. */
+    @Volatile var lastFailure: String? = null
+    fun failed(why: String) { running = false; lastFailure = why; onChange?.invoke() }
 
     /** Drops the recording and its recovery file. */
     fun discard(ctx: Context) { clear(); recoveryFile(ctx).delete() }
@@ -140,9 +144,10 @@ class RecordService : Service() {
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "Recording", NotificationManager.IMPORTANCE_LOW).apply { setSound(null, null); enableVibration(false) })
         try {
             if (android.os.Build.VERSION.SDK_INT >= 34) startForeground(ID, notification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION) else startForeground(ID, notification())
-        } catch (_: Throwable) { stopSelf(); return START_NOT_STICKY }
+        } catch (_: Throwable) { Recorder.failed("Android would not let the recording run in the background"); stopSelf(); return START_NOT_STICKY }
         lm = getSystemService(LOCATION_SERVICE) as LocationManager
-        try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper()) } catch (_: Throwable) {}
+        try { lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper()) }
+        catch (e: Throwable) { Recorder.failed("GPS is not available (${e.javaClass.simpleName})"); stopSelf(); return START_NOT_STICKY }
         return START_STICKY
     }
 

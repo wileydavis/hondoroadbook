@@ -122,8 +122,8 @@ jobs:
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
           r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
-          rclone copyto --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$r-roads.mappack" "r2:$BUCKET/$path/$r-roads.mappack"
-          rclone copyto "$r-roads.json" "r2:$BUCKET/$path/$r-roads.json"
+          rclone copyto --ignore-times --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$r-roads.mappack" "r2:$BUCKET/$path/$r-roads.mappack"
+          rclone copyto --ignore-times "$r-roads.json" "r2:$BUCKET/$path/$r-roads.json"
 
   terrain:
     needs: [packer, plan]
@@ -187,8 +187,8 @@ jobs:
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
           r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
-          rclone copyto "$r-terrain.mappack" "r2:$BUCKET/$path/$r-terrain.mappack"
-          rclone copyto "$r-terrain.json" "r2:$BUCKET/$path/$r-terrain.json"
+          rclone copyto --ignore-times "$r-terrain.mappack" "r2:$BUCKET/$path/$r-terrain.mappack"
+          rclone copyto --ignore-times "$r-terrain.json" "r2:$BUCKET/$path/$r-terrain.json"
 
   catalog:
     needs: [roads, terrain]
@@ -225,5 +225,5 @@ jobs:
         if: ${{ env.R2_KEY != '' }}
         run: |
           curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
-          rclone copyto catalog.json "r2:$BUCKET/catalog.json"
-          rclone copyto na-overview.pmtiles "r2:$BUCKET/na-overview.pmtiles"
+          rclone copyto --ignore-times catalog.json "r2:$BUCKET/catalog.json"
+          rclone copyto --ignore-times na-overview.pmtiles "r2:$BUCKET/na-overview.pmtiles"

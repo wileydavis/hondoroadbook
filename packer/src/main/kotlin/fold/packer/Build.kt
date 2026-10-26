@@ -19,11 +19,13 @@ object Tagging {
         for (k in keys) { val v = tags[k] ?: continue; return !noAccess.contains(v) }
         return default
     }
-    /** access=private (the owner's say-so) for motor vehicles: kept in the graph, flagged, penalised. "no" and the rest stay out. */
-    private fun isPrivate(tags: Map<String, String>): Boolean {
-        for (k in listOf("motorcar", "motor_vehicle", "vehicle", "access")) { val v = tags[k] ?: continue; return v == "private" }
+    /** access=private (the owner's say-so) for the vehicle the keys describe: kept in the graph, flagged, avoided then penalised. "no" and the rest stay out. */
+    private fun isPrivate(tags: Map<String, String>, keys: List<String>): Boolean {
+        for (k in keys) { val v = tags[k] ?: continue; return v == "private" }
         return false
     }
+    private val motorKeys = listOf("motorcar", "motor_vehicle", "vehicle", "access")
+    private val bikeKeys = listOf("bicycle", "vehicle", "access")
 
     /** Returns flags for the way, or -1 if it is not a routable road. Handles direction normalization via [reverse]. */
     class WayInfo(val flags: Int, val reverse: Boolean, val name: String)
@@ -36,17 +38,21 @@ object Tagging {
         var flags = cls
         val carDefault = cls <= 15
         val bikeDefault = cls !in setOf(0, 1, 21)
-        var car = resolve(tags, listOf("motorcar", "motor_vehicle", "vehicle", "access"), carDefault)
-        var bike = resolve(tags, listOf("bicycle", "vehicle", "access"), bikeDefault)
-        val private = cls <= 15 && !car && isPrivate(tags)
-        if (private) car = true
+        var car = resolve(tags, motorKeys, carDefault)
+        var bike = resolve(tags, bikeKeys, bikeDefault)
+        // private is evidence per vehicle: motor_vehicle=private with bicycle=yes is private to motors only
+        val privateCar = cls <= 15 && !car && isPrivate(tags, motorKeys)
+        val privateBike = !bike && cls != 21 && isPrivate(tags, bikeKeys)
+        if (privateCar) car = true
+        if (privateBike) bike = true
         if (cls > 15) car = false
         if (cls == 21) bike = false
         if (tags["motorroad"] == "yes") bike = false
         if (!car && !bike) return null
         if (car) flags = flags or GraphFormat.CAR
         if (bike) flags = flags or GraphFormat.BIKE
-        if (private) flags = flags or GraphFormat.PRIVATE
+        if (privateCar && car) flags = flags or GraphFormat.PRIVATE
+        if (privateBike && bike) flags = flags or GraphFormat.PRIVATE_BIKE
         if (resolve(tags, listOf("foot", "access"), cls != 0 && cls != 1)) flags = flags or GraphFormat.FOOT
 
         var reverse = false
@@ -80,9 +86,11 @@ class Poi(val cat: String, val name: String, val kind: String, val prom: Int, va
     companion object {
         fun of(tags: Map<String, String>): Poi? {
             val amenity = tags["amenity"]; val shop = tags["shop"]; val tourism = tags["tourism"]; val natural = tags["natural"]; val place = tags["place"]
-            val name = (tags["name"] ?: tags["brand"] ?: tags["operator"] ?: "").replace('\t', ' ').replace('\n', ' ').trim().take(80)
-            val hours = (tags["opening_hours"] ?: "").take(60).replace('\t', ' ')
-            fun extra(vararg parts: String) = parts.filter { it.isNotEmpty() }.joinToString(" · ")
+            // every field that reaches the TSV is one line with no tabs, whatever the tag held
+            fun clean(s: String?, n: Int) = (s ?: "").replace(Regex("[\\t\\r\\n\\u0000-\\u001f]"), " ").trim().take(n)
+            val name = clean(tags["name"] ?: tags["brand"] ?: tags["operator"], 80)
+            val hours = clean(tags["opening_hours"], 60)
+            fun extra(vararg parts: String) = parts.map { clean(it, 60) }.filter { it.isNotEmpty() }.joinToString(" · ")
             return when {
                 amenity == "fuel" -> Poi("fuel", name, "fuel", 3, hours)
                 tourism == "camp_site" -> Poi("camping", name, if (tags["backcountry"] == "yes") "backcountry" else "campground", 3, extra(when (tags["fee"]) { "no" -> "free"; "yes" -> "fee"; else -> "" }, tags["operator"]?.take(40) ?: ""))
@@ -101,7 +109,7 @@ class Poi(val cat: String, val name: String, val kind: String, val prom: Int, va
                 place == "village" -> Poi("town", name, "village", 2, tags["population"]?.take(9) ?: "")
                 place == "hamlet" -> Poi("town", name, "hamlet", 1, "")
                 else -> null
-            }?.takeIf { it.name.isNotEmpty() || it.cat in setOf("water", "camping") }
+            }?.takeIf { it.name.isNotEmpty() || it.cat != "town" }   // an unnamed pump is still a pump; only a place needs a name
         }
     }
 }
@@ -244,7 +252,7 @@ class Packer(private val osm: File, private val log: (String) -> Unit, private v
                         if (a != b || geomN > 0) {
                             if (geomN > 65535) { geomN = 65535 }
                             var flags = w.flags
-                            if (privateGates.isNotEmpty()) for (k in startI..i) if (privateGates.contains(ids[k])) { flags = flags or GraphFormat.PRIVATE; break }
+                            if (privateGates.isNotEmpty()) for (k in startI..i) if (privateGates.contains(ids[k])) { flags = flags or GraphFormat.PRIVATE or GraphFormat.PRIVATE_BIKE; break }   // a locked gate stops everyone
                             gw.addEdge(a, b, (len * 100).roundToInt().coerceAtLeast(1), flags, nameIdx, tmpLat, tmpLon, geomN)
                         }
                     }

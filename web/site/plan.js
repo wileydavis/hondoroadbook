@@ -51,7 +51,7 @@ const S = {
   mode: "DIRT", pts: [], route: null, track: null,
   cues: [],            // {lon,lat,turn,level,text,auto:boolean,at}
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
-  elastic: null, lastGood: null, places: false, pendingNotes: [],
+  elastic: null, lastGood: null, places: false, pendingNotes: [], cueSeq: 0, routeReq: 0,
   night: matchMedia("(prefers-color-scheme: dark)").matches, terrain: true, land: false, imagery: false, library: false,
   catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
@@ -105,7 +105,9 @@ async function updatePacks(force) {
     for (const p of terrainPacks()) if (inter(p.bbox, b)) want.add(p.id);
   }
   for (const id of [...want]) if (S.overview.get(id) === null) want.delete(id);   // known to be missing from the shelf
-  const changed = force || want.size !== S.activePacks.size || [...want].some(id => !S.activePacks.has(id));
+  // unchanged set — unless a wanted pack is still unknown (a transient failure last time, or a negative entry that expired): then ask again
+  const unknownWanted = [...want].some(id => !S.overview.has(id) && !S.checking.has(id));
+  const changed = force || want.size !== S.activePacks.size || [...want].some(id => !S.activePacks.has(id)) || unknownWanted;
   if (!changed) return;
   // the style goes up at once with every pack assumed present; the checks below run behind it and only
   // ever remove a pack (its file is not on the shelf yet) or add its overview roads file
@@ -119,7 +121,7 @@ async function updatePacks(force) {
     const roads = roadsPacks().some(p => p.id === id);
     try {
       const r = await fetch(`/tiles/${id}/${roads ? "tiles" : "terrain"}.pmtiles`, { method: "HEAD" });
-      if (r.status === 404 || r.status === 409) { S.overview.set(id, null); setTimeout(() => S.overview.delete(id), 120000); return; }   // retry in two minutes
+      if (r.status === 404 || r.status === 409) { S.overview.set(id, null); setTimeout(() => { S.overview.delete(id); updatePacks(false); }, 120000); return; }   // retried in two minutes
       if (!r.ok) return;                                                      // a transient failure: ask again next time
       if (!roads) { S.overview.set(id, false); return; }
       const o = await fetch(`/tiles/${id}/roads.pmtiles`, { method: "HEAD" }); S.overview.set(id, o.ok);
@@ -265,7 +267,7 @@ $("#lyPlaces").onchange = e => { S.places = e.target.checked; applyStyle(); };
 $("#lyLibrary").onchange = e => { S.library = e.target.checked; if (S.library) loadLibrary(); else { S.libraryData = null; applyStyle(); } };
 $("#btnSide").onclick = () => { $("#side").classList.add("hidden"); $("#btnSideShow").hidden = false; };
 $("#btnSideShow").onclick = () => { $("#side").classList.remove("hidden"); $("#btnSideShow").hidden = true; };
-document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { const sh = b.closest(".sheet"); sh.hidden = true; if (sh.id === "inspect") clearInspPlaces(); });
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { const sh = b.closest(".sheet"); sh.hidden = true; if (sh.id === "inspect") { inspGen++; clearInspPlaces(); } });
 
 async function landLegend() {
   const k = $("#landKey"); if (k.dataset.done) return;
@@ -278,7 +280,10 @@ async function landLegend() {
 }
 
 let statusT;
-function status(msg, err, sticky) { const s = $("#status"); s.textContent = msg; s.className = "status" + (err ? " err" : ""); s.hidden = false; clearTimeout(statusT); if (!sticky) statusT = setTimeout(() => s.hidden = true, err ? 6000 : 3000); }
+let warnAt = 0;
+function status(msg, err, sticky) { const s = $("#status"); s.textContent = msg; s.className = "status" + (err ? " err" : ""); s.hidden = false; clearTimeout(statusT); if (err) warnAt = Date.now(); if (!sticky) statusT = setTimeout(() => s.hidden = true, err ? 8000 : 3000); }
+/** Hides "Routing…" but never a warning that was just raised (dropped cues, private roads). */
+function clearRoutingStatus() { if (Date.now() - warnAt > 500) $("#status").hidden = true; }
 function fmtDist(m) { return units === "mi" ? (m / 1609.344 < 10 ? (m / 1609.344).toFixed(1) : Math.round(m / 1609.344)) + " mi" : (m / 1000 < 10 ? (m / 1000).toFixed(1) : Math.round(m / 1000)) + " km"; }
 function fmtDistShort(m) { return units === "mi" ? (m < 300 ? Math.round(m * 3.28084) + " ft" : (m / 1609.344).toFixed(m / 1609.344 < 10 ? 1 : 0) + " mi") : (m < 1000 ? Math.round(m) + " m" : (m / 1000).toFixed(m / 1000 < 10 ? 1 : 0) + " km"); }
 function fmtTime(s) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return h ? `${h} h ${m} min` : `${m} min`; }
@@ -319,6 +324,7 @@ function renderPoints() {
 /** Stops are lettered A, B, C… (then AA, AB) so they read apart from the cue markers; the ends are words. */
 function viaLetter(n) { let s = ""; n = Math.max(0, n); do { s = String.fromCharCode(65 + n % 26) + s; n = Math.floor(n / 26) - 1; } while (n >= 0); return s; }
 function afterPointsChange() {
+  S.routeReq++;
   S.track = null;
   renderPoints();
   if (S.pts.length >= 2) reroute();
@@ -431,11 +437,12 @@ async function reroute() {
     const j = await callRoute(S.pts, ac.signal);
     if (S.inflight !== ac) return; S.inflight = null;
     setRoute(j, false);
-    $("#status").hidden = true; progress(false);
+    clearRoutingStatus(); progress(false);
   } catch (e) {
     if (e.name === "AbortError") return;
     S.inflight = null; setElastic(null); fadeRoute(false); progress(false);
     // the points go back to the last route that worked, so what is shown and what is exported always agree
+    if (S.pendingNotes.length) { S.pendingNotes = []; status("The stop could not be routed, so its note was not added", true); }
     if (S.lastGood) { S.pts = S.lastGood.pts.map(p => ({ ...p })); S.mode = S.lastGood.mode; buildModes(); renderPoints(); saveHash(); status(e.message + " — kept the previous route", true); }
     else { S.pts = []; S.route = null; refreshRouteSources(); renderAll(); status(e.message, true); }
   }
@@ -444,13 +451,19 @@ async function reroute() {
 /** Takes a router answer. Auto cues are replaced; the user's own cues stay if they still touch the line. */
 function setRoute(j, preview) {
   S.route = j; S.track = null;
+  if (!preview && editing && editing.id != null) { $("#cueEd").hidden = true; editing = null; }
   refreshRouteSources(); setElastic(null); fadeRoute(false);
   if (preview) return;
   // the points sit where the router put them: on the road or trail it found, not in the sagebrush beside it
   if (j.snapped && j.snapped.length === S.pts.length) S.pts = j.snapped.map(p => ({ lon: p.lon, lat: p.lat }));
   S.lastGood = { pts: S.pts.map(p => ({ ...p })), mode: S.mode };
   // notes waiting for their stop to be snapped onto a road
-  for (const n of S.pendingNotes.splice(0)) { const p = S.pts[n.at]; if (p) S.cues.push({ lon: p.lon, lat: p.lat, turn: "NOTE", level: 0, text: n.text, auto: false }); }
+  // notes waiting for their stop: only from the request that added the stop, and only onto the stop that landed where it was meant to
+  for (const n of S.pendingNotes.splice(0)) {
+    if (n.req !== S.routeReq) continue;
+    const p = S.pts[n.at]; if (p && dist([p.lon, p.lat], [n.lon, n.lat]) < 1000) S.cues.push({ lon: p.lon, lat: p.lat, turn: "NOTE", level: 0, text: n.text, auto: false });
+    else status(`The note “${n.text}” was not added: its stop did not land where it was meant to`, true);
+  }
   const line = j.coords;
   const kept = S.cues.filter(c => !c.auto).filter(c => nearLine(c, line) < 150);
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
@@ -494,9 +507,16 @@ function alongLine(line, p) {
   let best = Infinity, bi = 1;
   const cell = idx.cell; const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell);
   const test = i => { const d = segDist(p, line[i - 1], line[i]); if (d < best) { best = d; bi = i; } };
-  for (let R = 0; R <= 2 && best > R * cell * 111320 * 0.5; R++) for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { if (R && Math.abs(x - cx) !== R && Math.abs(y - cy) !== R) continue; const l = idx.cells.get(x * 100003 + y); if (l) for (const i of l) test(i); }
+  // every segment in ring R+1 or beyond is at least (R cells + the distance to this cell's nearest edge) away;
+  // only once the best found is within that bound can the search stop (a point near a cell edge needs the neighbour)
+  const mPerDeg = 111320 * Math.cos(p[1] * Math.PI / 180);
+  const edge = Math.min(p[0] - cx * cell, (cx + 1) * cell - p[0], p[1] - cy * cell, (cy + 1) * cell - p[1]) * mPerDeg;
+  const bound = R => R * cell * mPerDeg + edge;
+  let R = 0, settled = false;
+  for (; R <= 3; R++) { for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { if (R && Math.abs(x - cx) !== R && Math.abs(y - cy) !== R) continue; const l = idx.cells.get(x * 100003 + y); if (l) for (const i of l) test(i); }
+  if (best <= bound(R)) { settled = true; break; } }     // rings beyond R start a full R cells past this cell's edge
   for (const i of idx.longs) test(i);
-  if (best === Infinity) for (let i = 1; i < line.length; i++) test(i);      // nothing nearby: the exact answer, however far
+  if (!settled) for (let i = 1; i < line.length; i++) test(i);      // nothing proven nearby: the exact answer, however far
   const cum = cumulative(line);
   const a = line[bi - 1], b = line[bi]; const segLen = dist(a, b); let bt = 0;
   if (segLen > 0) { const k = Math.cos(p[1] * Math.PI / 180); const dx = (b[0] - a[0]) * k, dy = b[1] - a[1]; bt = Math.max(0, Math.min(1, (((p[0] - a[0]) * k) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy))); }
@@ -522,35 +542,37 @@ function renderCues() {
   for (const m of S.cueMarkers) m.remove(); S.cueMarkers = [];
   const ol = $("#cues"); ol.innerHTML = "";
   const line = lineCoords(); if (!line) { $("#cueCount").textContent = ""; return; }
-  for (const c of S.cues) c.at = alongLine(line, [c.lon, c.lat]).at;
+  for (const c of S.cues) { if (!c.id) c.id = ++S.cueSeq; c.at = alongLine(line, [c.lon, c.lat]).at; }
   S.cues.sort((a, b) => a.at - b.at);
   $("#cueCount").textContent = S.cues.length ? `(${S.cues.length})` : "";
   S.cues.forEach((c, idx) => {
     const li = document.createElement("li"); li.className = c.auto ? "auto" : "user";
     const g = arrowSvg(c.turn, c.level, c.exit);
     li.innerHTML = `<span class="g">${g}</span><span><b>${esc(WORDS[c.turn] || c.turn)}</b>${c.text ? `<span class="words">${esc(c.text)}${c.link ? ` <a href="${esc(c.link)}" target="_blank" rel="noopener" title="${esc(c.link)}">↗</a>` : ""}</span>` : ""}</span><span class="at">${fmtDistShort(c.at)}</span>`;
-    li.onclick = () => { map.flyTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 14) }); editCue(idx); };
+    li.onclick = () => { map.flyTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 14) }); editCue(c.id); };
     ol.appendChild(li);
     const el = document.createElement("div"); el.className = "marker-cue" + (c.turn === "DANGER" ? " danger" : c.turn === "NOTE" ? " note" : "") + (c.auto ? "" : " user"); el.innerHTML = g; el.title = (WORDS[c.turn] || c.turn) + (c.text ? ": " + c.text : "");
-    el.addEventListener("click", e => { e.stopPropagation(); editCue(idx); });
+    el.addEventListener("click", e => { e.stopPropagation(); editCue(c.id); });
     S.cueMarkers.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([c.lon, c.lat]).addTo(map));
   });
 }
 
-let editing = null;   // {idx} or {lon,lat} for a new cue
+let editing = null;   // {id} for an existing cue (looked up at save time: the list can be re-sorted or regenerated meanwhile) or {lon,lat} for a new one
+const cueById = id => S.cues.find(c => c.id === id);
 const grid = $("#turnGrid");
 for (const t of TURNS) { const b = document.createElement("button"); b.dataset.turn = t; b.innerHTML = arrowSvg(t); b.title = WORDS[t]; grid.appendChild(b); }
 document.querySelectorAll("#cueEd .dangerRow [data-turn]").forEach(b => { const t = b.dataset.turn; b.innerHTML = arrowSvg(t, Number(b.dataset.level || 0)) + (t === "NOTE" ? "<span>Note</span>" : ""); b.title = t === "NOTE" ? "A note, read in your words" : `Danger ${b.dataset.level}`; });
 document.querySelectorAll("#cueEd [data-turn]").forEach(b => b.onclick = () => { document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.remove("on")); b.classList.add("on"); if (b.dataset.turn === "NOTE") $("#cueText").focus(); });
-function editCue(idx) {
-  editing = { idx }; const c = S.cues[idx];
+function editCue(id) {
+  const c = cueById(id); if (!c) return;
+  editing = { id };
   openCueEditor(c.turn, c.level, c.text, "Edit cue");
 }
 function newCue(lon, lat) { editing = { lon, lat }; openCueEditor("STRAIGHT", 0, "", "New cue"); }
 function openCueEditor(turn, level, text, title) {
   $("#cueEdTitle").textContent = title; $("#cueText").value = text || "";
   document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.toggle("on", x.dataset.turn === turn && (turn !== "DANGER" || Number(x.dataset.level) === (level || 2))));
-  $("#cueDelete").hidden = editing.idx == null;
+  $("#cueDelete").hidden = editing.id == null;
   for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
   $("#cueEd").hidden = false;
 }
@@ -558,11 +580,14 @@ $("#cueSave").onclick = () => {
   const on = $("#cueEd [data-turn].on"); if (!on) return;
   const turn = on.dataset.turn, level = turn === "DANGER" ? Number(on.dataset.level) : 0, text = $("#cueText").value.trim();
   if (turn === "NOTE" && !text) { $("#cueText").focus(); return; }
-  if (editing.idx != null) { const c = S.cues[editing.idx]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); Object.assign(c, { turn, level, text, auto: false }); }   // c.link stays
-  else S.cues.push({ lon: editing.lon, lat: editing.lat, turn, level, text, auto: false });
+  if (editing.id != null) {
+    const c = cueById(editing.id); if (!c) { $("#cueEd").hidden = true; status("That cue is no longer on the route", true); return; }
+    if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat });
+    Object.assign(c, { turn, level, text, auto: false, climb: false });   // yours now: no generator may replace it; c.link stays
+  } else S.cues.push({ lon: editing.lon, lat: editing.lat, turn, level, text, auto: false });
   $("#cueEd").hidden = true; renderCues();
 };
-$("#cueDelete").onclick = () => { if (editing.idx == null) return; const c = S.cues[editing.idx]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); S.cues.splice(editing.idx, 1); $("#cueEd").hidden = true; renderCues(); };
+$("#cueDelete").onclick = () => { if (editing.id == null) return; const i = S.cues.findIndex(c => c.id === editing.id); $("#cueEd").hidden = true; if (i < 0) { status("That cue is no longer on the route", true); return; } const c = S.cues[i]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); S.cues.splice(i, 1); renderCues(); };
 $("#btnAutoCues").onclick = () => { S.deletedAuto = []; S.cues = S.cues.filter(c => false); if (S.route) setRoute(S.route, false); else renderCues(); };
 
 // ---- map interaction: click to add, drag the line for a stop, click the line for the menu ------------------------------
@@ -638,7 +663,7 @@ function addStopAt(lon, lat, noteText) {
   let at;
   if (S.route) { const { index } = alongLine(S.route.coords, [lon, lat]); let leg = S.route.legs.findIndex(l => index > l.start && index <= l.end); if (leg < 0) leg = S.route.legs.length - 1; at = leg + 1; S.pts.splice(at, 0, { lon, lat }); }
   else { S.pts.push({ lon, lat }); at = S.pts.length - 1; }
-  if (noteText) S.pendingNotes.push({ at, text: noteText });
+  if (noteText) S.pendingNotes.push({ at, lon, lat, text: noteText, req: S.routeReq + 1 });   // the request afterPointsChange is about to make
   afterPointsChange();
   if (S.pts.length < 2) status("Added as the start; click the map for the finish");
 }
@@ -775,7 +800,7 @@ function climbCues(samples, raw, total) {
     }
     i = Math.max(j, peak + 1);
   }
-  S.cues = S.cues.filter(c => !c.climb);
+  S.cues = S.cues.filter(c => !(c.climb && c.auto));
   const removed = (lon, lat) => S.deletedAuto.some(d => dist([d.lon, d.lat], [lon, lat]) < 40);
   for (const c of climbs) {
     const pct = x => (x * 100 < 10 ? (x * 100).toFixed(1) : Math.round(x * 100)) + "%";
@@ -788,7 +813,9 @@ function climbCues(samples, raw, total) {
 
 // ---- inspect ---------------------------------------------------------------------------------------------------------
 let inspMap = null;
+let inspGen = 0;
 async function inspect(lon, lat) {
+  const gen = ++inspGen; const live = () => gen === inspGen && !$("#inspect").hidden;   // a slower, older Inspect must not write over a newer one
   for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
   const sh = $("#inspect"); sh.hidden = false;
   $("#inspCoord").textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
@@ -810,14 +837,16 @@ async function inspect(lon, lat) {
   const facts = (async () => {
     try {
       const r = await fetch(`/api/snap?lon=${lon}&lat=${lat}&max=400`); const j = await r.json();
-      if (r.ok) { name = j.name; region = j.region; $("#inspFacts").innerHTML = `<b>${esc(j.name || "Unnamed " + j.cls.replace("_", " "))}</b><div class="muted">${esc(j.cls.replace("_", " "))} · ${j.unpaved ? "unpaved" : "paved or unknown surface"}${j.oneway ? " · one way" : ""} · ${Math.round(j.distance)} m from the point · ${esc(j.region)}</div>`; }
+      if (!live()) return;
+      if (r.ok) { name = j.name; region = j.region; $("#inspFacts").innerHTML = `<b>${esc(j.name || "Unnamed " + j.cls.replace("_", " "))}</b><div class="muted">${esc(j.cls.replace("_", " "))} · ${j.unpaved ? "unpaved" : "paved or unknown surface"}${j.oneway ? " · one way" : ""} · ${Math.round(j.distance)} m from the point · ${esc(j.region)}</div>${j.private || j.privateBike ? `<div style="color:var(--accent);font-weight:600">Posted private${j.private && j.privateBike ? "" : j.private ? " to motor vehicles (bicycles allowed, by the tag)" : " to bicycles"} — OpenStreetMap tags it access=private (or a locked gate sits on it). That is what the map says, not a ruling on who may pass; ask.</div>` : ""}`; }
       else $("#inspFacts").innerHTML = `<span class="muted">${esc(j.error)}</span>`;
-    } catch { $("#inspFacts").innerHTML = `<span class="muted">The router is not reachable right now.</span>`; }
+    } catch { if (live()) $("#inspFacts").innerHTML = `<span class="muted">The router is not reachable right now.</span>`; }
   })();
   // what is around: first from the map's own tiles (instant, the same data the phone carries), then
   // OpenStreetMap's query service widens the ring — fuel to 25 km, camping to 20 — when it answers
   const nearby = (async () => {
     const render = (near, note) => {
+      if (!live()) return;
       town = town || (near.town && near.town[0] && near.town[0].name) || "";
       // a store is supplies, not a meal
       if (!near.supplies) { near.supplies = (near.food || []).filter(i => /supermarket|convenience|general|grocery|hardware|bakery/.test(i.kind || "")); near.food = (near.food || []).filter(i => !near.supplies.includes(i)); }
@@ -836,28 +865,30 @@ async function inspect(lon, lat) {
       let near = null;
       try {
         const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
-        if (r.ok && j.reach > 0) { near = { fuel: j.fuel, food: j.food, camping: j.camping, water: j.water, lodging: j.lodging, repair: j.repair, town: j.town, reachKm: Math.round(j.reach / 1000), index: true };
+        if (r.ok && j.reach > 0 && !j.partial) { near = { fuel: j.fuel, food: j.food, camping: j.camping, water: j.water, lodging: j.lodging, repair: j.repair, town: j.town, reachKm: Math.round(j.reach / 1000), index: true };
           for (const k of Object.keys(near)) if (Array.isArray(near[k])) for (const i of near[k]) { if (i.extra) { if (/^free\b/.test(i.extra)) i.fee = "free"; else if (/^fee\b/.test(i.extra)) i.fee = "fee"; i.hours = i.extra.replace(/^(free|fee)( · )?/, ""); } } }
       } catch {}
       if (near) { $("#inspAt").textContent = "from the map pack's place index"; render(near, `From the pack's place index: everything close, the prominent places (fuel, campgrounds, towns, repair) out to about ${fmtDist(60000)}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`); return; }
       const say = (n, done) => render(n, `${done ? "Searched" : "Searching…"} about ${fmtDist(n.reachKm * 1000)} out, from the map tiles${done && n.reachKm > 8 ? " — it kept widening because fuel, camping or beds were not close" : ""}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`);
       near = await peekPois(lon, lat, (partial) => say(partial, false));
+      if (!live()) return;
       if (!near) { $("#inspNear").innerHTML = `<span class="muted">No map pack covers this spot.</span>`; return; }
       $("#inspAt").textContent = "from the map pack";
       say(near, true);
-    } catch { $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
+    } catch { if (live()) $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
   })();
   // nearby Wikipedia
   (async () => {
     try {
       const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=6&format=json&origin=*`);
       const j = await r.json(); const hits = (j.query && j.query.geosearch) || [];
-      if (hits.length) $("#inspWiki").innerHTML = `<h4>Nearby on Wikipedia</h4>` + hits.map(h => `<a target="_blank" rel="noopener" href="https://en.wikipedia.org/?curid=${h.pageid}">${esc(h.title)} <span class="muted">· ${fmtDistShort(h.dist)}</span></a>`).join("");
+      if (live() && hits.length) $("#inspWiki").innerHTML = `<h4>Nearby on Wikipedia</h4>` + hits.map(h => `<a target="_blank" rel="noopener" href="https://en.wikipedia.org/?curid=${h.pageid}">${esc(h.title)} <span class="muted">· ${fmtDistShort(h.dist)}</span></a>`).join("");
     } catch {}
   })();
   // the curated web, sorted the way a rider thinks — food, fuel, beds and camping, supplies, then the roads themselves —
   // each section searching for the named places the map index found rather than for a coordinate
   await Promise.all([facts, nearby]);
+  if (!live()) return;
   const place = [name, town || region].filter(Boolean).join(" ") || [town, region].filter(Boolean).join(" ") || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
   const anchor = [town, region].filter(Boolean).join(" ");
   const names = (cat, n = 3) => ((found && found[cat]) || []).map(i => i.name).filter(x => x && x.length > 2).filter((x, i, a) => a.indexOf(x) === i).slice(0, n);
@@ -884,6 +915,7 @@ async function inspect(lon, lat) {
   const rowHtml = (w, via) => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")}${via ? ` · <i>via ${esc(via)}</i>` : ""} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}" title="Add this finding as a note on the route here">+ note</button></div>`;
   const ask = async (q, sites) => { const r = await fetch(`/api/web?q=${encodeURIComponent(q)}${sites.length ? "&sites=" + encodeURIComponent(sites.join(",")) : ""}`); const j = await r.json(); return { ok: r.ok, status: r.status, j }; };
   const runSection = async (el, title, sites, q, list, queries) => {
+    if (!live()) return;
     const ext = `<a target="_blank" rel="noopener" href="${ddg(q, sites)}">open this search in your browser</a>`;
     el.innerHTML = `<h4>${title}</h4><span class="muted">Searching…</span>`;
     try {
@@ -894,12 +926,14 @@ async function inspect(lon, lat) {
       let results = []; const seen = new Set();
       for (const a of answers) if (a && a.ok && a.j.results) for (const w of a.j.results) { const k = w.url.replace(/[#?].*$/, ""); if (!seen.has(k)) { seen.add(k); results.push(w); } }
       if (!results.length && queries && queries.length && !budgetOut && !unset) { const a = await ask(q, sites).catch(() => null); if (a && a.ok) results = a.j.results || []; }
+      if (!live()) return;
       if (results.length) {
         // a result that names a place the map knows ranks by how close that place is; the rest keep the engine's order
         const hits = results.map((w, i) => { const text = (w.title + " " + (w.description || "")).toLowerCase(); const k = list.findIndex(n => text.includes(n.toLowerCase())); return { w, i, k: k < 0 ? 99 : k, via: k < 0 ? "" : list[k] }; }).sort((a, b) => a.k - b.k || a.i - b.i);
         el.innerHTML = `<h4>${title}</h4>` + hits.slice(0, 6).map(h => rowHtml(h.w, h.via)).join("") + `<div class="muted small">${ext}</div>`;
       } else el.innerHTML = `<h4>${title}</h4><span class="muted">${budgetOut ? "this site's search budget for today is spent · " : unset ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
-    } catch { el.innerHTML = `<h4>${title}</h4>${ext}`; }
+    } catch { if (live()) el.innerHTML = `<h4>${title}</h4>${ext}`; }
+    if (!live()) return;
     el.querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
   };
   const perName = (x) => x.names.slice(0, 2).map(n => `"${n.replace(/"/g, "")}" ${x.key === "forums" || x.key === "guides" || x.key === "lodging" || x.key === "camping" ? region : anchor}`);
@@ -973,9 +1007,12 @@ function bearingDeg(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y =
 function compass(b) { return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
 /** A finding becomes a cue at the inspected spot: a note with the words, and the link kept for the GPX. */
 function addNoteHere(at, text, link) {
-  if (!lineCoords()) { status("Plan a route first; then findings can go on it", true); return; }
-  S.cues.push({ lon: at.lon, lat: at.lat, turn: "NOTE", level: 0, text: String(text).slice(0, 120), link: link || "", auto: false });
-  renderCues(); status("Added as a note on the route" + (link ? " — the link travels with the GPX" : ""));
+  const line = lineCoords(); if (!line) { status("Plan a route first; then findings can go on it", true); return; }
+  // the note sits on the route (the phone drops cues more than 150 m off it); if the spot is off the line, the words say how far and which way
+  const a = alongLine(line, [at.lon, at.lat]); const d = dist(a.point, [at.lon, at.lat]);
+  const words = d < 60 ? String(text) : `${String(text).slice(0, 96)} — ${fmtDistShort(d)} ${compass(Math.round(bearingDeg(a.point[1], a.point[0], at.lat, at.lon)))}`;
+  S.cues.push({ lon: a.point[0], lat: a.point[1], turn: "NOTE", level: 0, text: words.slice(0, 120), link: link || "", auto: false });
+  renderCues(); status(d < 60 ? "Added as a note on the route" + (link ? " — the link travels with the GPX" : "") : `Added as a note at the nearest point of the route, ${fmtDistShort(d)} from the spot`);
 }
 
 // ---- the rider's own source list ------------------------------------------------------------------------------------
@@ -1059,7 +1096,7 @@ $("#btnPublish").onclick = async () => {
     } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   };
 };
-$("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
+$("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.pendingNotes = []; editing = null; $("#cueEd").hidden = true; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
 const MIRROR = { LEFT: "RIGHT", RIGHT: "LEFT", SLIGHT_LEFT: "SLIGHT_RIGHT", SLIGHT_RIGHT: "SLIGHT_LEFT", SHARP_LEFT: "SHARP_RIGHT", SHARP_RIGHT: "SHARP_LEFT", KEEP_LEFT: "KEEP_RIGHT", KEEP_RIGHT: "KEEP_LEFT" };
 /** A loop: the finish is the start. With only two points that is an out-and-back; drag the line to make it a circuit. */
 function isLoop() { return S.pts.length >= 2 && Math.abs(S.pts[0].lon - S.pts[S.pts.length - 1].lon) < 1e-9 && Math.abs(S.pts[0].lat - S.pts[S.pts.length - 1].lat) < 1e-9; }
@@ -1075,7 +1112,7 @@ $("#btnReverse").onclick = () => {
     // a new array, so every cached distance is rebuilt; turns mirror, the rest is the author's to check
     S.track = { ...S.track, coords: S.track.coords.slice().reverse() };
     let flagged = 0;
-    S.cues = S.cues.map(c => { if (MIRROR[c.turn]) return { ...c, turn: MIRROR[c.turn] }; if (c.turn === "ROUNDABOUT" || (c.text && c.turn !== "DANGER")) flagged++; return { ...c }; });
+    S.cues = S.cues.map(c => { if (MIRROR[c.turn]) { if (c.text) flagged++; return { ...c, turn: MIRROR[c.turn] }; } if (c.turn === "ROUNDABOUT" || c.text) flagged++; return { ...c }; });
     refreshRouteSources(); renderAll();
     status(`Reversed: turns mirrored${flagged ? `; ${flagged} cue${flagged > 1 ? "s" : ""} with words or a roundabout exit need a look` : ""}`, flagged > 0);
     return;
@@ -1094,7 +1131,7 @@ function parseGpx(text) {
   const coord = (attrs, k, max) => { const v = Number(new RegExp(`${k}\\s*=\\s*"([^"]*)"`).exec(attrs)?.[1]); return Number.isFinite(v) && Math.abs(v) <= max ? v : null; };
   const pts = [], rte = [];
   for (const m of text.matchAll(/<trkpt\s+([^>]*?)(?:\/>|>[\s\S]*?<\/trkpt>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A track point has a bad coordinate"); if (pts.length >= IMPORT_LIMITS.points) throw new Error(`More than ${IMPORT_LIMITS.points.toLocaleString()} points; simplify the track first`); pts.push([lon, lat]); }
-  for (const m of text.matchAll(/<rtept\s+([^>]*?)(?:\/>|>[\s\S]*?<\/rtept>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A route point has a bad coordinate"); if (rte.length < 60) rte.push({ lon, lat }); }
+  for (const m of text.matchAll(/<rtept\s+([^>]*?)(?:\/>|>[\s\S]*?<\/rtept>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A route point has a bad coordinate"); rte.push({ lon, lat }); }
   const cues = []; for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
     const type = (/<type>([\s\S]*?)<\/type>/.exec(m[2])?.[1] || "").trim().toLowerCase();
     if (!(type.startsWith("cue:") || type.startsWith("danger") || type === "note")) continue;
@@ -1116,15 +1153,21 @@ function loadGpxText(text, fallbackName) {
   try { g = parseGpx(text); } catch (e) { status(e.message, true); return; }   // the current plan is untouched by a bad file
   if (g.pts.length < 2 && g.rte.length >= 2) {
     // a route file with no track: its points are routing controls, so plan it here
-    S.track = null; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.cues = g.cues;
+    S.track = null; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.pendingNotes = []; S.cues = g.cues;
     if (MODES.some(m => m[0] === g.mode)) { S.mode = g.mode; buildModes(); }
-    S.pts = g.rte; $("#name").value = g.name || fallbackName || "Roadbook";
+    let rte = g.rte, note = "";
+    if (rte.length > 60) {
+      // the router takes 60 stops: keep the start and the finish and the most evenly spread of the rest, and say so
+      const keep = [rte[0]]; for (let k = 1; k < 59; k++) keep.push(rte[Math.round(k * (rte.length - 1) / 59)]); keep.push(rte[rte.length - 1]);
+      note = ` — it had ${rte.length} stops, more than the router's 60; the start, the finish and 58 spread between them were kept, so check the line`; rte = keep;
+    }
+    S.pts = rte; $("#name").value = g.name || fallbackName || "Roadbook";
     afterPointsChange(); applyStyle();
-    status(`Loaded “${g.name || fallbackName}” as ${g.rte.length} points to route between`);
+    status(`Loaded “${g.name || fallbackName}” as ${rte.length} points to route between${note}`, !!note);
     return;
   }
   if (g.pts.length < 2) { status("That file has no track", true); return; }
-  S.pts = []; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = [];
+  S.pts = []; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.pendingNotes = [];
   S.track = { coords: g.pts, name: g.name || fallbackName }; S.cues = g.cues;
   $("#name").value = S.track.name || "Roadbook";
   refreshRouteSources(); renderAll(); applyStyle();

@@ -96,29 +96,48 @@ function cutAt(pts, meters) {
   return pts.slice(-1);
 }
 
-/** Cues that still sit on the (possibly trimmed) line: a cell index over the segments, so 5,000 cues on 200,000 points is thousands of comparisons, not a billion. */
-export function cuesOn(pts, cues, within = 150) {
+/**
+ * Cues that still sit on the line: a cell index over the segments, so 5,000 cues on 200,000 points is thousands
+ * of comparisons, not a billion. With `keep` = [fromMeters, toMeters] the cue must also belong to that stretch of
+ * the ORIGINAL line (its nearest point along it), so a cue at a trimmed-off start does not survive because the
+ * route happens to pass back within 150 m of it — pass the untrimmed points with the kept range for that.
+ */
+export function cuesOn(pts, cues, within = 150, keep = null) {
   if (!cues.length || pts.length < 2) return [];
   const idx = segmentIndex(pts);
-  return cues.filter(c => idx.near([c.lon, c.lat], within));
+  if (!keep) return cues.filter(c => idx.near([c.lon, c.lat], within) != null);
+  const cum = new Float64Array(pts.length); for (let i = 1; i < pts.length; i++) cum[i] = cum[i - 1] + dist(pts[i - 1], pts[i]);
+  return cues.filter(c => {
+    const n = idx.near([c.lon, c.lat], within); if (n == null) return false;
+    const along = cum[n.i - 1] + dist(pts[n.i - 1], pts[n.i]) * n.t;
+    return along >= keep[0] && along <= keep[1];
+  });
 }
+/** A budgeted index: a segment that would spill into more than 400 cells, or any once the whole index holds 2 million entries, goes on the `longs` list that every lookup checks instead — bounded memory whatever the geometry. */
 export function segmentIndex(pts, cell = 0.01) {
-  const cells = new Map(); const longs = [];
+  const cells = new Map(); const longs = []; let entries = 0; const BUDGET = 2_000_000;
   const key = (cx, cy) => cx * 100003 + cy;
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
     const x0 = Math.floor(Math.min(a[0], b[0]) / cell), x1 = Math.floor(Math.max(a[0], b[0]) / cell), y0 = Math.floor(Math.min(a[1], b[1]) / cell), y1 = Math.floor(Math.max(a[1], b[1]) / cell);
-    // a long segment covers many cells; it is still listed in all of them (bounded by a cap, then every cell gets it through `long`)
-    if ((x1 - x0 + 1) * (y1 - y0 + 1) > 400) { longs.push(i); continue; }
+    const n = (x1 - x0 + 1) * (y1 - y0 + 1);
+    if (n > 400 || entries + n > BUDGET) { longs.push(i); continue; }
+    entries += n;
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = key(x, y); let l = cells.get(k); if (!l) cells.set(k, l = []); l.push(i); }
   }
+  const proj = (p, i) => { const a = pts[i - 1], b = pts[i]; const k = Math.cos(p[1] * Math.PI / 180); const dx = (b[0] - a[0]) * k, dy = b[1] - a[1]; const l2 = dx * dx + dy * dy; return l2 ? Math.max(0, Math.min(1, (((p[0] - a[0]) * k) * dx + (p[1] - a[1]) * dy) / l2)) : 0; };
   return {
+    /** the nearest segment within `within` metres as { i, t, d }, or null; every cell within that radius is looked at */
     near(p, within) {
-      const r = within / 111320 / cell + 1; const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell); const R = Math.ceil(r);
-      for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { const l = cells.get(key(x, y)); if (!l) continue; for (const i of l) if (segDist(p, pts[i - 1], pts[i]) < within) return true; }
-      for (const i of longs) if (segDist(p, pts[i - 1], pts[i]) < within) return true;
-      return false;
+      const r = within / (111320 * Math.cos(p[1] * Math.PI / 180)) / cell + 1; const cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell); const R = Math.ceil(r);
+      let best = null;
+      const test = i => { const d = segDist(p, pts[i - 1], pts[i]); if (d < within && (!best || d < best.d)) best = { i, d, t: 0 }; };
+      for (let x = cx - R; x <= cx + R; x++) for (let y = cy - R; y <= cy + R; y++) { const l = cells.get(key(x, y)); if (!l) continue; for (const i of l) test(i); }
+      for (const i of longs) test(i);
+      if (best) best.t = proj(p, best.i);
+      return best;
     },
+    entries, longs: longs.length,
   };
 }
 

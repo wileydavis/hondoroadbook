@@ -24,5 +24,7 @@
     { "pattern": "hondoroadbook.com", "custom_domain": true },
     { "pattern": "www.hondoroadbook.com", "custom_domain": true }
   ],
-  "observability": { "enabled": true }
+  // Worker logs stay on for errors, but invocation logs are off: they would carry every request URL, and a
+  // route or search query is a position. Nothing in the code logs a URL either (see api.js).
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } }
 }

@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.btnEditList).setOnClickListener { showCueList() }
             findViewById<Button>(R.id.btnEditFollow).setOnClickListener { followEditedTrack() }
             findViewById<Button>(R.id.btnEditCancel).setOnClickListener { leaveEdit() }
-            Recorder.onChange = { ui.post { updateRecStrip() } }
+            Recorder.onChange = { ui.post { updateRecStrip(); Recorder.lastFailure?.let { why -> Recorder.lastFailure = null; toast("Not recording: $why", 7000) } } }
             if (Recorder.recover(this)) ui.postDelayed({ offerRecovery() }, 1500)
             updateRecStrip()
         }
@@ -1241,7 +1241,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun soundTick(v: NavView, now: Long) {
         // cues crossed without having been the current instruction (sparse fixes at speed): say them late rather than never
-        follower?.drainMissed()?.forEach { m -> if (m.turn == Turn.DANGER || m.turn == Turn.NOTE) { if (Tone.enabled) { if (m.turn == Turn.DANGER) Tone.danger(m.level) else Tone.note() }; Speech.say("Passed. " + m.phrase()) } }
+        // hazards crossed between sparse fixes: one combined phrase, so none cuts another off (each say() replaces the last)
+        follower?.drainMissed()?.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }?.takeIf { it.isNotEmpty() }?.let { ms -> if (Tone.enabled) { if (ms.any { it.turn == Turn.DANGER }) Tone.danger(ms.maxOf { it.level }) else Tone.note() }; Speech.say("Passed. " + ms.joinToString(". ") { it.phrase() }) }
         if (!Tone.enabled) return
         if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) return
         if (v.arrived) { if (!arrivedChimed) { arrivedChimed = true; Tone.arrive() }; return }
@@ -1251,7 +1252,7 @@ class MainActivity : AppCompatActivity() {
         if (m !== cuedManeuver) {
             // the previous instruction's window never opened (passed it between two fixes): deliver its hazards now
             val prev = cuedManeuver
-            if (prev != null && !spoken && prevGroup.any { it.turn == Turn.DANGER || it.turn == Turn.NOTE }) { prevGroup.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }.forEach { g -> if (g.turn == Turn.DANGER) Tone.danger(g.level) else Tone.note(); Speech.say("Passed. " + g.phrase()) } }
+            if (prev != null && !spoken && prevGroup.any { it.turn == Turn.DANGER || it.turn == Turn.NOTE }) { val gs = prevGroup.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }; if (gs.any { it.turn == Turn.DANGER }) Tone.danger(gs.maxOf { it.level }) else Tone.note(); Speech.say("Passed. " + gs.joinToString(". ") { it.phrase() }) }
             cuedManeuver = m; prevGroup = v.group; turnChimed = false; spoken = false; nextPipAt = 0L
             if (m.turn != Turn.ARRIVE) Speech.prepare(v.phrase())
         }
@@ -1371,21 +1372,54 @@ class MainActivity : AppCompatActivity() {
 
     /** Asks for a file name and writes into the granted folder; [onDone] gets true only after the bytes are on disk. */
     /** Overwrites the opened GPX. The old bytes are kept in the app's cache until the new ones are verified. */
-    private fun overwriteTrack(uri: Uri) {
-        try {
-            val old = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("Could not read the file")
-            val backup = java.io.File(cacheDir, "last-overwritten.gpx").apply { writeBytes(old) }
-            val bytes = trackGpx().toByteArray()
-            contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes); it.flush() } ?: throw IllegalStateException("Could not open the file for writing")
-            val written = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: -1L
-            if (written != bytes.size.toLong()) {
-                // put the old content back rather than leave a torn file
-                try { contentResolver.openOutputStream(uri, "wt")?.use { it.write(old) } } catch (_: Throwable) {}
-                throw IllegalStateException("File is incomplete; the previous version was restored (copy in ${backup.name})")
-            }
-            toast("Saved")
-        } catch (e: Throwable) { toast("Save failed: ${e.message}", 7000) }
+    /**
+     * Verifies a document by reading it back and comparing the bytes — not the provider's stat size, which is
+     * −1 for a pipe-backed provider and says nothing about content. Returns null when it matches, else a reason.
+     */
+    private fun verifyWritten(uri: Uri, expected: ByteArray): String? {
+        return try {
+            val got = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return "could not read it back"
+            if (got.contentEquals(expected)) null else "read back ${got.size} of ${expected.size} bytes"
+        } catch (e: Throwable) { "could not read it back (${e.javaClass.simpleName})" }
     }
+
+    /**
+     * Overwrites a roadbook in place. The original is kept in a backup named for this document before the
+     * file is touched, and that backup is never replaced by anything that has not been verified: a failed or
+     * torn write — including one that throws midway — restores the original, and a retry restores from the
+     * same intact backup rather than copying the damaged file over it.
+     */
+    private fun overwriteTrack(uri: Uri) {
+        val key = java.security.MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray()).joinToString("") { "%02x".format(it) }.take(16)
+        val backup = java.io.File(java.io.File(filesDir, "backup").apply { mkdirs() }, "$key.gpx")
+        try {
+            val bytes = trackGpx().toByteArray()
+            val current = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalStateException("Could not read the file")
+            // a backup already there is a verified original from an earlier attempt; the current file is backed up only if it parses
+            val currentValid = try { (fold.core.Gpx.parse(String(current))?.lats?.size ?: 0) >= 2 } catch (_: Throwable) { false }
+            if (currentValid || !backup.exists()) { val tmp = java.io.File(backup.parentFile, "$key.tmp"); tmp.writeBytes(current); if (!tmp.renameTo(backup)) backup.writeBytes(current) }
+            val old = backup.readBytes()
+            var wrote = false
+            try {
+                contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes); it.flush() } ?: throw IllegalStateException("Could not open the file for writing")
+                wrote = true
+                verifyWritten(uri, bytes)?.let { throw IllegalStateException("File is incomplete ($it)") }
+            } catch (e: Throwable) {
+                // anything after the file was opened for writing may have torn it: put the original back, then say what happened
+                var restored = false
+                if (wrote || e !is IllegalStateException) { try { contentResolver.openOutputStream(uri, "wt")?.use { it.write(old); it.flush() }; restored = verifyWritten(uri, old) == null } catch (_: Throwable) {} }
+                throw if (restored) IllegalStateException("${e.message}; the previous version was restored") else BackupKept("${e.message}; the previous version could not be put back")
+            }
+            backup.delete()
+            toast("Saved")
+        } catch (e: BackupKept) {
+            // the file may be torn and the original is safe here: offer it as a new file right now
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Save failed").setMessage("${e.message}. The original is kept safe; save it as a new file?")
+                .setPositiveButton("SAVE ORIGINAL AS…") { _, _ -> askNameAndWrite((trackName.ifEmpty { "Roadbook" }) + " (original)", { String(backup.readBytes()) }) }
+                .setNegativeButton("LATER", null).show()
+        } catch (e: Throwable) { toast("Save failed: ${e.message}", 9000) }
+    }
+    private class BackupKept(msg: String) : RuntimeException(msg)
 
     private fun askNameAndWrite(suggest: String, body: () -> String, onDone: (Boolean) -> Unit = {}) {
         val input = android.widget.EditText(this).apply { setText(suggest); isSingleLine = true; textSize = 18f; setSelectAllOnFocus(true); setPadding(dp(20), dp(12), dp(20), dp(12)) }
@@ -1410,9 +1444,9 @@ class MainActivity : AppCompatActivity() {
             doc = android.provider.DocumentsContract.createDocument(contentResolver, parent, "application/gpx+xml", fileName) ?: throw IllegalStateException("Could not create file")
             val bytes = text.toByteArray()
             contentResolver.openOutputStream(doc, "wt")?.use { it.write(bytes); it.flush() } ?: throw IllegalStateException("Could not write file")
-            // read back the size: a full disk or a flaky provider must not pass as saved
-            val written = contentResolver.openFileDescriptor(doc, "r")?.use { it.statSize } ?: -1L
-            if (written != bytes.size.toLong()) throw IllegalStateException("File is incomplete ($written of ${bytes.size} bytes)")
+            // read it back and compare: a full disk or a flaky provider must not pass as saved, and a provider that
+            // cannot report a size (a pipe) must not fail a save that is in fact whole
+            verifyWritten(doc, bytes)?.let { throw IllegalStateException("File is incomplete ($it)") }
             lastWritten = doc
             toast("Saved $fileName — it is under TRACK", 5000)
             return true

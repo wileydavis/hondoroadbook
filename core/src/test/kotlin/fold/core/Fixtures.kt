@@ -15,7 +15,7 @@ object Fixtures {
      * A graph from a list of ways; each way is a list of (east, north) metres. Consecutive ways share
      * nodes where their endpoints coincide. Interior points become edge geometry, not nodes.
      */
-    fun graph(ways: List<List<DoubleArray>>, cls: Int = 10, flags: Int = GraphFormat.CAR or GraphFormat.BIKE): Graph {
+    fun graph(ways: List<List<DoubleArray>>, cls: Int = 10, flags: Int = GraphFormat.CAR or GraphFormat.BIKE, wayFlags: (Int) -> Int = { flags }): Graph {
         val w = GraphWriter()
         val nodes = HashMap<String, Int>()
         fun node(p: DoubleArray): Int { val k = "%.1f,%.1f".format(p[0], p[1]); return nodes.getOrPut(k) { val q = ll(p[0], p[1]); w.addNode((q[0] * 1e7).toInt(), (q[1] * 1e7).toInt(), nodes.size + 1L) } }
@@ -26,7 +26,7 @@ object Fixtures {
             val inner = way.subList(1, way.size - 1)
             val gl = IntArray(inner.size) { (ll(inner[it][0], inner[it][1])[0] * 1e7).toInt() }
             val go = IntArray(inner.size) { (ll(inner[it][0], inner[it][1])[1] * 1e7).toInt() }
-            w.addEdge(a, b, (len * 100).toInt(), cls or flags, w.nameId("Way $wi"), gl, go, inner.size)
+            w.addEdge(a, b, (len * 100).toInt(), cls or wayFlags(wi), w.nameId("Way $wi"), gl, go, inner.size)
         }
         val out = ByteArrayOutputStream(); w.write(out)
         return Graph.fromBytes(out.toByteArray())

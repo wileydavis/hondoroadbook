@@ -26,21 +26,34 @@ fun main() {
         try { packs.catalog().firstOrNull { it.id == id }?.let { packs.ensure(it) } ?: System.err.println("preload: no pack $id") } catch (e: Throwable) { System.err.println("preload $id failed: ${e.message}") }
     }
     val server = HttpServer.create(InetSocketAddress(port), 16)
-    // eight workers and a short queue: beyond that a request is refused at once (503) rather than queued for minutes
-    server.executor = java.util.concurrent.ThreadPoolExecutor(8, 8, 60, java.util.concurrent.TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue(16), java.util.concurrent.ThreadPoolExecutor.AbortPolicy())
+    // eight routing workers and a short wait: beyond that a request is answered 503 at once rather than queued for
+    // minutes. The admission check runs inside the handler (a rejected executor task would only reset the connection),
+    // so the HTTP threads are plentiful and cheap and the routing permits are what is scarce.
+    server.executor = java.util.concurrent.Executors.newCachedThreadPool { r -> Thread(r, "http").apply { isDaemon = true } }
     server.createContext("/") { ex -> handle(ex, api) }
     server.start()
     System.err.println("fold-server on :$port, cache ${dir.absolutePath}")
 }
 
+/** eight at a time, sixteen waiting up to two seconds; the rest are told to come back */
+private val permits = java.util.concurrent.Semaphore(8, true)
+private val waiting = java.util.concurrent.atomic.AtomicInteger()
+
 private fun handle(ex: HttpExchange, api: Api) {
     val t0 = System.currentTimeMillis()
     var status = 200
+    var held = false
     try {
         if (ex.requestMethod == "OPTIONS") { cors(ex); ex.sendResponseHeaders(204, -1); return }
         if (ex.requestMethod != "GET" && ex.requestMethod != "HEAD") throw ApiError(405, "GET only")
         val q = query(ex.requestURI.rawQuery)
-        val body = when (ex.requestURI.path.trimEnd('/')) {
+        val path = ex.requestURI.path.trimEnd('/')
+        if (path != "/health" && path != "") {
+            if (waiting.incrementAndGet() > 16) { waiting.decrementAndGet(); throw ApiError(503, "The router is busy; try again in a moment", mapOf("retry" to "2")) }
+            try { held = permits.tryAcquire(2, java.util.concurrent.TimeUnit.SECONDS) } finally { waiting.decrementAndGet() }
+            if (!held) throw ApiError(503, "The router is busy; try again in a moment", mapOf("retry" to "2"))
+        }
+        val body = when (path) {
             "/health", "" -> api.health()
             "/warm" -> api.warm(q)
             "/near" -> api.near(q)
@@ -62,6 +75,7 @@ private fun handle(ex: HttpExchange, api: Api) {
         System.err.println("500 ${ex.requestURI.path}: ${e.javaClass.simpleName}")
         send(ex, 500, Json.obj("error" to Json.str("Router error (" + e.javaClass.simpleName + ")")))
     } finally {
+        if (held) permits.release()
         System.err.println("${ex.requestMethod} ${ex.requestURI.path} $status ${System.currentTimeMillis() - t0}ms")
         ex.close()
     }
@@ -77,6 +91,7 @@ private fun send(ex: HttpExchange, status: Int, body: String) {
     cors(ex)
     ex.responseHeaders.add("Content-Type", "application/json; charset=utf-8")
     ex.responseHeaders.add("Cache-Control", "no-store")
+    if (status == 503) ex.responseHeaders.add("Retry-After", "2")
     var bytes = body.toByteArray(Charsets.UTF_8)
     if (bytes.size > 1024 && (ex.requestHeaders.getFirst("Accept-Encoding") ?: "").contains("gzip")) {
         val bo = ByteArrayOutputStream(bytes.size / 3); GZIPOutputStream(bo).use { it.write(bytes) }; bytes = bo.toByteArray()

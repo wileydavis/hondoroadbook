@@ -24,7 +24,7 @@ class Loaded(val pack: CatalogPack, val graph: Graph, val router: Router, val se
  * disk fills, oldest first. Nothing is loaded that no request has asked for: an instance that only
  * ever routes in Montana holds Montana.
  */
-class PackSet(private val catalogUrl: String, private val dir: File, private val minFreeBytes: Long = 1L shl 30) {
+open class PackSet(private val catalogUrl: String, private val dir: File, private val minFreeBytes: Long = 1L shl 30) {
     // the map of loaded packs and the catalog are guarded by short locks; a download never holds either,
     // so /warm and /health answer while a pack is on its way and two requests for one pack share one download
     private val lock = Any()
@@ -35,7 +35,7 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
 
     init { dir.mkdirs() }
 
-    fun catalog(): List<CatalogPack> {
+    open fun catalog(): List<CatalogPack> {
         synchronized(lock) {
             val now = System.currentTimeMillis()
             if (catalog.isEmpty() || now - catalogAt > 60 * 60 * 1000L) {
@@ -49,15 +49,25 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
     fun isLoaded(id: String): Boolean = synchronized(lock) { loaded.containsKey(id) }
     fun loadingIds(): List<String> = synchronized(lock) { inflight.keys.toList() }
 
-    private val warmer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "warm").apply { isDaemon = true } }
+    // two warmers (a cold pack is a 20 s download; one should not hold up its neighbour), a short bounded queue, and
+    // one job per pack: a map wandered over the same state a hundred times schedules its pack once
+    private class WarmJob(val id: String, val body: () -> Unit) : Runnable { override fun run() = body() }
+    private val scheduled = java.util.Collections.synchronizedSet(HashSet<String>())
+    private val warmer = java.util.concurrent.ThreadPoolExecutor(2, 2, 60, java.util.concurrent.TimeUnit.SECONDS, java.util.concurrent.ArrayBlockingQueue<Runnable>(8),
+        { r -> Thread(r, "warm").apply { isDaemon = true } },
+        { r, _ -> if (r is WarmJob) scheduled.remove(r.id) })    // queue full: forget it; the next warm may ask again
     /** Starts loading the packs for a box in the background, so a route asked for in a moment finds them ready. Returns what is loaded and what is on its way. */
     fun warm(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): Pair<List<CatalogPack>, List<CatalogPack>> {
         val want = catalog().filter { it.intersects(minLon, minLat, maxLon, maxLat) }
         val ready = want.filter { isLoaded(it.id) }
         val pending = want.filter { !isLoaded(it.id) }
-        for (p in pending) warmer.execute { try { ensure(p) } catch (e: Throwable) { System.err.println("warm ${p.id}: ${e.javaClass.simpleName}") } }
+        for (p in pending) {
+            if (!scheduled.add(p.id)) continue
+            warmer.execute(WarmJob(p.id) { try { ensure(p) } catch (e: Throwable) { System.err.println("warm ${p.id}: ${e.javaClass.simpleName}") } finally { scheduled.remove(p.id) } })
+        }
         return ready to pending
     }
+    fun warmQueued(): Int = scheduled.size
 
     /** Packs whose bbox meets the given one, loaded (downloading if needed). */
     fun forBbox(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): List<Loaded> {
@@ -69,7 +79,7 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
         val mine: java.util.concurrent.CompletableFuture<Loaded>
         var theirs: java.util.concurrent.CompletableFuture<Loaded>? = null
         synchronized(lock) {
-            loaded[p.id]?.let { if (it.pack.built == p.built) { it.lastUsed = System.currentTimeMillis(); return it } else { loaded.remove(p.id) } }
+            loaded[p.id]?.let { if (it.pack.built == p.built && it.pack.bytes == p.bytes) { it.lastUsed = System.currentTimeMillis(); return it } else { loaded.remove(p.id) } }
             theirs = inflight[p.id]
             mine = java.util.concurrent.CompletableFuture(); if (theirs == null) inflight[p.id] = mine
         }
@@ -87,7 +97,7 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
     private fun load(p: CatalogPack): Loaded {
         val d = File(dir, p.id)
         val stamp = File(d, "built"); val graphFile = File(d, "graph.bin"); val searchFile = File(d, "search.tsv"); val poisFile = File(d, "pois.tsv")
-        val fresh = stamp.exists() && stamp.readText().trim() == p.built && graphFile.exists()
+        val fresh = stamp.exists() && stamp.readText().trim() == "${p.built}/${p.bytes}" && graphFile.exists()
         if (!fresh) {
             d.deleteRecursively(); d.mkdirs()
             synchronized(lock) { makeRoom(p.bytes / 4) }
@@ -97,7 +107,7 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
                 try { z.extract("search.tsv", searchFile) } catch (e: Throwable) { System.err.println("${p.id}: no search file (${e.javaClass.simpleName})") }
                 if (z.has("pois.tsv")) try { z.extract("pois.tsv", poisFile) } catch (e: Throwable) { System.err.println("${p.id}: no place index (${e.javaClass.simpleName})") }
             }
-            stamp.writeText(p.built)
+            stamp.writeText("${p.built}/${p.bytes}")
             System.err.println("loaded ${p.id}: ${graphFile.length() / 1_000_000} MB in ${(System.currentTimeMillis() - t0) / 1000} s")
         }
         val g = Graph.open(graphFile)

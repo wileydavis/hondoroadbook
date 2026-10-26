@@ -68,12 +68,14 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         stopPlayback()
         val gen = ++generation
         worker.execute {
+            if (gen != generation) return@execute                 // stale before it was even synthesised
             val pcm = synth(text) ?: return@execute
-            // a stop() or a newer say() since this was queued: drop it rather than talk over the rider
-            if (gen != generation) return@execute
-            synchronized(this) { if (gen != generation) return@execute; play(pcm) }
+            // a stop() or a newer say() since this was queued: drop it rather than talk over the rider. The check
+            // and the start of playback sit under the same lock stop() takes, so once stop() returns nothing starts.
+            synchronized(playLock) { if (gen != generation) return@execute; play(pcm) }
         }
     }
+    private val playLock = Any()
 
     private fun play(samples: FloatArray) {
         try {
@@ -92,8 +94,8 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         } catch (_: Throwable) {}
     }
 
-    /** Silences now and invalidates anything queued, so nothing speaks after END or mute. */
-    override fun stop() { generation++; stopPlayback() }
+    /** Silences now and invalidates anything queued, so nothing speaks after END or mute: it takes the playback lock, so a phrase between its final check and play() finishes that call before this returns, and is then stopped. */
+    override fun stop() { generation++; synchronized(playLock) { stopPlayback() } }
     private fun stopPlayback() { playing?.let { t -> playing = null; try { t.stop(); t.release() } catch (_: Throwable) {} } }
 
     override fun shutdown() { stop(); worker.execute { try { tts?.release() } catch (_: Throwable) {}; tts = null; ready = false } }

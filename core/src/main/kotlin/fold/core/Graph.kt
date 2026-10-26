@@ -25,7 +25,9 @@ import kotlin.math.floor
  */
 object GraphFormat {
     const val MAGIC = "FOLDGRPH"
-    const val VERSION = 2
+    /** 3: access evidence by transport mode (PRIVATE for motor vehicles, PRIVATE_BIKE for bicycles); a reader for 2 would route private roads as public, so the version moved */
+    const val VERSION = 3
+    const val MIN_VERSION = 2
     const val HEADER = 64
     const val EDGE_REC = 24
     const val CELL_DEG = 0.02
@@ -38,8 +40,11 @@ object GraphFormat {
     const val ROUNDABOUT = 1 shl 8
     const val UNPAVED = 1 shl 9
     const val FOOT = 1 shl 10
-    /** OpenStreetMap says access=private (or the edge passes a locked / private gate): routable only under a heavy penalty, shown as posted private */
+    /** OpenStreetMap says the road is private to motor vehicles (motorcar / motor_vehicle / vehicle / access = private), or it passes a locked or private gate: avoided while any public way exists, then routable under a heavy penalty, shown as posted private */
     const val PRIVATE = 1 shl 11
+    /** the same for bicycles (bicycle / vehicle / access = private); motor_vehicle=private with bicycle=yes sets only PRIVATE */
+    const val PRIVATE_BIKE = 1 shl 12
+    fun privateFor(bike: Boolean) = if (bike) PRIVATE_BIKE else PRIVATE
 
     val CLASSES = listOf(
         "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
@@ -112,7 +117,8 @@ class Graph private constructor(private val buf: Bytes) {
         require(buf.size >= GraphFormat.HEADER) { "graph truncated (${buf.size} bytes)" }
         val magic = ByteArray(8); buf.get(0, magic)
         require(String(magic, Charsets.US_ASCII) == GraphFormat.MAGIC) { "not a Fold graph" }
-        require(buf.i32(8) == GraphFormat.VERSION) { "unsupported graph version" }
+        // 2 is read as well: it carries no PRIVATE_BIKE bit, and its private ways were never bicycle-routable, so the meaning is unchanged
+        require(buf.i32(8) in GraphFormat.MIN_VERSION..GraphFormat.VERSION) { "unsupported graph version" }
         nodeCount = buf.i32(12L); edgeCount = buf.i32(16L); geomPointCount = buf.i32(20L); nameCount = buf.i32(24L)
         minLat = buf.i32(28L) / 1e7; minLon = buf.i32(32L) / 1e7; maxLat = buf.i32(36L) / 1e7; maxLon = buf.i32(40L) / 1e7
         gridCols = buf.i32(44L); gridRows = buf.i32(48L); gridEntryCount = buf.i32(52L); nameBytesLen = buf.i32(56L)

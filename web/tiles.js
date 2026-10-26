@@ -27,7 +27,7 @@ export async function serveTile(request, env, path, loadCatalog, fetchPack) {
     // cache identity is the catalog's build date plus the archive's byte size as it is on the shelf right now
     // (probed, cached a minute): while a rebuild is replacing packs one state at a time, the catalog still lists
     // the old sizes for hours, and the new archive must be served as itself rather than refused or mixed with old ranges
-    const live = await liveSize(env, key, fetchPack);
+    const live = await liveIdentity(env, key, fetchPack);
     pack = { ...pack, built: `${pack.built}-${live || pack.bytes || 0}` };
     const index = await zipIndex(env, pack, key, fetchPack);
     entry = index.entries[file];
@@ -74,18 +74,24 @@ async function objectSize(env, pack, key, fetchPack) {
   return total;
 }
 
-/** The archive's current byte size, remembered a minute: a rebuilt pack is noticed within that long. */
-async function liveSize(env, key, fetchPack) {
+/**
+ * The archive's current identity — its byte size and the store's ETag (R2's is the upload's checksum, so a
+ * same-size replacement changes it too) — remembered a minute: a rebuilt pack is noticed within that long,
+ * and every index and range cached under the old identity is simply never asked for again.
+ */
+async function liveIdentity(env, key, fetchPack) {
   const cache = caches.default;
   const ckey = new Request(`https://zipindex.roadbook.internal/live/${key}`);
   const hit = await cache.match(ckey);
-  if (hit) return Number(await hit.text());
+  if (hit) return await hit.text();
   const probe = await fetchPack(env, key, "bytes=0-0");
-  if (probe.status !== 206) return 0;
+  if (probe.status !== 206) return "";
   const total = Number((probe.headers.get("Content-Range") || "").split("/")[1]) || 0;
+  const etag = (probe.headers.get("ETag") || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
   await probe.arrayBuffer();
-  if (total) await cache.put(ckey, new Response(String(total), { headers: { "Cache-Control": "public, max-age=60" } }));
-  return total;
+  const id = total ? `${total}${etag ? "-" + etag : ""}` : "";
+  if (id) await cache.put(ckey, new Response(id, { headers: { "Cache-Control": "public, max-age=60" } }));
+  return id;
 }
 
 export function packKey(pack) { const u = new URL(pack.url); return u.pathname.replace(/^\/packs\//, ""); }

@@ -6,6 +6,10 @@ name: mirror
 
 on:
   workflow_dispatch:
+    inputs:
+      force:
+        description: "recopy every file even when the size matches"
+        default: "0"
 
 env:
   RELEASE_TAG: packs
@@ -43,9 +47,11 @@ jobs:
                  [ -n "$path" ] || { echo "skip $name: no region"; continue; }
                  key="$path/$name" ;;
             esac
-            # already there at the same size? rclone compares size (and modtime) and skips the copy
+            # already there at the same size? skipped — this is the catch-up tool for a fresh bucket; the packs
+            # workflow copies every file it builds unconditionally (--ignore-times), so a same-size rebuild is
+            # never left stale by this shortcut. Run with FORCE=1 to recopy everything regardless.
             have=$(rclone lsjson "r2:$BUCKET/$key" 2>/dev/null | jq -r '.[0].Size // 0')
-            if [ "$have" = "$size" ]; then echo "ok   $key"; continue; fi
+            if [ "$have" = "$size" ] && [ "${{ github.event.inputs.force }}" != "1" ]; then echo "ok   $key"; continue; fi
             echo "copy $key ($size bytes)"
             gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p "$name" -O "$name" --clobber
             rclone copyto "$name" "r2:$BUCKET/$key" --s3-chunk-size 64M --s3-upload-concurrency 4

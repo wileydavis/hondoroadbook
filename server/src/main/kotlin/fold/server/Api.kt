@@ -7,6 +7,7 @@ import fold.core.MultiRouter
 import fold.core.Profile
 import fold.core.Route
 import fold.core.RouteResult
+import fold.core.Speeds
 import fold.core.Turn
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
@@ -77,6 +78,8 @@ class Api(private val packs: PackSet) {
         if (loaded.isEmpty()) throw ApiError(404, "No map pack covers this point yet")
         val indexed = loaded.filter { it.pois != null }
         if (indexed.isEmpty()) throw ApiError(410, "These packs carry no place index yet")
+        // a neighbouring pack without an index yet: the answer is partial, and the planner fills in from the tiles
+        val partial = indexed.size < loaded.size
         val cats = listOf("fuel", "food", "camping", "water", "lodging", "repair", "town")
         val best = HashMap<String, ArrayList<PoiHit>>(); for (c in cats) best[c] = ArrayList()
         for (l in indexed) for (p in l.pois!!) {
@@ -93,7 +96,7 @@ class Api(private val packs: PackSet) {
             for (h in list) if (h.d > reach) reach = h.d
             c to Json.arr(list.map { h -> Json.obj("name" to Json.str(h.p.name), "kind" to Json.str(h.p.kind), "lon" to Json.num(h.p.lon), "lat" to Json.num(h.p.lat), "d" to Json.num(h.d, 0), "bearing" to Json.num(h.bearing, 0), "prom" to h.p.prom.toString(), "extra" to Json.str(h.p.extra)) })
         }
-        return Json.obj(*(out + listOf("reach" to Json.num(reach, 0), "source" to Json.str("pack index"), "built" to Json.str(indexed.first().pack.built))).toTypedArray())
+        return Json.obj(*(out + listOf("reach" to Json.num(reach, 0), "source" to Json.str("pack index"), "built" to Json.str(indexed.first().pack.built), "partial" to partial.toString())).toTypedArray())
     }
     private class PoiHit(val p: PoiEntry, val d: Double, val bearing: Double)
 
@@ -157,7 +160,7 @@ class Api(private val packs: PackSet) {
         for (i in 1 until rr.lats.size) {
             val e = rr.segEdge[i]; val p = rr.segPack[i]
             val flags = if (e >= 0 && p >= 0) mr.graph(p).edgeFlags(e) else 0
-            val cls = flags and GraphFormat.CLASS_MASK; val unp = flags and GraphFormat.UNPAVED != 0; val prv = flags and GraphFormat.PRIVATE != 0
+            val cls = flags and GraphFormat.CLASS_MASK; val unp = flags and GraphFormat.UNPAVED != 0; val prv = Speeds.isPrivate(profile, flags)
             val name = if (e >= 0 && p >= 0) mr.graph(p).edgeName(e) else ""
             if (cls != runCls || unp != runUnpaved || prv != runPrivate || name != runName) { flush(i - 1); runStart = i - 1; runCls = cls; runUnpaved = unp; runPrivate = prv; runM = 0.0; runName = name }
             runM += Geo.fastDistance(rr.lats[i - 1], rr.lons[i - 1], rr.lats[i], rr.lons[i])
@@ -186,7 +189,7 @@ class Api(private val packs: PackSet) {
         Json.obj("lon" to Json.num(s.lon), "lat" to Json.num(s.lat), "distance" to Json.num(s.distance, 1), "name" to Json.str(g.edgeName(s.edge)),
             "cls" to Json.str(GraphFormat.CLASSES.getOrElse(flags and GraphFormat.CLASS_MASK) { "road" }), "unpaved" to (flags and GraphFormat.UNPAVED != 0).toString(),
             "oneway" to (flags and GraphFormat.ONEWAY != 0).toString(), "car" to (flags and GraphFormat.CAR != 0).toString(), "bike" to (flags and GraphFormat.BIKE != 0).toString(),
-            "private" to (flags and GraphFormat.PRIVATE != 0).toString(),
+            "private" to (flags and GraphFormat.PRIVATE != 0).toString(), "privateBike" to (flags and GraphFormat.PRIVATE_BIKE != 0).toString(),
             "pack" to Json.str(loaded[s.pack].pack.id), "region" to Json.str(loaded[s.pack].pack.region))
     }
 

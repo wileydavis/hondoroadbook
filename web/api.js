@@ -25,7 +25,8 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
   } catch (e) {
     // a bad request is the caller's; anything else is ours and is reported without its internals
     if (e instanceof GpxError || (e && e.status >= 400 && e.status < 500)) return json({ error: e.message }, e.status || 400);
-    console.error("api", path, e && e.name, e && e.message && e.message.slice(0, 120));
+    // the endpoint's name only: a parked code or a roadbook id is not for the log
+    console.error("api", path.split("/")[0], e && e.name, e && e.message && e.message.slice(0, 120));
     return json({ error: "Something failed on the server; try again in a moment" }, 502);
   }
 }
@@ -55,8 +56,11 @@ async function park(request, env, url) {
   const g = parseGpx(text);
   const pts = g.pts.length >= 2 ? g.pts : g.rte;
   if (pts.length < 2) return json({ error: "the file has no track" }, 400);
+  const { length } = measure(pts);
+  if (length > 5_000_000) return json({ error: "too long to park (over 5,000 km)" }, 400);
   const name = cleanName(url.searchParams.get("name") || g.name || "Roadbook");
-  const body = writeGpx(name, pts, cuesOn(pts, g.cues), g.meta);
+  const kept = cuesOn(pts, g.cues);
+  const body = writeGpx(name, pts, kept, g.meta);
   let code;
   for (let tries = 0; tries < 5; tries++) {
     code = randomCode(6);
@@ -65,7 +69,7 @@ async function park(request, env, url) {
   const expires = Date.now() + 24 * 3600 * 1000;
   await env.PACKS.put(`parked/${code}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { expires: String(expires), name } });
   await sweepParked(env).catch(() => {});
-  return json({ code, name, expires, bytes: body.length, cues: g.cues.length, length: Math.round(measure(pts).length) });
+  return json({ code, name, expires, bytes: body.length, cues: kept.length, length: Math.round(length) });
 }
 
 // Each park sweeps out the codes that have expired, so a parked roadbook is actually gone after
@@ -110,7 +114,8 @@ async function publish(request, env, url) {
   const { length, bbox } = measure(pts);
   if (length < 500) return json({ error: "too short to publish (under 500 m)" }, 400);
   if (length > 5_000_000) return json({ error: "too long to publish (over 5,000 km)" }, 400);
-  const cues = cuesOn(pts, g.cues);
+  // cues are judged against the untrimmed line and must belong to the kept stretch: a cue at a trimmed-off end never rides along
+  const cues = trim > 0 ? cuesOn(source, g.cues, 150, [trim, measure(source).length - trim]) : cuesOn(pts, g.cues);
   const name = cleanName(url.searchParams.get("name") || request.headers.get("X-Name") && decodeURIComponent(request.headers.get("X-Name")) || g.name || "Roadbook");
   const from = /^(app|planner)$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
   const id = randomCode(8).toLowerCase();

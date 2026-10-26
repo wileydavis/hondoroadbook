@@ -27,7 +27,8 @@ class PackManifest(val name: String, val format: Int, val minLat: Double, val mi
         const val POIS = "pois.tsv"
         /** hillshade raster tiles of a terrain pack */
         const val TERRAIN = "terrain.pmtiles"
-        const val FORMAT = 2
+        const val FORMAT = 3
+        const val MIN_FORMAT = 2
         val REQUIRED = listOf(FILE, TILES, GRAPH, SEARCH)
 
         fun parse(text: String): PackManifest? {

@@ -53,8 +53,10 @@ object Speeds {
     /** Extra weight multiplier used only for route choice (not ETA). Tables are per road class (see GraphFormat.CLASSES). */
     /** A posted-private road costs eight times its length in every mode: never chosen when any public way exists, still there to be dragged onto on purpose. */
     const val PRIVATE_PENALTY = 8.0
+    /** posted private for this profile's vehicle: a bicycle is not kept off a road that is private only to motor vehicles */
+    fun isPrivate(p: Profile, flags: Int) = flags and F.privateFor(p.bike) != 0
 
-    fun weight(p: Profile, flags: Int): Double = base(p, flags) * (if (flags and F.PRIVATE != 0) PRIVATE_PENALTY else 1.0)
+    fun weight(p: Profile, flags: Int): Double = base(p, flags) * (if (isPrivate(p, flags)) PRIVATE_PENALTY else 1.0)
 
     private fun base(p: Profile, flags: Int): Double {
         val cls = flags and F.CLASS_MASK
@@ -235,9 +237,10 @@ class Router(private val g: Graph) {
         return Snap(pack, edge, t, bLat, bLon, bestD, along, maxOf(0.0, total - along))
     }
 
-    internal fun canTraverse(edge: Int, dir: Int, profile: Profile): Boolean {
+    internal fun canTraverse(edge: Int, dir: Int, profile: Profile, noPrivate: Boolean = false): Boolean {
         val f = g.edgeFlags(edge)
         if (Speeds.speed(profile, f) <= 0.0) return false
+        if (noPrivate && Speeds.isPrivate(profile, f)) return false
         if (dir == 1 && (f and F.ONEWAY) != 0) return false
         return true
     }
@@ -268,6 +271,8 @@ class Router(private val g: Graph) {
  */
 class MultiRouter(val routers: List<Router>) {
     private var gen = 0
+    /** the public-first pass: posted-private roads are impassable; only when nothing public connects does a second pass allow them, penalised */
+    private var noPrivate = false
     private val hopFrom = HashMap<Int, Int>()   // key(dest) -> key(source) for pack hops
 
     companion object {
@@ -325,12 +330,19 @@ class MultiRouter(val routers: List<Router>) {
 
     fun route(from: Snap, to: Snap, profile: Profile, maxExplored: Int = 40_000_000): RouteResult? {
         try {
-            val crow = Geo.fastDistance(from.lat, from.lon, to.lat, to.lon)
-            if (!profile.bike && crow > 150_000.0) {
-                routeInner(from, to, profile, maxExplored, 30_000.0)?.let { return it }
+            // public roads first, however much longer; posted-private roads only when nothing else connects
+            // (or the rider put a point on one), and then under the penalty so the private stretch stays short
+            for (strict in booleanArrayOf(true, false)) {
+                noPrivate = strict
+                val crow = Geo.fastDistance(from.lat, from.lon, to.lat, to.lon)
+                if (!profile.bike && crow > 150_000.0) {
+                    routeInner(from, to, profile, maxExplored, 30_000.0)?.let { return it }
+                }
+                routeInner(from, to, profile, maxExplored, -1.0)?.let { return it }
             }
-            return routeInner(from, to, profile, maxExplored, -1.0)
+            return null
         } finally {
+            noPrivate = false
             for (r in routers) r.releaseState()
         }
     }
@@ -409,7 +421,7 @@ class MultiRouter(val routers: List<Router>) {
             for (slot in s until e) {
                 val he = g.adj(slot); val edge = he shr 1; val dir = he and 1
                 if (!allowMinor && (g.edgeFlags(edge) and F.CLASS_MASK) > pruneClass) continue
-                if (!r.canTraverse(edge, dir, profile)) continue
+                if (!r.canTraverse(edge, dir, profile, noPrivate)) continue
                 val m = g.edgeOther(edge, n)
                 val ng = gn + r.edgeCost(edge, profile, g.edgeLength(edge)) + (if (r.parent[n] >= 0 && (r.parent[n] shr 1) == edge) Speeds.uturnPenalty(profile) else 0.0)
                 relax(key(p, m), ng, he, g.nodeLat(m), g.nodeLon(m))

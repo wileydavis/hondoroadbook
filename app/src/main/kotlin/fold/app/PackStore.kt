@@ -114,7 +114,7 @@ class PackStore(private val ctx: Context) {
                 val mfEntry = zip.getEntry(PackManifest.FILE) ?: throw IllegalStateException("Not a .mappack (no pack.txt)")
                 val manifest = PackManifest.parse(zip.getInputStream(mfEntry).readBytes().toString(Charsets.UTF_8))
                     ?: throw IllegalStateException("Bad pack.txt")
-                if (manifest.format != PackManifest.FORMAT) throw IllegalStateException(if (manifest.format < PackManifest.FORMAT) "This pack was made with an older packer — rebuild it with the current fold-packer.jar" else "Pack format ${manifest.format} is newer than this app")
+                if (manifest.format !in PackManifest.MIN_FORMAT..PackManifest.FORMAT) throw IllegalStateException(if (manifest.format < PackManifest.MIN_FORMAT) "This pack was made with an older packer — download it again" else "This pack is newer than the app — update Roadbook from hondoroadbook.com")
                 for (req in manifest.required) if (zip.getEntry(req) == null) throw IllegalStateException("Pack is missing $req")
                 val safe = manifest.name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "pack" }
                 // same name = same region: the new pack replaces the old one once it is fully unpacked

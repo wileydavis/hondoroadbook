@@ -85,3 +85,37 @@ towns/fuel/campgrounds to 60 km). Turn restrictions and barrier transitions rema
 evidence, not verdict: the tag is shown as what OSM says, never as a legal ruling; PAD-US and MVUM are the
 next sources, to be shown the same way.
 
+## Round 3 (audit of 74fed29, 26 Oct 2026) — dispositions
+
+Implemented the same day unless marked otherwise. "Fixed" means the audit's counterexample now behaves as the
+regression criteria ask and a test or probe covers it; "partial" names what remains.
+
+| ID | Status | What changed |
+|---|---|---|
+| WEB-13 | **fixed** | Cues carry a stable `id`; the editor binds to it and resolves at save/delete (gone → told); promoting a generated cue clears `climb`; `climbCues` regenerates only cues it still owns; a route replacement closes an open editor. |
+| WEB-17 | **fixed** | A pending note records the request number and the intended coordinate; it is committed only by that request's route and only if the stop landed within 1 km; a failed route, Clear or import drops it with a word. |
+| WEB-11 | **fixed** | `alongLine` stops only when the best found is within the proven bound of every unvisited ring (edge distance + R cells, in metres at that latitude); otherwise the exact scan. 15,000 random points on cell edges agree with brute force. |
+| WEB-12 | **fixed** | Route-only files over 60 stops are no longer truncated silently: the start, the finish and 58 evenly spread stops are kept and the status says so in red. |
+| WEB-14 | **fixed** | `addNoteHere` projects the finding onto the route; when the spot is off the line the words carry the distance and direction. Both Inspect and the place popup agree. |
+| WEB-16 | **fixed** | A warning raised during `setRoute` survives the end of "Routing…" (`clearRoutingStatus`); Inspect shows the snap's `private` / `privateBike` evidence (the line had been lost in an edit; the audit was right). |
+| WEB-04 | **fixed** | Reverse flags every cue with authored words, mirrored or not. |
+| WEB-15 | **fixed** | Inspect has a generation; closing the sheet retires it; every DOM/map commit and action registration checks it. |
+| WEB-10 | **fixed** | An unchanged viewport re-checks packs that are still unknown; a negative entry's expiry triggers the check. |
+| WEB-06 / CORE-04 | open | Dense-lap work still synchronous (no Worker/off-thread yet). The index is budgeted (below). |
+| WEB-03 / WEB-09 | open | Export during a pending request; no local checkpoint. |
+| CORE-07 | **fixed** | Public-first routing: a first pass treats posted-private edges as impassable for the profile; only when nothing connects (or a point sits on one) does the penalised pass run. Access evidence per vehicle: `PRIVATE` (motor) and `PRIVATE_BIKE` (bicycle); `motor_vehicle=private` + `bicycle=yes` does not detour a bike. Graph version 3 / pack format 3; readers accept 2 and 3 (a v2 pack's meaning is unchanged); v2 readers refuse v3 with "update Roadbook". `PrivateAccessTest`. Packs rebuilt. |
+| BACKEND-02 | **fixed** | With a trim, cues are judged against the untrimmed line and must belong to the kept stretch by their position along it; a cue at a trimmed-off end never survives a hairpin. Probe: hairpin fixture. |
+| BACKEND-05 | **fixed** | `segmentIndex` has a total-entry budget (2 M); segments past it or over 400 cells go to the always-checked list; `/park` bounds route length (5,000 km) and reports the cues actually kept. |
+| BACKEND-04 | **fixed** | Warmer: two threads, an 8-deep bounded queue, one reservation per pack (`WarmTest`: 100 warms → 1 job); HTTP admission inside the handler (8 permits, 16 waiting ≤ 2 s) answers 503 + Retry-After instead of a reset. Memory-budget eviction: open. |
+| BACKEND-06 | **partial** | Tile identity is the archive's live size **and ETag** (R2's is the upload checksum: same-size replacement changes it), cached a minute; the JVM pack stamp is build date + bytes; the packs workflow copies every built file with `--ignore-times`; the mirror's size shortcut is documented as the catch-up tool with a `force` input. Not done: hash-named immutable objects and an atomic snapshot across index/range reads (the one-minute window remains). |
+| BACKEND-03 | **fixed** | `observability.logs.invocation_logs: false` in wrangler.jsonc; the API error log carries the endpoint name only, never a code or id. Retention is Cloudflare's default; nothing of ours keeps URLs. |
+| BACKEND-10 | **fixed** | `web/site/_headers` carries the same CSP and headers as the Worker (a test asserts the two strings match), so static HTML served without the Worker is covered. |
+| BACKEND-09 | **fixed** | wrangler 4.153.0 → undici 7.30.1; `npm audit` clean; `wrangler deploy --dry-run` passes. |
+| CORE-08 | **fixed** | Unnamed fuel/food/lodging/repair kept (labelled by kind); every TSV field is cleaned of tabs/newlines/controls; `/near` reports `partial` when a loaded pack has no index, and the planner then uses the tiles. |
+| APP-02 / APP-03 | **fixed** | Overwrite: a per-document backup is written before the file is touched and never replaced by unverified content; any failure after opening for write restores from it; verification reads the bytes back (no stat size, so pipe-backed providers work); when restoration itself fails the original is offered as a new file. New-file saves verify by read-back too. Serialisation still on the UI thread. |
+| APP-05 | **fixed** | A foreground-start or GPS-registration failure sets the recorder not running with a reason the UI shows; the journal stays. |
+| APP-01 | **fixed** (device check pending) | `stop()` and the final check + `play()` share one lock, so nothing starts after `stop()` returns; missed hazards are spoken as one combined phrase instead of latest-wins. |
+| APP-04 | partial | As round 3 found: guidance is still activity-owned; the service keeps the process and GPS alive. Service-owned controller + checkpoint: next app milestone. |
+| CORE-01 / CORE-03 / CORE-06 / NAV-05 / NAV-06 | open | unchanged, deferred. |
+| Lint | **fixed** | `app:tint` on the two ImageButtons; `lintRoadbookRelease` reports 0 errors. |
+
