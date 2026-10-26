@@ -14,7 +14,7 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Name", "Access-Control-Max-Age": "86400" }) });
   try {
-    if (path === "route" || path === "snap" || path === "search") return await routerProxy(request, env, path, url, routerFetch);
+    if (path === "route" || path === "snap" || path === "search" || path === "warm") return await routerProxy(request, env, path, url, routerFetch);
     if (path === "park" && request.method === "POST") return await park(request, env, url);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
@@ -37,7 +37,8 @@ async function routerProxy(request, env, path, url, routerFetch) {
   if (request.method !== "GET") return json({ error: "GET only" }, 405);
   const target = "/" + path + url.search;
   // the container holding the western graphs or the eastern ones, by the first point (or the point)
-  const first = (url.searchParams.get("pts") || "").split(/[;|]/)[0] || `${url.searchParams.get("lon")},${url.searchParams.get("lat")}`;
+  const bb = (url.searchParams.get("bbox") || "").split(",").map(Number);
+  const first = (url.searchParams.get("pts") || "").split(/[;|]/)[0] || (url.searchParams.get("lon") ? `${url.searchParams.get("lon")},${url.searchParams.get("lat")}` : bb.length === 4 ? `${(bb[0] + bb[2]) / 2},0` : "");
   const lon = Number(first.split(",")[0]);
   const shard = Number.isFinite(lon) && lon > -97 ? "east" : "west";
   if (env.ROUTER && routerFetch) return withCors(await routerFetch(shard, target));

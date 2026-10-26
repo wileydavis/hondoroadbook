@@ -24,10 +24,13 @@ class Loaded(val pack: CatalogPack, val graph: Graph, val router: Router, val se
  * ever routes in Montana holds Montana.
  */
 class PackSet(private val catalogUrl: String, private val dir: File, private val minFreeBytes: Long = 1L shl 30) {
+    // the map of loaded packs and the catalog are guarded by short locks; a download never holds either,
+    // so /warm and /health answer while a pack is on its way and two requests for one pack share one download
     private val lock = Any()
     private var catalog: List<CatalogPack> = emptyList()
     private var catalogAt = 0L
     private val loaded = LinkedHashMap<String, Loaded>()
+    private val inflight = HashMap<String, java.util.concurrent.CompletableFuture<Loaded>>()
 
     init { dir.mkdirs() }
 
@@ -35,13 +38,25 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
         synchronized(lock) {
             val now = System.currentTimeMillis()
             if (catalog.isEmpty() || now - catalogAt > 60 * 60 * 1000L) {
-                try { catalog = fetchCatalog(); catalogAt = now } catch (e: Throwable) { if (catalog.isEmpty()) throw e; System.err.println("catalog refresh failed: ${e.message}") }
+                try { catalog = fetchCatalog(); catalogAt = now } catch (e: Throwable) { if (catalog.isEmpty()) throw e; System.err.println("catalog refresh failed: ${e.javaClass.simpleName}") }
             }
             return catalog
         }
     }
 
     fun loadedIds(): List<String> = synchronized(lock) { loaded.keys.toList() }
+    fun isLoaded(id: String): Boolean = synchronized(lock) { loaded.containsKey(id) }
+    fun loadingIds(): List<String> = synchronized(lock) { inflight.keys.toList() }
+
+    private val warmer = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "warm").apply { isDaemon = true } }
+    /** Starts loading the packs for a box in the background, so a route asked for in a moment finds them ready. Returns what is loaded and what is on its way. */
+    fun warm(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): Pair<List<CatalogPack>, List<CatalogPack>> {
+        val want = catalog().filter { it.intersects(minLon, minLat, maxLon, maxLat) }
+        val ready = want.filter { isLoaded(it.id) }
+        val pending = want.filter { !isLoaded(it.id) }
+        for (p in pending) warmer.execute { try { ensure(p) } catch (e: Throwable) { System.err.println("warm ${p.id}: ${e.javaClass.simpleName}") } }
+        return ready to pending
+    }
 
     /** Packs whose bbox meets the given one, loaded (downloading if needed). */
     fun forBbox(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): List<Loaded> {
@@ -50,28 +65,42 @@ class PackSet(private val catalogUrl: String, private val dir: File, private val
     }
 
     fun ensure(p: CatalogPack): Loaded {
+        val mine: java.util.concurrent.CompletableFuture<Loaded>
+        var theirs: java.util.concurrent.CompletableFuture<Loaded>? = null
         synchronized(lock) {
             loaded[p.id]?.let { if (it.pack.built == p.built) { it.lastUsed = System.currentTimeMillis(); return it } else { loaded.remove(p.id) } }
-            val d = File(dir, p.id)
-            val stamp = File(d, "built"); val graphFile = File(d, "graph.bin"); val searchFile = File(d, "search.tsv")
-            val fresh = stamp.exists() && stamp.readText().trim() == p.built && graphFile.exists()
-            if (!fresh) {
-                d.deleteRecursively(); d.mkdirs()
-                makeRoom(p.bytes / 4)
-                val t0 = System.currentTimeMillis()
-                ZipRange(p.url).use { z ->
-                    z.extract("graph.bin", graphFile)
-                    try { z.extract("search.tsv", searchFile) } catch (e: Throwable) { System.err.println("${p.id}: no search file (${e.message})") }
-                }
-                stamp.writeText(p.built)
-                System.err.println("loaded ${p.id}: ${graphFile.length() / 1_000_000} MB in ${(System.currentTimeMillis() - t0) / 1000} s")
-            }
-            val g = Graph.open(graphFile)
-            val s = if (searchFile.exists()) try { SearchFile.open(searchFile) } catch (_: Throwable) { null } else null
-            val l = Loaded(p, g, Router(g), s)
-            loaded[p.id] = l
-            return l
+            theirs = inflight[p.id]
+            mine = java.util.concurrent.CompletableFuture(); if (theirs == null) inflight[p.id] = mine
         }
+        theirs?.let { return it.get() }                    // someone else is fetching it: wait for theirs, outside the lock
+        try {
+            val l = load(p)
+            synchronized(lock) { loaded[p.id] = l; inflight.remove(p.id) }
+            mine.complete(l); return l
+        } catch (e: Throwable) {
+            synchronized(lock) { inflight.remove(p.id) }
+            mine.completeExceptionally(e); throw e
+        }
+    }
+
+    private fun load(p: CatalogPack): Loaded {
+        val d = File(dir, p.id)
+        val stamp = File(d, "built"); val graphFile = File(d, "graph.bin"); val searchFile = File(d, "search.tsv")
+        val fresh = stamp.exists() && stamp.readText().trim() == p.built && graphFile.exists()
+        if (!fresh) {
+            d.deleteRecursively(); d.mkdirs()
+            synchronized(lock) { makeRoom(p.bytes / 4) }
+            val t0 = System.currentTimeMillis()
+            ZipRange(p.url).use { z ->
+                z.extract("graph.bin", graphFile)
+                try { z.extract("search.tsv", searchFile) } catch (e: Throwable) { System.err.println("${p.id}: no search file (${e.javaClass.simpleName})") }
+            }
+            stamp.writeText(p.built)
+            System.err.println("loaded ${p.id}: ${graphFile.length() / 1_000_000} MB in ${(System.currentTimeMillis() - t0) / 1000} s")
+        }
+        val g = Graph.open(graphFile)
+        val s = if (searchFile.exists()) try { SearchFile.open(searchFile) } catch (_: Throwable) { null } else null
+        return Loaded(p, g, Router(g), s)
     }
 
     /** Drops the least recently used packs from memory and disk until there is room. */

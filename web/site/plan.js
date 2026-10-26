@@ -79,6 +79,8 @@ async function init() {
   map.once("idle", () => { clearTimeout(slow); $("#status").hidden = true; });
   updatePacks(true);
   map.on("moveend", () => updatePacks(false));
+  map.on("moveend", () => warm(false));
+  warm(true);
   map.on("moveend", () => { if (S.library) loadLibrary(); });
   bindMap();
   if (S.pts.length >= 2) reroute();
@@ -295,7 +297,7 @@ function afterPointsChange() {
 }
 
 // ---- routing -----------------------------------------------------------------------------------------------------
-function abortInflight() { if (S.inflight) { S.inflight.abort(); S.inflight = null; } }
+function abortInflight() { if (S.inflight) { S.inflight.abort(); S.inflight = null; } progress(false); }
 async function callRoute(pts, signal) {
   const q = pts.map(p => `${p.lon.toFixed(6)},${p.lat.toFixed(6)}`).join(";");
   const r = await fetch(`/api/route?pts=${encodeURIComponent(q)}&mode=${S.mode}`, { signal });
@@ -348,18 +350,61 @@ function ghostMarker(lngLat) {
   return mk;
 }
 
+// ---- waking the router -------------------------------------------------------------------------------------------
+// The first route of the day waits for the container to wake and pull a state's graph. Two things make that
+// bearable: the page warms the router for the map in view as soon as it opens (and as the map moves), and a
+// slow route shows what it is waiting on — waking, loading a named state, routing — with a bar and a clock.
+let warmT = 0, warmTimer = null, warmState = null;
+async function warm(immediate) {
+  clearTimeout(warmTimer);
+  const go = async () => {
+    warmT = Date.now();
+    const b = map.getBounds();
+    try { const r = await fetch(`/api/warm?bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`); warmState = r.ok ? await r.json() : null; } catch { warmState = null; }
+  };
+  if (immediate || Date.now() - warmT > 60000) go(); else warmTimer = setTimeout(go, 2500);
+}
+function progress(show, text, pct) {
+  const el = $("#progress"); if (!show) { el.hidden = true; return; }
+  el.hidden = false; $("#progressText").textContent = text; const bar = $("#progressBar");
+  if (pct == null) bar.classList.add("indeterminate"); else { bar.classList.remove("indeterminate"); bar.style.width = Math.round(pct * 100) + "%"; }
+}
+/** While a route request is in flight, poll the router's state and narrate it. */
+function narrate(ac, pts) {
+  const t0 = Date.now(); let stage = "";
+  const b = pts.reduce((bb, p) => [Math.min(bb[0], p.lon), Math.min(bb[1], p.lat), Math.max(bb[2], p.lon), Math.max(bb[3], p.lat)], [180, 90, -180, -90]);
+  const bbox = `${b[0] - 0.3},${b[1] - 0.3},${b[2] + 0.3},${b[3] + 0.3}`;
+  const tick = async () => {
+    if (ac.signal.aborted || S.inflight !== ac) { progress(false); return; }
+    const secs = Math.round((Date.now() - t0) / 1000);
+    if (secs < 2) { setTimeout(tick, 500); return; }
+    let text;
+    try {
+      const r = await fetch(`/api/warm?bbox=${bbox}`, { signal: AbortSignal.timeout(4000) });
+      const j = r.ok ? await r.json() : null;
+      if (!j) text = "Waking the router — the first route after a quiet spell takes up to half a minute";
+      else if (j.loading && j.loading.length) text = `Loading ${j.loading.join(", ")} roads — once per state, then instant`;
+      else text = "Routing…";
+    } catch { text = "Waking the router — the first route after a quiet spell takes up to half a minute"; }
+    if (S.inflight !== ac) { progress(false); return; }
+    stage = text; progress(true, `${text} · ${secs}s`, null);
+    setTimeout(tick, 1500);
+  };
+  setTimeout(tick, 1500);
+}
+
 async function reroute() {
   if (S.pts.length < 2) return;
   abortInflight(); const ac = new AbortController(); S.inflight = ac;
-  status("Routing…");
+  status("Routing…"); narrate(ac, S.pts);
   try {
     const j = await callRoute(S.pts, ac.signal);
     if (S.inflight !== ac) return; S.inflight = null;
     setRoute(j, false);
-    $("#status").hidden = true;
+    $("#status").hidden = true; progress(false);
   } catch (e) {
     if (e.name === "AbortError") return;
-    S.inflight = null; setElastic(null); fadeRoute(false);
+    S.inflight = null; setElastic(null); fadeRoute(false); progress(false);
     // the points go back to the last route that worked, so what is shown and what is exported always agree
     if (S.lastGood) { S.pts = S.lastGood.pts.map(p => ({ ...p })); S.mode = S.lastGood.mode; buildModes(); renderPoints(); saveHash(); status(e.message + " — kept the previous route", true); }
     else { S.pts = []; S.route = null; refreshRouteSources(); renderAll(); status(e.message, true); }

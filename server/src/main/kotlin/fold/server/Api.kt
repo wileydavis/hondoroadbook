@@ -66,6 +66,21 @@ class Api(private val packs: PackSet) {
         return list
     }
 
+    /** Wakes the service and starts loading the packs under a box; cheap to call on every map move. */
+    fun warm(q: Map<String, String>): String {
+        val bbox = q["bbox"]?.let { raw ->
+            val b = raw.split(',').map { it.toDoubleOrNull()?.takeIf { v -> v.isFinite() } ?: throw ApiError(400, "bad bbox") }
+            if (b.size != 4 || b[0] > b[2] || b[1] > b[3] || b[2] - b[0] > 12.0 || b[3] - b[1] > 12.0 || b.any { Math.abs(it) > 180 }) throw ApiError(400, "bad bbox")
+            b
+        } ?: run {
+            val lon = finite(q["lon"], 180.0) ?: throw ApiError(400, "bbox or lon/lat required"); val lat = finite(q["lat"], 90.0) ?: throw ApiError(400, "bbox or lon/lat required")
+            listOf(lon - 0.5, lat - 0.5, lon + 0.5, lat + 0.5)
+        }
+        val (ready, pending) = packs.warm(bbox[0], bbox[1], bbox[2], bbox[3])
+        val loading = packs.loadingIds()
+        return Json.obj("ready" to Json.arr(ready.map { Json.str(it.region) }), "loading" to Json.arr(pending.map { Json.str(it.region) }), "fetching" to Json.arr(pending.filter { it.id in loading }.map { Json.str(it.region) }))
+    }
+
     fun health(): String = Json.obj("ok" to "true", "loaded" to Json.arr(packs.loadedIds().map { Json.str(it) }), "catalog" to packs.catalog().size.toString())
 
     fun route(q: Map<String, String>): String = routing {
