@@ -190,6 +190,16 @@ const NEAR = {
 };
 const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 async function near(request, env, url, ctx) {
+  if (url.searchParams.get("probe")) {
+    // which instances answer from here, and how fast: a tiny query against each
+    const out = [];
+    for (const ep of OVERPASS) {
+      const t0 = Date.now();
+      try { const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent('[out:json][timeout:8];node["amenity"="fuel"](around:3000,48.0761,-123.666);out 3;'), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(9000) }); const txt = await r.text(); out.push({ ep, status: r.status, ms: Date.now() - t0, head: txt.slice(0, 120) }); }
+      catch (e) { out.push({ ep, error: String(e && e.message || e), ms: Date.now() - t0 }); }
+    }
+    return json({ probe: out });
+  }
   const lon = Number(url.searchParams.get("lon")), lat = Number(url.searchParams.get("lat"));
   if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lon) > 180 || Math.abs(lat) > 90) return json({ error: "lon/lat required" }, 400);
   const cache = caches.default;
