@@ -154,6 +154,7 @@ function buildStyle() {
   sources.route = { type: "geojson", data: routeGeo() };
   sources.unpaved = { type: "geojson", data: unpavedGeo() };
   sources.elastic = { type: "geojson", data: S.elastic || { type: "FeatureCollection", features: [] } };
+  sources.insp = { type: "geojson", data: S.inspPlaces || { type: "FeatureCollection", features: [] } };
 
   let hillDone = false;
   for (const layer of template) {
@@ -190,6 +191,9 @@ function buildStyle() {
     { id: "route_line", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 6, 16, 9] } },
     { id: "route_unpaved", type: "line", source: "unpaved", layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": ["case", ["get", "private"], "#dc2626", "#fff"], "line-width": ["interpolate", ["linear"], ["zoom"], 5, ["case", ["get", "private"], 3, 1], 12, ["case", ["get", "private"], 5, 2], 16, ["case", ["get", "private"], 8, 3]], "line-dasharray": [2, 2.5], "line-opacity": 0.9 } },
     { id: "route_hit", type: "line", source: "route", paint: { "line-color": "#000", "line-width": 22, "line-opacity": 0.001 } },
+    // what Inspect found, at any zoom: the places around the inspected spot, coloured by what they are
+    { id: "insp_c", type: "circle", source: "insp", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 4, 12, 6, 16, 9], "circle-color": ["get", "color"], "circle-stroke-color": night ? "#000" : "#fff", "circle-stroke-width": 2, "circle-opacity": 0.95 } },
+    { id: "insp_t", type: "symbol", source: "insp", layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-optional": true, "text-max-width": 8 }, paint: { "text-color": night ? "#eee" : "#222", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1.2 } },
     // the rubber band while dragging: straight lines from the neighbouring stops to the cursor
     { id: "elastic_casing", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": 7, "line-opacity": 0.8 } },
     { id: "elastic_line", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": 4, "line-dasharray": [1.5, 1.5] } },
@@ -227,7 +231,18 @@ function unpavedGeo() {
 function refreshRouteSources() {
   const r = map.getSource("route"); if (r) r.setData(routeGeo());
   const u = map.getSource("unpaved"); if (u) u.setData(unpavedGeo());
+  const n = map.getSource("insp"); if (n) n.setData(S.inspPlaces || { type: "FeatureCollection", features: [] });
 }
+const CAT_COLOR = { fuel: "#dc2626", food: "#d97706", supplies: "#b45309", camping: "#15803d", water: "#2563eb", lodging: "#7c3aed", repair: "#525252", town: "#111" };
+const CAT_LABEL = { fuel: "Fuel", food: "Food", supplies: "Supplies", camping: "Camp", water: "Water", lodging: "Lodging", repair: "Repair", town: "Town" };
+/** Put what Inspect found on the main map (any zoom) so the rider sees where it all sits; cleared when the sheet closes. */
+function showInspPlaces(near) {
+  const features = [];
+  for (const cat of Object.keys(CAT_COLOR).filter(c => c !== "town")) for (const i of near[cat] || []) features.push({ type: "Feature", properties: { name: i.name || i.kind || "", kind: i.kind || cat, cat, color: CAT_COLOR[cat], label: CAT_LABEL[cat] }, geometry: { type: "Point", coordinates: [i.lon, i.lat] } });
+  S.inspPlaces = { type: "FeatureCollection", features };
+  const src = map.getSource("insp"); if (src) src.setData(S.inspPlaces);
+}
+function clearInspPlaces() { S.inspPlaces = null; const src = map.getSource("insp"); if (src) src.setData({ type: "FeatureCollection", features: [] }); }
 
 // ---- modes, layers, panel --------------------------------------------------------------------------------------
 function buildModes() {
@@ -248,7 +263,7 @@ $("#lyPlaces").onchange = e => { S.places = e.target.checked; applyStyle(); };
 $("#lyLibrary").onchange = e => { S.library = e.target.checked; if (S.library) loadLibrary(); else { S.libraryData = null; applyStyle(); } };
 $("#btnSide").onclick = () => { $("#side").classList.add("hidden"); $("#btnSideShow").hidden = false; };
 $("#btnSideShow").onclick = () => { $("#side").classList.remove("hidden"); $("#btnSideShow").hidden = true; };
-document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => b.closest(".sheet").hidden = true);
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { const sh = b.closest(".sheet"); sh.hidden = true; if (sh.id === "inspect") clearInspPlaces(); });
 
 async function landLegend() {
   const k = $("#landKey"); if (k.dataset.done) return;
@@ -548,6 +563,10 @@ function bindMap() {
   map.on("click", e => {
     if ($("#ctx").hidden === false) { $("#ctx").hidden = true; return; }
     if (e.originalEvent.target.closest && e.originalEvent.target.closest(".marker-pt, .marker-cue")) return;
+    if (S.inspPlaces && map.getLayer("insp_c")) {
+      const f = map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: ["insp_c"] })[0];
+      if (f) { pointPopup(f.geometry.coordinates.slice(), f.properties.name || f.properties.kind, f.properties.kind, f.properties.label); return; }
+    }
     if (S.places) {
       const poiLayers = map.getStyle().layers.filter(l => l.id.startsWith("poi_c_")).map(l => l.id);
       const poi = poiLayers.length ? map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: poiLayers })[0] : null;
@@ -702,6 +721,7 @@ async function elevation() {
     for (const e of el) { if (e - ref > 5) { gain += e - ref; ref = e; } else if (ref - e > 5) { loss += ref - e; ref = e; } }
     const min = Math.min(...el), max = Math.max(...el);
     txt.textContent = `↑ ${fmtElev(gain)} · ↓ ${fmtElev(loss)} · ${fmtElev(min)} – ${fmtElev(max)}`;
+    if (S.route) climbCues(samples, el, total);
     cv.hidden = false; const ctx = cv.getContext("2d"); const W = cv.width, H = cv.height; ctx.clearRect(0, 0, W, H);
     const ink = getComputedStyle(document.body).getPropertyValue("--soft") || "#777";
     const span = Math.max(50, max - min); const pad = 4;
@@ -710,6 +730,51 @@ async function elevation() {
     ctx.lineTo(W, H); ctx.closePath(); ctx.fillStyle = MODES.find(m => m[0] === S.mode)[2] + "55"; ctx.fill();
     ctx.beginPath(); el.forEach((e, k) => { const x = samples[k][2] / total * W; const y = H - pad - (e - min) / span * (H - 2 * pad); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = ink.trim() || "#777"; ctx.lineWidth = 1.5; ctx.stroke();
   } catch { cv.hidden = true; txt.textContent = ""; }
+}
+
+/**
+ * The big climbs, as cues: one at the base (length, gain, average and steepest grade) and one at the summit
+ * (height, and how far the descent runs), so the phone's "next cue in …" reads as distance to the top.
+ * A climb is a run that keeps gaining without ever dropping more than the tolerance below its high point;
+ * bikes get every climb from 60 m of gain, motors only the passes (250 m).
+ */
+function climbCues(samples, raw, total) {
+  const bike = /^(RIDE|QUIET|GRAVEL)$/.test(S.mode);
+  const minGain = bike ? 60 : 250, tol = bike ? 12 : 25, minGrade = 0.03;
+  // a light smoothing: the DEM is 30 m cells and the road is not always in the one you think
+  const el = raw.map((_, i) => { let s = 0, n = 0; for (let k = -1; k <= 1; k++) if (raw[i + k] != null) { s += raw[i + k]; n++; } return s / n; });
+  const at = i => samples[i][2];
+  const climbs = [];
+  let i = 0;
+  while (i < el.length - 1) {
+    // the base: walk down to a local low
+    while (i < el.length - 1 && el[i + 1] <= el[i]) i++;
+    let top = i, j = i;
+    while (j < el.length - 1) { j++; if (el[j] > el[top]) top = j; else if (el[top] - el[j] > tol) break; }
+    // the base is where the flat ends: the last point still within a few metres of the low before the rise
+    let m = i; for (let k = i; k <= top; k++) if (el[k] < el[m]) m = k;
+    let base = m; while (base < top - 1 && el[base + 1] - el[m] < 3) base++;
+    const peak = top; while (top > base + 1 && el[peak] - el[top - 1] < 3) top--;   // and the top is where the flat begins
+    const gain = el[top] - el[base], len = at(top) - at(base);
+    i = base;
+    if (gain >= minGain && len > 0 && gain / len >= minGrade) {
+      let maxG = 0;                                        // steepest stretch of at least 300 m
+      for (let a = i; a < top; a++) { let b = a + 1; while (b < top && at(b) - at(a) < 300) b++; if (at(b) - at(a) >= 300) maxG = Math.max(maxG, (el[b] - el[a]) / (at(b) - at(a))); }
+      // the descent after the top: to the next low (where the next climb would begin) or the end
+      let low = top; for (let d = top; d < el.length; d++) { if (el[d] < el[low]) low = d; else if (el[d] - el[low] > tol) break; }
+      climbs.push({ i, top, gain, len, avg: gain / len, maxG: Math.max(maxG, gain / len), elev: raw[top], descent: at(low) - at(top), drop: el[top] - el[low] });
+    }
+    i = Math.max(j, peak + 1);
+  }
+  S.cues = S.cues.filter(c => !c.climb);
+  const removed = (lon, lat) => S.deletedAuto.some(d => dist([d.lon, d.lat], [lon, lat]) < 40);
+  for (const c of climbs) {
+    const pct = x => (x * 100 < 10 ? (x * 100).toFixed(1) : Math.round(x * 100)) + "%";
+    const [lon1, lat1] = samples[c.i], [lon2, lat2] = samples[c.top];
+    if (!removed(lon1, lat1)) S.cues.push({ lon: lon1, lat: lat1, turn: "NOTE", level: 0, text: `Climb ${fmtDist(c.len)}, ↑${fmtElev(c.gain)}, avg ${pct(c.avg)}, max ${pct(c.maxG)}`, auto: true, climb: true });
+    if (!removed(lon2, lat2)) S.cues.push({ lon: lon2, lat: lat2, turn: "NOTE", level: 0, text: `Summit ${fmtElev(c.elev)}` + (c.descent > 400 && c.drop > tol ? ` · ↓${fmtDist(c.descent)} ahead` : ""), auto: true, climb: true });
+  }
+  renderCues();
 }
 
 // ---- inspect ---------------------------------------------------------------------------------------------------------
@@ -731,7 +796,8 @@ async function inspect(lon, lat) {
   // what the graph knows
   $("#inspFacts").innerHTML = `<span class="muted">Looking up…</span>`; $("#inspNear").innerHTML = `<span class="muted">Asking OpenStreetMap what is nearby…</span>`; $("#inspSections").innerHTML = ""; $("#inspWiki").innerHTML = ""; $("#inspWeb").innerHTML = "";
   const here = { lon, lat };
-  let name = "", region = "", town = "";
+  let name = "", region = "", town = "", found = null;
+  clearInspPlaces();
   const facts = (async () => {
     try {
       const r = await fetch(`/api/snap?lon=${lon}&lat=${lat}&max=400`); const j = await r.json();
@@ -744,12 +810,15 @@ async function inspect(lon, lat) {
   const nearby = (async () => {
     const render = (near, note) => {
       town = town || (near.town && near.town[0] && near.town[0].name) || "";
+      // a store is supplies, not a meal
+      if (!near.supplies) { near.supplies = (near.food || []).filter(i => /supermarket|convenience|general|grocery|hardware|bakery/.test(i.kind || "")); near.food = (near.food || []).filter(i => !near.supplies.includes(i)); }
+      found = near; showInspPlaces(near);
       const sec = (title, items, fmt) => items && items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-stop="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}`)}" data-lon="${i.lon}" data-lat="${i.lat}" title="Route through it and leave a note there">+ stop</button><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" title="A note on the route at this spot, pointing to it">+ note</button></div>`).join("") : "";
       $("#inspNear").innerHTML =
         (near.town && near.town.length ? `<div class="muted small">Nearest: ${near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
-        sec("Fuel", near.fuel, { label: "Fuel" }) + sec("Food & supplies", near.food, { label: "Food" }) + sec("Camping", near.camping, { label: "Camp", anon: "campsite" }) +
+        sec("Fuel", near.fuel, { label: "Fuel" }) + sec("Food", near.food, { label: "Food" }) + sec("Supplies", near.supplies, { label: "Supplies" }) + sec("Camping", near.camping, { label: "Camp", anon: "campsite" }) +
         sec("Water", near.water, { label: "Water", anon: "water" }) + sec("Beds", near.lodging, { label: "Lodging" }) + sec("Repair", near.repair, { label: "Repair" }) +
-        (["fuel", "food", "camping", "water", "lodging", "repair"].every(k => !near[k] || !near[k].length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
+        (["fuel", "food", "supplies", "camping", "water", "lodging", "repair"].every(k => !near[k] || !near[k].length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
       $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
       $("#inspNear").querySelectorAll("button[data-stop]").forEach(b => b.onclick = () => { $("#inspect").hidden = true; addStopAt(Number(b.dataset.lon), Number(b.dataset.lat), b.dataset.stop); });
     };
@@ -777,26 +846,42 @@ async function inspect(lon, lat) {
       if (hits.length) $("#inspWiki").innerHTML = `<h4>Nearby on Wikipedia</h4>` + hits.map(h => `<a target="_blank" rel="noopener" href="https://en.wikipedia.org/?curid=${h.pageid}">${esc(h.title)} <span class="muted">· ${fmtDistShort(h.dist)}</span></a>`).join("");
     } catch {}
   })();
-  // the curated web: each section asks only the rider's own sites for this road or place
+  // the curated web, sorted the way a rider thinks — food, fuel, beds and camping, supplies, then the roads themselves —
+  // each section searching for the named places the map index found rather than for a coordinate
   await Promise.all([facts, nearby]);
   const place = [name, town || region].filter(Boolean).join(" ") || [town, region].filter(Boolean).join(" ") || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  const anchor = [town, region].filter(Boolean).join(" ");
+  const names = (cat, n = 3) => ((found && found[cat]) || []).map(i => i.name).filter(x => x && x.length > 2).filter((x, i, a) => a.indexOf(x) === i).slice(0, n);
+  const quoted = (list) => list.map(x => `"${x.replace(/"/g, "")}"`).join(" OR ");
   const src = sources();
-  const secs = [
-    ["Free & dispersed camping", src.camping, [town || name, region, "camping"].filter(Boolean).join(" ")],
-    ["Trip reports & forums", src.forums, name ? `"${name}" ${region}` : `${town} ${region} dual sport OR adventure ride`],
-    ["Trail & road guides", src.guides, name ? `${name} ${region}` : `${town} ${region} trail OR road`],
-  ];
-  const box = $("#inspSections"); box.innerHTML = secs.map((x, i) => `<div id="sec${i}"><h4>${x[0]}</h4><span class="muted">Searching…</span></div>`).join("");
-  await Promise.all(secs.map(async ([title, sites, q], i) => {
-    const el = $("#sec" + i); if (!sites.length) { el.innerHTML = `<h4>${title}</h4><span class="muted">no sites listed — see sources</span>`; return; }
-    const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(q + " (" + sites.map(s => "site:" + s).join(" OR ") + ")")}">open this search</a>`;
+  const secs = [];
+  const add = (key, title, list, q, tail) => { if (!q) return; secs.push({ key, title, sites: src[key] || [], q: q + (tail ? " " + tail : ""), names: list }); };
+  add("food", "Food", names("food"), names("food").length ? `(${quoted(names("food"))}) ${anchor}` : anchor ? `${anchor} restaurant OR cafe OR diner` : "");
+  add("fuel", "Fuel", names("fuel", 2), names("fuel", 2).length ? `(${quoted(names("fuel", 2))}) ${anchor} gas` : anchor ? `${anchor} gas station` : "");
+  const beds = [...names("camping", 3), ...names("lodging", 2)];
+  add("lodging", "Camping & beds", beds, beds.length ? `(${quoted(beds)}) ${region}` : anchor ? `${anchor} campground OR motel OR cabins` : "");
+  add("camping", "Free & dispersed camping", names("camping", 2), [names("camping", 1)[0] || town || name, region, "camping"].filter(Boolean).join(" "));
+  add("supplies", "Supplies", names("supplies"), names("supplies").length ? `(${quoted(names("supplies"))}) ${anchor}` : anchor ? `${anchor} grocery OR hardware OR general store` : "");
+  add("forums", "Trip reports & forums", [name].filter(Boolean), name ? `"${name}" ${region}` : `${town} ${region} dual sport OR adventure ride`);
+  add("guides", "Trail & road guides", [name].filter(Boolean), name ? `${name} ${region}` : `${town} ${region} trail OR road`);
+  const box = $("#inspSections");
+  box.innerHTML = `<div class="ask"><input id="inspAsk" placeholder="Search this area for… (hot springs, bike shop, swimming hole)" maxlength="80"><button id="inspAskGo" class="mini">search</button></div><div id="secAsk"></div>` + secs.map((x, i) => `<div id="sec${i}"><h4>${x.title}</h4><span class="muted">Searching…</span></div>`).join("");
+  const rowHtml = (w, via) => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")}${via ? ` · <i>via ${esc(via)}</i>` : ""} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}" title="Add this finding as a note on the route here">+ note</button></div>`;
+  const runSection = async (el, title, sites, q, list) => {
+    const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(q + (sites.length ? " (" + sites.map(s => "site:" + s).join(" OR ") + ")" : ""))}">open this search</a>`;
     try {
-      const r = await fetch(`/api/web?q=${encodeURIComponent(q)}&sites=${encodeURIComponent(sites.join(","))}`); const j = await r.json();
-      if (r.ok && j.results && j.results.length) el.innerHTML = `<h4>${title}</h4>` + j.results.slice(0, 5).map(w => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}" title="Add this finding as a note on the route here">+ note</button></div>`).join("") + `<div class="muted small">${ext}</div>`;
-      else el.innerHTML = `<h4>${title}</h4><span class="muted">${r.status === 501 ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
+      const r = await fetch(`/api/web?q=${encodeURIComponent(q)}${sites.length ? "&sites=" + encodeURIComponent(sites.join(",")) : ""}`); const j = await r.json();
+      if (r.ok && j.results && j.results.length) {
+        // a result that names a place the map knows ranks by how close that place is; the rest keep the engine's order
+        const hits = j.results.map((w, i) => { const text = (w.title + " " + (w.description || "")).toLowerCase(); const k = list.findIndex(n => text.includes(n.toLowerCase())); return { w, i, k: k < 0 ? 99 : k, via: k < 0 ? "" : list[k] }; }).sort((a, b) => a.k - b.k || a.i - b.i);
+        el.innerHTML = `<h4>${title}</h4>` + hits.slice(0, 5).map(h => rowHtml(h.w, h.via)).join("") + `<div class="muted small">${ext}</div>`;
+      } else el.innerHTML = `<h4>${title}</h4><span class="muted">${r.status === 501 ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
     } catch { el.innerHTML = `<h4>${title}</h4>${ext}`; }
     el.querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
-  }));
+  };
+  $("#inspAskGo").onclick = () => { const q = $("#inspAsk").value.trim(); if (!q) return; const el = $("#secAsk"); el.innerHTML = `<h4>${esc(q)}</h4><span class="muted">Searching…</span>`; runSection(el, esc(q), [], `${q} ${anchor || place}`, [...names("food"), ...names("camping"), ...names("lodging")]); };
+  $("#inspAsk").onkeydown = e => { if (e.key === "Enter") $("#inspAskGo").onclick(); };
+  await Promise.all(secs.map((x, i) => runSection($("#sec" + i), x.title, x.sites, x.q, x.names)));
   // and the open web, last
   const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(place)}">Search the web for “${esc(place)}”</a>`;
   try {
@@ -873,7 +958,9 @@ function addNoteHere(at, text, link) {
 }
 
 // ---- the rider's own source list ------------------------------------------------------------------------------------
+const SOURCE_GROUPS = [["food", "Food"], ["fuel", "Fuel"], ["lodging", "Camping & beds"], ["camping", "Free & dispersed camping"], ["supplies", "Supplies"], ["forums", "Trip reports & forums"], ["guides", "Trail & road guides"]];
 const DEFAULT_SOURCES = {
+  food: [], fuel: [], lodging: [], supplies: [],   // the open web: a named café or campground finds its own pages
   camping: ["freecampsites.net", "campendium.com", "ioverlander.com", "thedyrt.com", "fs.usda.gov", "blm.gov"],
   forums: ["advrider.com", "reddit.com", "expeditionportal.com", "thumpertalk.com", "adventurerider.com"],
   guides: ["trailsoffroad.com", "onxmaps.com", "alltrails.com", "fs.usda.gov", "blm.gov", "stateparks.com"],
@@ -884,7 +971,7 @@ function sources() {
 }
 $("#btnSources").onclick = () => {
   const cur = sources(); for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
-  $("#sourceGroups").innerHTML = [["camping", "Free & dispersed camping"], ["forums", "Trip reports & forums"], ["guides", "Trail & road guides"]].map(([k, t]) => `<label>${t}</label><textarea data-group="${k}">${esc(cur[k].join("\n"))}</textarea>`).join("");
+  $("#sourceGroups").innerHTML = SOURCE_GROUPS.map(([k, t]) => `<label>${t}</label><textarea data-group="${k}" placeholder="the open web">${esc((cur[k] || []).join("\n"))}</textarea>`).join("");
   $("#sources").hidden = false;
 };
 $("#srcSave").onclick = () => {
@@ -1054,6 +1141,6 @@ function restoreHash() {
 }
 
 window.addEventListener("beforeunload", e => { if (S.cues.some(c => !c.auto) || S.track) { e.preventDefault(); e.returnValue = ""; } });
-window.roadbookPlanner = { map, state: S, reroute, peekPois, inspect };   // for the console and tests
+window.roadbookPlanner = { map, state: S, reroute, peekPois, inspect, climbCues };   // for the console and tests
 init().catch(e => { console.error(e); status("The planner could not start: " + e.message, true); });
 })();

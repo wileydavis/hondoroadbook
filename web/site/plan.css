@@ -141,3 +141,8 @@ button.icon:hover { border-color: var(--soft); }
   .sheet { right: 6px; left: 6px; width: auto; bottom: 6px; }
   .layers { top: 8px; right: 8px; }
 }
+
+.sections .ask { display: flex; gap: 6px; margin-top: 10px; }
+.sections .ask input { flex: 1; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink); }
+.sections .row small i { font-style: normal; color: var(--ink); opacity: .8; }
+#sourceGroups textarea::placeholder { color: var(--soft); }
