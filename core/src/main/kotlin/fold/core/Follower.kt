@@ -86,6 +86,19 @@ class Follower(val route: Route, private val lookAheadSeconds: Double = 15.0) {
     /** Cues crossed without delivery, oldest first; cleared by the call. */
     fun drainMissed(): List<Maneuver> { if (missed.isEmpty()) return emptyList(); val m = ArrayList(missed); missed.clear(); return m }
 
+    /**
+     * Resumes a ride at a known distance along the route (from a checkpoint): the matching window, the next
+     * instruction and the arrival guard start there, so a repeated section resolves to the pass the rider was on.
+     */
+    fun resumeAt(alongMeters: Double) {
+        val a = alongMeters.coerceIn(0.0, route.length)
+        var s = 0; while (s < route.size - 2 && route.cum[s + 1] < a) s++
+        seg = s; along = a; snapLat = route.lats[s]; snapLon = route.lons[s]
+        var i = 1; while (i < route.maneuvers.size - 1 && route.maneuvers[i].at + 10.0 < a) i++
+        nextIdx = i; windowMeters = -1.0; barMax = 0.0
+        if (a >= route.length - 300.0) nearEnd = true
+    }
+
     /** Accepts a fix unless it is out of order or physically implausible. Returns false when ignored. */
     fun update(fix: Fix): Boolean {
         val lf = lastFix

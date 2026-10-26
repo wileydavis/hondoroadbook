@@ -33,6 +33,7 @@ import fold.core.Geo
 import fold.core.Gpx
 import fold.core.Hit
 import fold.core.Maneuver
+import fold.core.NavController
 import fold.core.NavView
 import fold.core.Profile
 import fold.core.Route
@@ -81,7 +82,7 @@ class MainActivity : AppCompatActivity() {
     /** Process-wide holder so toggling night mode (which recreates the activity) never loses a route. */
     object NavSession {
         var mode = Mode.IDLE; var lastFix: Fix? = null; var pin: LatLng? = null
-        var route: Route? = null; var follower: Follower? = null; var isTrack = false; var destination: LatLng? = null
+        var route: Route? = null; var isTrack = false; var destination: LatLng? = null
         /** points the route must pass through, in order; "go by Spokane" */
         var vias: MutableList<LatLng> = ArrayList()
         var destName = ""
@@ -138,8 +139,8 @@ class MainActivity : AppCompatActivity() {
     private var pinName = ""
     private var route: Route?
         get() = NavSession.route; set(v) { NavSession.route = v }
-    private var follower: Follower?
-        get() = NavSession.follower; set(v) { NavSession.follower = v }
+    /** the ride's follower, owned by [NavService]; the activity only reads views from it */
+    private val follower: Follower? get() = NavService.controller?.follower
     private var isTrack: Boolean
         get() = NavSession.isTrack; set(v) { NavSession.isTrack = v }
     private var destination: LatLng?
@@ -190,7 +191,8 @@ class MainActivity : AppCompatActivity() {
         marks = MarkStore(this)
         Tone.enabled = prefs.sound
         // the notification's End button, when the screen is off and the phone is in a pocket
-        NavService.onStopRequested = { ui.post { if (mode == Mode.NAV) endNavigation() } }
+        NavService.onStopRequested = { if (mode == Mode.NAV) endNavigation() else NavService.stop(this) }
+        NavService.onFailure = { why -> toast("Navigation cannot run with the screen off: $why", 8000) }
         if (prefs.orientation >= 0) requestedOrientation = prefs.orientation
         if (BuildConfig.ROADBOOK) { Speech.init(this); Speech.enabled = prefs.sound }
         setContentView(R.layout.activity_main)
@@ -262,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.btnEditCancel).setOnClickListener { leaveEdit() }
             Recorder.onChange = { ui.post { updateRecStrip(); Recorder.lastFailure?.let { why -> Recorder.lastFailure = null; toast("Not recording: $why", 7000) } } }
             if (Recorder.recover(this)) ui.postDelayed({ offerRecovery() }, 1500)
+            else if (NavService.leftover(this) != null) ui.postDelayed({ offerResume() }, 1500)
             updateRecStrip()
         }
         val locate = View.OnClickListener { follow = true; lastFix?.let { moveCamera(it.lat, it.lon, animate = true) } ?: toast("Waiting for GPS…") }
@@ -608,7 +611,6 @@ class MainActivity : AppCompatActivity() {
         val first = lastFix == null
         lastFix = fix
         if (fix.speed > 1.5 && fix.bearing >= 0) heading = fix.bearing
-        follower?.update(fix)
         val f = follower
         if (f != null) {
             val v = f.view(android.os.SystemClock.elapsedRealtime())
@@ -952,21 +954,20 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton(R.string.cancel, null).show()
     }
 
-    private fun startNavigation(r: Route, track: Boolean) {
+    private fun startNavigation(r: Route, track: Boolean, resumed: NavController? = null) {
         route = r; isTrack = track
-        follower = Follower(r).also { f -> lastFix?.let { f.update(it) } }
+        // the ride itself — route, follower, what has been said — belongs to the service, so it outlives this screen
+        val c = resumed ?: NavController(r, track, if (track) trackName else destName, profile.name, NavService.sink).also { c -> lastFix?.let { c.update(it) } }
+        NavService.start(this, c)
         drawRoute(r)
         drawVias()
         clearPinMarker()
         if (!track) destination?.let { showPinMarker(it) }
         follow = true
         offSince = 0L
-        cuedManeuver = null; turnChimed = false; wasOffRoute = false; arrivedChimed = false; nextPipAt = 0L
         zoomMode = ZoomMode.TURN; manualZoom = -1.0; overviewDone = false
         switchMode(Mode.NAV)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // guidance survives the screen going dark: a foreground service keeps GPS at 1 Hz and the CPU awake for the chimes
-        NavService.start(this, if (destName.isNotEmpty()) "To " + destName else if (track) trackName else "Navigating", "Starting…")
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) askNavNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
         lastFix?.let { moveCamera(it.lat, it.lon, animate = true) }
         if (!track) { trackLats = null; trackLons = null; trackUri = null; trackCues.clear(); drawCues() }
@@ -981,13 +982,28 @@ class MainActivity : AppCompatActivity() {
 
     /** the notification is a courtesy; navigation runs with or without permission to show it */
     private val askNavNotify = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    private var lastNavNotify = 0L
+
+    /** A ride a dead process left behind: offer to pick it up where it was. */
+    private fun offerResume() {
+        val text = NavService.leftover(this) ?: return
+        val c = NavController.restore(text, NavService.sink) ?: run { NavService.checkpointFile(this).delete(); return }
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Resume navigation?")
+            .setMessage("${c.destName.ifEmpty { "A ride" }} was being followed when the app stopped. Pick it up where it was?")
+            .setPositiveButton("RESUME") { _, _ ->
+                val r = c.route; val n = r.size - 1
+                destName = c.destName; destination = if (c.isTrack) null else LatLng(r.lats[n], r.lons[n])
+                if (c.isTrack) { trackLats = r.lats; trackLons = r.lons; trackName = c.destName; trackUri = null; trackCues.clear(); trackCues.addAll(r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, m.note, m.level) }); drawCues() }
+                startNavigation(r, c.isTrack, c)
+            }
+            .setNegativeButton("DISCARD") { _, _ -> NavService.checkpointFile(this).delete() }
+            .show()
+    }
 
     private fun endNavigation() {
         Speech.stop()
         NavService.stop(this)
         routeGeneration++
-        route = null; follower = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
+        route = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); drawVias()
         clearPinMarker()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1022,8 +1038,11 @@ class MainActivity : AppCompatActivity() {
 
     private val hudTick = object : Runnable {
         override fun run() {
-            val f = follower ?: return
-            try { renderHud(f.view(android.os.SystemClock.elapsedRealtime())) } catch (_: Throwable) {}
+            val c = NavService.controller ?: return
+            val now = android.os.SystemClock.elapsedRealtime()
+            // the service ticks the session (sounds, checkpoints); this screen only reads the view — unless the
+            // service could not start, when the screen keeps the ride going itself for as long as it is open
+            try { renderHud(if (NavService.running) c.view(now) else { c.sound = Tone.enabled; c.speechReady = Speech.enabled && Speech.ready; lastFix?.let { f -> if (f !== c.lastFix) c.update(f) }; c.tick(now) }) } catch (_: Throwable) {}
             ui.postDelayed(this, if (uiVisible) 50 else 250)
         }
     }
@@ -1040,22 +1059,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHud(v: NavView) {
-        soundTick(v, android.os.SystemClock.elapsedRealtime())
-        if (mode == Mode.NAV && NavService.running) {
-            val now = android.os.SystemClock.elapsedRealtime()
-            if (now - lastNavNotify > 5000) {
-                lastNavNotify = now
-                val m = v.next
-                val line = when {
-                    v.arrived -> getString(R.string.arrived)
-                    v.fixState == FixState.NONE || v.fixState == FixState.STALE -> "Waiting for GPS"
-                    !v.onRoute -> getString(R.string.off_track) + " · " + Units.cue(v.offDist)
-                    m == null -> Units.distance(v.remaining) + " to go"
-                    else -> Units.cue(v.distToNext) + " · " + (if (m.turn == Turn.ARRIVE) "Destination" else v.phrase()) + " · " + Units.distance(v.remaining) + " to go"
-                }
-                NavService.update(this, if (destName.isNotEmpty()) "To " + destName else if (isTrack) trackName else "Navigating", line)
-            }
-        }
         if (mode != Mode.NAV) { if (v.onRoute) updatePuck(v.lat, v.lon, follower?.route?.segmentBearing(v.segment) ?: heading); return }
         if (v.arrived) {
             hud.visibility = View.VISIBLE; offPanel.visibility = View.GONE
@@ -1231,41 +1234,7 @@ class MainActivity : AppCompatActivity() {
     private fun updateSoundButton() { findViewById<ImageButton>(R.id.btnSound).setImageResource(if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off) }
 
     // ---- audible cue state: pips track the bar, one chime at the turn
-    private var nextPipAt = 0L
-    private var cuedManeuver: Maneuver? = null
-    private var turnChimed = false
-    private var wasOffRoute = false
-    private var arrivedChimed = false
-    private var spoken = false
-    private var prevGroup: List<Maneuver> = emptyList()
-
-    private fun soundTick(v: NavView, now: Long) {
-        // cues crossed without having been the current instruction (sparse fixes at speed): say them late rather than never
-        // hazards crossed between sparse fixes: one combined phrase, so none cuts another off (each say() replaces the last)
-        follower?.drainMissed()?.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }?.takeIf { it.isNotEmpty() }?.let { ms -> if (Tone.enabled) { if (ms.any { it.turn == Turn.DANGER }) Tone.danger(ms.maxOf { it.level }) else Tone.note() }; Speech.say("Passed. " + ms.joinToString(". ") { it.phrase() }) }
-        if (!Tone.enabled) return
-        if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) return
-        if (v.arrived) { if (!arrivedChimed) { arrivedChimed = true; Tone.arrive() }; return }
-        if (!v.onRoute) { if (!wasOffRoute) { wasOffRoute = true; Tone.offRoute() }; return }
-        if (wasOffRoute) { wasOffRoute = false; Tone.back() }
-        val m = v.next ?: return
-        if (m !== cuedManeuver) {
-            // the previous instruction's window never opened (passed it between two fixes): deliver its hazards now
-            val prev = cuedManeuver
-            if (prev != null && !spoken && prevGroup.any { it.turn == Turn.DANGER || it.turn == Turn.NOTE }) { val gs = prevGroup.filter { it.turn == Turn.DANGER || it.turn == Turn.NOTE }; if (gs.any { it.turn == Turn.DANGER }) Tone.danger(gs.maxOf { it.level }) else Tone.note(); Speech.say("Passed. " + gs.joinToString(". ") { it.phrase() }) }
-            cuedManeuver = m; prevGroup = v.group; turnChimed = false; spoken = false; nextPipAt = 0L
-            if (m.turn != Turn.ARRIVE) Speech.prepare(v.phrase())
-        }
-        if (m.turn == Turn.ARRIVE) return
-        if (v.progress <= 0.0) return
-        // the window just opened (~15 s out): say what is coming, then the pips take over
-        if (!spoken) { spoken = true; if (Speech.enabled && Speech.ready) { val ph = v.phrase(); Speech.say(ph); nextPipAt = now + 1500 + 60L * ph.length } }
-        if (v.progress >= 0.97 || v.distToNext < 12.0) {
-            if (!turnChimed) { turnChimed = true; val lead = v.hazard ?: m; when (lead.turn) { Turn.DANGER -> Tone.danger(lead.level); Turn.NOTE -> Tone.note(); else -> Tone.turn() } }
-            return
-        }
-        if (now >= nextPipAt) { Tone.pip(v.progress); nextPipAt = now + Tone.pipIntervalMs(v.progress) }
-    }
+    // (the cue-delivery rules — pips, chimes, speech, missed hazards — live in fold.core.NavController, driven by NavService)
 
     // ---------------------------------------------------------------- Roadbook: cues, pre-run recording, editor, orientation
 
@@ -1317,8 +1286,11 @@ class MainActivity : AppCompatActivity() {
     private fun rebuildTrackRoute() {
         val la = trackLats ?: return; val lo = trackLons ?: return
         val r = Route.fromTrack(la, lo, trackName, trackCues)
-        route = r; follower = Follower(r).also { f -> lastFix?.let { f.update(it) } }
-        cuedManeuver = null
+        route = r
+        val old = NavService.controller
+        val c = NavController(r, true, trackName, profile.name, NavService.sink)
+        old?.lastFix?.let { f -> c.update(f); old.follower.view(android.os.SystemClock.elapsedRealtime()).let { v -> if (v.onRoute) c.follower.resumeAt(v.along) } }
+        NavService.start(this, c)
     }
 
     private fun openEditor(tr: Gpx.Track, uri: Uri?) {

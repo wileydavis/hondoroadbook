@@ -62,8 +62,7 @@ object Tone {
         val f = 520.0 * Math.pow(2.0, step / 16.0)
         play("pip$step") { render(listOf(f to 70)) }
     }
-    /** Interval between pips for a given progress: 1.6 s far out, 0.25 s at the end. */
-    fun pipIntervalMs(progress: Double): Long = (1600 - 1350 * progress.coerceIn(0.0, 1.0)).toLong()
+    // (the interval between pips is the NavController's decision: fold.core.NavController.pipIntervalMs)
 
     fun turn() = play("turn") { render(listOf(1040.0 to 90, 1320.0 to 160), 20) }
     fun offRoute() = play("off") { render(listOf(220.0 to 350)) }
