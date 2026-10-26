@@ -724,15 +724,16 @@ async function inspect(lon, lat) {
         (near.town && near.town.length ? `<div class="muted small">Nearest: ${near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
         sec("Fuel", near.fuel, { label: "Fuel" }) + sec("Food & supplies", near.food, { label: "Food" }) + sec("Camping", near.camping, { label: "Camp", anon: "campsite" }) +
         sec("Water", near.water, { label: "Water", anon: "water" }) + sec("Beds", near.lodging, { label: "Lodging" }) + sec("Repair", near.repair, { label: "Repair" }) +
-        (Object.values(near).every(a => !a || !a.length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
+        (["fuel", "food", "camping", "water", "lodging", "repair"].every(k => !near[k] || !near[k].length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
       $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
       $("#inspNear").querySelectorAll("button[data-stop]").forEach(b => b.onclick = () => { $("#inspect").hidden = true; addStopAt(Number(b.dataset.lon), Number(b.dataset.lat), b.dataset.stop); });
     };
     try {
-      const near = await peekPois(lon, lat);
+      const say = (near, done) => render(near, `${done ? "Searched" : "Searching…"} about ${fmtDist(near.reachKm * 1000)} out, from the map pack${done && near.reachKm > 8 ? " — it kept widening because fuel, camping or beds were not close" : ""}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`);
+      const near = await peekPois(lon, lat, (partial) => say(partial, false));
       if (!near) { $("#inspNear").innerHTML = `<span class="muted">No map pack covers this spot.</span>`; return; }
       $("#inspAt").textContent = "from the map pack";
-      render(near, "Within about 2½ mi, from the map pack — tick <b>Places</b> in the layers box to see them on the map and click any to add it.");
+      say(near, true);
     } catch { $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
   })();
   // nearby Wikipedia
@@ -777,34 +778,57 @@ const POI_KIND = { fuel: "fuel", restaurant: "food", cafe: "food", fast_food: "f
   camp_site: "camping", camp_pitch: "camping", caravan_site: "camping", drinking_water: "water", spring: "water", water_well: "water", hotel: "lodging", motel: "lodging", hostel: "lodging", guest_house: "lodging", chalet: "lodging", alpine_hut: "lodging",
   car_repair: "repair", motorcycle: "repair", motorcycle_repair: "repair", city: "town", town: "town", village: "town", hamlet: "town" };
 const pmCache = new Map();
-/** Points of interest from the pack tiles around a spot: 5×5 tiles at zoom 15 (everything, about 2½ mi across) and at zoom 14 (the prominent ones, about 5 mi), a zoom-10 tile for the towns. */
-async function peekPois(lon, lat) {
+/**
+ * Points of interest around a spot, from the pack tiles. The search walks outward ring by ring until every
+ * essential kind (fuel, camping, beds, repair, water) has a couple of answers or the budget is spent, and
+ * reports how far it went. Zoom 15 carries every place; the outer rings use zoom 14, which carries the
+ * prominent ones; towns come from a zoom-10 tile. A place index in the packs will replace this with a
+ * rider's idea of prominence (fuel first) at any distance.
+ */
+async function peekPois(lon, lat, onUpdate) {
   if (!window.MVT) return null;
   const pack = roadsPacks().find(p => lon >= p.bbox[0] && lon <= p.bbox[2] && lat >= p.bbox[1] && lat <= p.bbox[3]); if (!pack) return null;
   let pm = pmCache.get(pack.id); if (!pm) { pm = new pmtiles.PMTiles(`${ORIGIN}/tiles/${pack.id}/tiles.pmtiles`); pmCache.set(pack.id, pm); }
   const txy = (z) => { const n = 2 ** z; return { x: Math.floor((lon + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n) }; };
-  const jobs = [];
-  // zoom 15 carries every place (a cafe's min_zoom is 16, which zoom-14 tiles leave out); zoom 14 widens the ring with the prominent ones
-  const c15 = txy(15); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) jobs.push(pm.getZxy(15, c15.x + dx, c15.y + dy).then(t => t ? { z: 15, x: c15.x + dx, y: c15.y + dy, data: t.data } : null).catch(() => null));
-  const c14 = txy(14); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) jobs.push(pm.getZxy(14, c14.x + dx, c14.y + dy).then(t => t ? { z: 14, x: c14.x + dx, y: c14.y + dy, data: t.data } : null).catch(() => null));
-  const c10 = txy(10); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) jobs.push(pm.getZxy(10, c10.x + dx, c10.y + dy).then(t => t ? { z: 10, x: c10.x + dx, y: c10.y + dy, data: t.data } : null).catch(() => null));
-  const tiles = (await Promise.all(jobs)).filter(Boolean);
   const out = { fuel: [], food: [], camping: [], water: [], lodging: [], repair: [], town: [] }; const seen = new Set();
-  for (const t of tiles) {
-    const vt = new MVT.VectorTile(new MVT.Pbf(new Uint8Array(t.data)));
-    const layerName = t.z === 10 ? "places" : "pois"; const L = vt.layers[layerName]; if (!L) continue;
-    for (let i = 0; i < L.length; i++) {
-      const f = L.feature(i); const p = f.properties || {}; const cat = POI_KIND[p.kind]; if (!cat) continue;
-      if ((layerName === "places") !== (cat === "town")) continue;
-      const g = f.toGeoJSON(t.x, t.y, t.z); let c = g.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
-      const key = `${cat}|${(p.name || "").toLowerCase()}|${c[0].toFixed(3)},${c[1].toFixed(3)}`; if (seen.has(key)) continue; seen.add(key);
-      const d = Math.round(dist([lon, lat], c)); if (cat === "town" && d > 40000) continue;
-      const b = Math.round(bearingDeg(lat, lon, c[1], c[0]));
-      out[cat].push({ name: p.name || "", kind: p.kind === "camp_site" ? "campground" : p.kind.replace(/_/g, " "), lon: c[0], lat: c[1], d, bearing: b, population: p.population });
+  const tileKm = 40075 * Math.cos(lat * Math.PI / 180) / 2 ** 14;   // one zoom-14 tile, in km
+  const ingest = (tiles) => {
+    for (const t of tiles) {
+      const vt = new MVT.VectorTile(new MVT.Pbf(new Uint8Array(t.data)));
+      const layerName = t.z <= 10 ? "places" : "pois"; const L = vt.layers[layerName]; if (!L) continue;
+      for (let i = 0; i < L.length; i++) {
+        const f = L.feature(i); const p = f.properties || {};
+        const cat = layerName === "places" ? (p.kind === "locality" && /^(city|town|village|hamlet)$/.test(p.kind_detail || "") ? "town" : null) : POI_KIND[p.kind];
+        if (!cat || cat === "town" && layerName !== "places") continue;
+        const g = f.toGeoJSON(t.x, t.y, t.z); let c = g.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
+        const key = `${cat}|${(p.name || "").toLowerCase()}|${c[0].toFixed(3)},${c[1].toFixed(3)}`; if (seen.has(key)) continue; seen.add(key);
+        const d = Math.round(dist([lon, lat], c)); if (cat === "town" && d > 80000) continue;
+        const b = Math.round(bearingDeg(lat, lon, c[1], c[0]));
+        out[cat].push({ name: p.name || "", kind: cat === "town" ? p.kind_detail : p.kind === "camp_site" ? "campground" : p.kind.replace(/_/g, " "), lon: c[0], lat: c[1], d, bearing: b, population: p.population });
+      }
     }
+  };
+  const fetchRing = async (z, c, r) => {        // only the cells at Chebyshev distance r (the inner ones are already in)
+    const jobs = [];
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) { if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue; jobs.push(pm.getZxy(z, c.x + dx, c.y + dy).then(t => t ? { z, x: c.x + dx, y: c.y + dy, data: t.data } : null).catch(() => null)); }
+    return (await Promise.all(jobs)).filter(Boolean);
+  };
+  const finish = (reach, tilesRead) => { const o = {}; for (const k of Object.keys(out)) o[k] = out[k].slice().sort((a, b) => a.d - b.d).slice(0, k === "town" ? 3 : 6); o.reachKm = Math.round(reach); o.tiles = tilesRead; return o; };
+  // the close rings first: everything within about 2½ miles (zoom 15), the prominent places to 5 (zoom 14), the towns (zoom 8)
+  const c15 = txy(15), c14 = txy(14), c8 = txy(8);
+  const first = await Promise.all([fetchRing(15, c15, 0), fetchRing(15, c15, 1), fetchRing(15, c15, 2), fetchRing(14, c14, 0), fetchRing(14, c14, 1), fetchRing(14, c14, 2), fetchRing(8, c8, 0), fetchRing(8, c8, 1)]);
+  first.forEach(ingest);
+  let tilesRead = 59, r = 2, reach = 2.5 * tileKm;
+  if (onUpdate) onUpdate(finish(reach, tilesRead), false);
+  // then outward two rings at a time until fuel, camping and beds each have an answer, or the budget is spent
+  const essentials = ["fuel", "camping", "lodging"];
+  while (essentials.some(k => out[k].length < 1) && r < 10 && tilesRead < 260) {
+    const rings = await Promise.all([fetchRing(14, c14, r + 1), fetchRing(14, c14, r + 2)]); r += 2;
+    for (const ring of rings) { tilesRead += ring.length; ingest(ring); }
+    reach = (r + 0.5) * tileKm;
+    if (onUpdate) onUpdate(finish(reach, tilesRead), false);
   }
-  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, k === "town" ? 3 : 6); }
-  return out;
+  return finish(reach, tilesRead);
 }
 function bearingDeg(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r); const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }
 function compass(b) { return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
