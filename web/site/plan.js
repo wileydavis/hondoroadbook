@@ -741,9 +741,9 @@ async function elevation() {
  */
 function climbCues(samples, raw, total) {
   const bike = /^(RIDE|QUIET|GRAVEL)$/.test(S.mode);
-  const minGain = bike ? 60 : 250, tol = bike ? 12 : 25, minGrade = 0.03;
-  // a light smoothing: the DEM is 30 m cells and the road is not always in the one you think
-  const el = raw.map((_, i) => { let s = 0, n = 0; for (let k = -1; k <= 1; k++) if (raw[i + k] != null) { s += raw[i + k]; n++; } return s / n; });
+  const minGain = bike ? 60 : 250, tol = bike ? 15 : 25, minGrade = 0.02;   // a long canyon road at 2.7% is still the climb to the pass
+  // smoothing over five samples: the DEM is 30 m cells and the road is not always in the one you think
+  const el = raw.map((_, i) => { let s = 0, n = 0; for (let k = -2; k <= 2; k++) if (raw[i + k] != null) { s += raw[i + k]; n++; } return s / n; });
   const at = i => samples[i][2];
   const climbs = [];
   let i = 0;
