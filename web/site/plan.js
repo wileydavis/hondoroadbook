@@ -51,7 +51,7 @@ const S = {
   mode: "DIRT", pts: [], route: null, track: null,
   cues: [],            // {lon,lat,turn,level,text,auto:boolean,at}
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
-  elastic: null, lastGood: null,
+  elastic: null, lastGood: null, places: false, pendingNotes: [],
   night: matchMedia("(prefers-color-scheme: dark)").matches, terrain: true, land: false, imagery: false, library: false,
   catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
@@ -194,6 +194,14 @@ function buildStyle() {
     { id: "elastic_casing", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": 7, "line-opacity": 0.8 } },
     { id: "elastic_line", type: "line", source: "elastic", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": 4, "line-dasharray": [1.5, 1.5] } },
   ];
+  if (S.places) {
+    const kinds = Object.keys(POI_KIND).filter(k => POI_KIND[k] !== "town");
+    const color = ["match", ["get", "kind"], ["fuel"], "#dc2626", ["camp_site", "camp_pitch", "caravan_site"], "#15803d", ["drinking_water", "spring", "water_well"], "#2563eb", ["hotel", "motel", "hostel", "guest_house", "chalet", "alpine_hut"], "#7c3aed", ["car_repair", "motorcycle", "motorcycle_repair"], "#525252", "#d97706"];
+    for (const p of roads) {
+      ours.push({ id: "poi_c_" + p.id, type: "circle", source: "p_" + p.id, "source-layer": "pois", minzoom: 12, filter: ["in", ["get", "kind"], ["literal", kinds]], paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12, 4, 16, 8], "circle-color": color, "circle-stroke-color": night ? "#000" : "#fff", "circle-stroke-width": 1.5, "circle-opacity": 0.85 } });
+      layers.push({ id: "poi_t_" + p.id, type: "symbol", source: "p_" + p.id, "source-layer": "pois", minzoom: 13, filter: ["in", ["get", "kind"], ["literal", kinds]], layout: { "text-field": ["coalesce", ["get", "name"], ["get", "kind"]], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-offset": [0, 1.1], "text-anchor": "top", "text-optional": true, "text-max-width": 8 }, paint: { "text-color": color, "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1.2 } });
+    }
+  }
   layers.splice(at, 0, ...ours);
   layers.push({ id: "coverage_label", type: "symbol", source: "coverage", maxzoom: 5, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-transform": "uppercase", "text-letter-spacing": 0.1 }, paint: { "text-color": night ? "#aaa" : "#666", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1 } });
   return { version: 8, glyphs: `${ORIGIN}/map/fonts/{fontstack}/{range}.pbf`, sprite: `${ORIGIN}/map/sprites/${night ? "dark" : "light"}`, sources, layers };
@@ -236,6 +244,7 @@ $("#lyTerrain").onchange = e => { S.terrain = e.target.checked; applyStyle(); };
 $("#lyNight").onchange = e => { S.night = e.target.checked; document.body.classList.toggle("night", S.night); applyStyle(); };
 $("#lyImagery").onchange = e => { S.imagery = e.target.checked; applyStyle(); };
 $("#lyLand").onchange = e => { S.land = e.target.checked; applyStyle(); $("#landKey").hidden = !S.land; if (S.land) landLegend(); };
+$("#lyPlaces").onchange = e => { S.places = e.target.checked; applyStyle(); };
 $("#lyLibrary").onchange = e => { S.library = e.target.checked; if (S.library) loadLibrary(); else { S.libraryData = null; applyStyle(); } };
 $("#btnSide").onclick = () => { $("#side").classList.add("hidden"); $("#btnSideShow").hidden = false; };
 $("#btnSideShow").onclick = () => { $("#side").classList.remove("hidden"); $("#btnSideShow").hidden = true; };
@@ -419,6 +428,8 @@ function setRoute(j, preview) {
   // the points sit where the router put them: on the road or trail it found, not in the sagebrush beside it
   if (j.snapped && j.snapped.length === S.pts.length) S.pts = j.snapped.map(p => ({ lon: p.lon, lat: p.lat }));
   S.lastGood = { pts: S.pts.map(p => ({ ...p })), mode: S.mode };
+  // notes waiting for their stop to be snapped onto a road
+  for (const n of S.pendingNotes.splice(0)) { const p = S.pts[n.at]; if (p) S.cues.push({ lon: p.lon, lat: p.lat, turn: "NOTE", level: 0, text: n.text, auto: false }); }
   const line = j.coords;
   const kept = S.cues.filter(c => !c.auto).filter(c => nearLine(c, line) < 150);
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
@@ -536,6 +547,11 @@ function bindMap() {
   map.on("click", e => {
     if ($("#ctx").hidden === false) { $("#ctx").hidden = true; return; }
     if (e.originalEvent.target.closest && e.originalEvent.target.closest(".marker-pt, .marker-cue")) return;
+    if (S.places) {
+      const poiLayers = map.getStyle().layers.filter(l => l.id.startsWith("poi_c_")).map(l => l.id);
+      const poi = poiLayers.length ? map.queryRenderedFeatures([[e.point.x - 10, e.point.y - 10], [e.point.x + 10, e.point.y + 10]], { layers: poiLayers })[0] : null;
+      if (poi) { placePopup(poi, e.lngLat); return; }
+    }
     const onRoute = map.queryRenderedFeatures(e.point, { layers: ["route_hit"] }).length > 0;
     const onLib = S.library && map.queryRenderedFeatures(e.point, { layers: ["library_line"] });
     if (onRoute) { showCtx(e); return; }
@@ -586,6 +602,34 @@ function bindMap() {
   map.on("touchend", e => end(e.lngLat));
   map.on("touchcancel", e => end(e.lngLat));
   map.on("contextmenu", e => { if (lineCoords()) showCtx(e); });
+}
+
+/** Route through a place and leave a note there: the stop goes in at the right leg, the note is placed once the router has snapped the stop onto a road. */
+function addStopAt(lon, lat, noteText) {
+  if (S.track) { status("This is a loaded track; clear it to route through places", true); return; }
+  let at;
+  if (S.route) { const { index } = alongLine(S.route.coords, [lon, lat]); let leg = S.route.legs.findIndex(l => index > l.start && index <= l.end); if (leg < 0) leg = S.route.legs.length - 1; at = leg + 1; S.pts.splice(at, 0, { lon, lat }); }
+  else { S.pts.push({ lon, lat }); at = S.pts.length - 1; }
+  if (noteText) S.pendingNotes.push({ at, text: noteText });
+  afterPointsChange();
+  if (S.pts.length < 2) status("Added as the start; click the map for the finish");
+}
+let placePop = null;
+/** A place on the map, clicked: add it as a note on the route (at the nearest point, with distance and direction) or as a stop. */
+function placePopup(f, lngLat) {
+  const p = f.properties || {}; let c = f.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
+  const name = p.name || p.kind.replace(/_/g, " "); const cat = POI_KIND[p.kind] || "place"; const label = { fuel: "Fuel", food: "Food", camping: "Camp", water: "Water", lodging: "Lodging", repair: "Repair" }[cat] || "Place";
+  if (placePop) placePop.remove();
+  const el = document.createElement("div"); el.className = "placepop";
+  el.innerHTML = `<b>${esc(name)}</b><div class="muted small">${esc(p.kind.replace(/_/g, " "))}</div><div class="placepop-actions"><button data-act="note">+ note on route</button><button data-act="stop">+ stop here</button></div>`;
+  el.querySelector('[data-act="note"]').onclick = () => {
+    const line = lineCoords(); if (!line) { status("Plan a route first; then places can go on it as notes", true); return; }
+    const a = alongLine(line, c); const d = dist(a.point, c); const b = Math.round(bearingDeg(a.point[1], a.point[0], c[1], c[0]));
+    S.cues.push({ lon: a.point[0], lat: a.point[1], turn: "NOTE", level: 0, text: d < 60 ? `${label}: ${name}` : `${label}: ${name}, ${fmtDistShort(d)} ${compass(b)}`, auto: false });
+    renderCues(); placePop.remove(); status("Added as a note at the nearest point of the route");
+  };
+  el.querySelector('[data-act="stop"]').onclick = () => { placePop.remove(); addStopAt(c[0], c[1], `${label}: ${name}`); };
+  placePop = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 10 }).setLngLat(c).setDOMContent(el).addTo(map);
 }
 
 let ctxAt = null;
@@ -675,24 +719,21 @@ async function inspect(lon, lat) {
   const nearby = (async () => {
     const render = (near, note) => {
       town = town || (near.town && near.town[0] && near.town[0].name) || "";
-      const sec = (title, items, fmt) => items && items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" title="Add as a note on the route here">+ note</button></div>`).join("") : "";
+      const sec = (title, items, fmt) => items && items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-stop="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}`)}" data-lon="${i.lon}" data-lat="${i.lat}" title="Route through it and leave a note there">+ stop</button><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" title="A note on the route at this spot, pointing to it">+ note</button></div>`).join("") : "";
       $("#inspNear").innerHTML =
         (near.town && near.town.length ? `<div class="muted small">Nearest: ${near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
         sec("Fuel", near.fuel, { label: "Fuel" }) + sec("Food & supplies", near.food, { label: "Food" }) + sec("Camping", near.camping, { label: "Camp", anon: "campsite" }) +
         sec("Water", near.water, { label: "Water", anon: "water" }) + sec("Beds", near.lodging, { label: "Lodging" }) + sec("Repair", near.repair, { label: "Repair" }) +
         (Object.values(near).every(a => !a || !a.length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
       $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
+      $("#inspNear").querySelectorAll("button[data-stop]").forEach(b => b.onclick = () => { $("#inspect").hidden = true; addStopAt(Number(b.dataset.lon), Number(b.dataset.lat), b.dataset.stop); });
     };
-    let fromTiles = null;
-    try { fromTiles = await peekPois(lon, lat); render(fromTiles, "Within about 2 mi, from the map. Asking OpenStreetMap for the wider ring…"); } catch {}
     try {
-      const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
-      if (!r.ok) { if (!fromTiles) $("#inspNear").innerHTML = `<span class="muted">${esc(j.error)}</span>`; else render(fromTiles, "Within about 2 mi, from the map. OpenStreetMap's wider lookup did not answer this time."); return; }
-      $("#inspAt").textContent = "as of " + (j.at || "today");
-      // merge: the tile hits stay (they are exact), the service adds what lies beyond them
-      const merged = {}; for (const k of Object.keys(j.near)) { const seen = new Set((fromTiles && fromTiles[k] || []).map(i => i.name.toLowerCase())); merged[k] = [...(fromTiles && fromTiles[k] || []), ...j.near[k].filter(i => !i.name || !seen.has(i.name.toLowerCase()))].sort((a, b) => a.d - b.d).slice(0, k === "town" ? 3 : 5); }
-      render(merged, "");
-    } catch { if (!fromTiles) $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
+      const near = await peekPois(lon, lat);
+      if (!near) { $("#inspNear").innerHTML = `<span class="muted">No map pack covers this spot.</span>`; return; }
+      $("#inspAt").textContent = "from the map pack";
+      render(near, "Within about 2½ mi, from the map pack — tick <b>Places</b> in the layers box to see them on the map and click any to add it.");
+    } catch { $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
   })();
   // nearby Wikipedia
   (async () => {
@@ -736,30 +777,31 @@ const POI_KIND = { fuel: "fuel", restaurant: "food", cafe: "food", fast_food: "f
   camp_site: "camping", camp_pitch: "camping", caravan_site: "camping", drinking_water: "water", spring: "water", water_well: "water", hotel: "lodging", motel: "lodging", hostel: "lodging", guest_house: "lodging", chalet: "lodging", alpine_hut: "lodging",
   car_repair: "repair", motorcycle: "repair", motorcycle_repair: "repair", city: "town", town: "town", village: "town", hamlet: "town" };
 const pmCache = new Map();
-/** Points of interest within the 3×3 zoom-15 tiles around a spot (about 2 mi), decoded from the pack that covers it. */
+/** Points of interest from the pack tiles around a spot: the 5×5 zoom-14 tiles (about 5 mi across) for places, a zoom-10 tile for the towns. */
 async function peekPois(lon, lat) {
   if (!window.MVT) return null;
   const pack = roadsPacks().find(p => lon >= p.bbox[0] && lon <= p.bbox[2] && lat >= p.bbox[1] && lat <= p.bbox[3]); if (!pack) return null;
   let pm = pmCache.get(pack.id); if (!pm) { pm = new pmtiles.PMTiles(`${ORIGIN}/tiles/${pack.id}/tiles.pmtiles`); pmCache.set(pack.id, pm); }
-  const z = 15, n = 2 ** z; const cx = Math.floor((lon + 180) / 360 * n); const cy = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
-  const jobs = []; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) jobs.push(pm.getZxy(z, cx + dx, cy + dy).then(t => t ? { x: cx + dx, y: cy + dy, data: t.data } : null).catch(() => null));
+  const txy = (z) => { const n = 2 ** z; return { x: Math.floor((lon + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n) }; };
+  const jobs = [];
+  const c14 = txy(14); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) jobs.push(pm.getZxy(14, c14.x + dx, c14.y + dy).then(t => t ? { z: 14, x: c14.x + dx, y: c14.y + dy, data: t.data } : null).catch(() => null));
+  const c10 = txy(10); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) jobs.push(pm.getZxy(10, c10.x + dx, c10.y + dy).then(t => t ? { z: 10, x: c10.x + dx, y: c10.y + dy, data: t.data } : null).catch(() => null));
   const tiles = (await Promise.all(jobs)).filter(Boolean);
   const out = { fuel: [], food: [], camping: [], water: [], lodging: [], repair: [], town: [] }; const seen = new Set();
   for (const t of tiles) {
     const vt = new MVT.VectorTile(new MVT.Pbf(new Uint8Array(t.data)));
-    for (const layerName of ["pois", "places"]) {
-      const L = vt.layers[layerName]; if (!L) continue;
-      for (let i = 0; i < L.length; i++) {
-        const f = L.feature(i); const p = f.properties || {}; const cat = POI_KIND[p.kind]; if (!cat) continue;
-        if (layerName === "places" && cat !== "town") continue;
-        const g = f.toGeoJSON(t.x, t.y, z); let c = g.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
-        const key = `${cat}|${(p.name || "").toLowerCase()}|${c[0].toFixed(3)},${c[1].toFixed(3)}`; if (seen.has(key)) continue; seen.add(key);
-        const d = Math.round(dist([lon, lat], c)); const b = Math.round(bearingDeg(lat, lon, c[1], c[0]));
-        out[cat].push({ name: p.name || "", kind: p.kind === "camp_site" ? "campground" : p.kind.replace(/_/g, " "), lon: c[0], lat: c[1], d, bearing: b });
-      }
+    const layerName = t.z === 10 ? "places" : "pois"; const L = vt.layers[layerName]; if (!L) continue;
+    for (let i = 0; i < L.length; i++) {
+      const f = L.feature(i); const p = f.properties || {}; const cat = POI_KIND[p.kind]; if (!cat) continue;
+      if ((layerName === "places") !== (cat === "town")) continue;
+      const g = f.toGeoJSON(t.x, t.y, t.z); let c = g.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
+      const key = `${cat}|${(p.name || "").toLowerCase()}|${c[0].toFixed(3)},${c[1].toFixed(3)}`; if (seen.has(key)) continue; seen.add(key);
+      const d = Math.round(dist([lon, lat], c)); if (cat === "town" && d > 40000) continue;
+      const b = Math.round(bearingDeg(lat, lon, c[1], c[0]));
+      out[cat].push({ name: p.name || "", kind: p.kind === "camp_site" ? "campground" : p.kind.replace(/_/g, " "), lon: c[0], lat: c[1], d, bearing: b, population: p.population });
     }
   }
-  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, 5); }
+  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, k === "town" ? 3 : 6); }
   return out;
 }
 function bearingDeg(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r); const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }

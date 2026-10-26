@@ -175,76 +175,11 @@ async function webSearch(request, env, url, ctx) {
   return res;
 }
 
-// ---- what is around a spot: fuel, food, camping, water, beds, repair, the nearest town -----------------------------
-// Straight from OpenStreetMap through the public Overpass API, grouped and sorted by distance, cached a day per
-// two-kilometre cell. The same data the packs are built from, so what you see here is what the map draws.
-// nodes are cheap for Overpass, ways with `around` are not: ways only where places are commonly mapped as areas
-const NEAR = {
-  fuel: { r: 25000, sel: ['nw["amenity"="fuel"]'] },
-  food: { r: 10000, sel: ['nw["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court)$"]', 'nw["shop"~"^(supermarket|convenience|general|bakery)$"]'] },
-  camping: { r: 20000, sel: ['nw["tourism"~"^(camp_site|caravan_site|camp_pitch)$"]'] },
-  water: { r: 12000, sel: ['node["amenity"="drinking_water"]', 'node["natural"="spring"]', 'node["man_made"="water_well"]'] },
-  lodging: { r: 20000, sel: ['nw["tourism"~"^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$"]'] },
-  repair: { r: 25000, sel: ['nw["shop"~"^(motorcycle|motorcycle_repair|car_repair|tyres)$"]', 'nw["amenity"="car_repair"]'] },
-  town: { r: 30000, sel: ['node["place"~"^(city|town|village|hamlet)$"]'] },
-};
-const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-async function near(request, env, url, ctx) {
-  if (url.searchParams.get("probe")) {
-    // which instances answer from here, and how fast: a tiny query against each
-    const out = [];
-    for (const ep of OVERPASS) {
-      const t0 = Date.now();
-      try { const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent('[out:json][timeout:8];node["amenity"="fuel"](around:3000,48.0761,-123.666);out 3;'), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(9000) }); const txt = await r.text(); out.push({ ep, status: r.status, ms: Date.now() - t0, head: txt.slice(0, 120) }); }
-      catch (e) { out.push({ ep, error: String(e && e.message || e), ms: Date.now() - t0 }); }
-    }
-    return json({ probe: out });
-  }
-  const lon = Number(url.searchParams.get("lon")), lat = Number(url.searchParams.get("lat"));
-  if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lon) > 180 || Math.abs(lat) > 90) return json({ error: "lon/lat required" }, 400);
-  const cache = caches.default;
-  const ckey = new Request(`https://near.roadbook.internal/?c=${(Math.round(lon / 0.02) * 0.02).toFixed(2)},${(Math.round(lat / 0.02) * 0.02).toFixed(2)}`);
-  const hit = await cache.match(ckey);
-  if (hit) return withCors(hit);
-  const parts = [];
-  for (const [k, d] of Object.entries(NEAR)) for (const sel of d.sel) parts.push(`${sel}(around:${d.r},${lat.toFixed(5)},${lon.toFixed(5)});`);
-  const ql = `[out:json][timeout:12];(${parts.join("")});out center tags 300;`;
-  let data = null, err = "";
-  // the three public instances in turn, each given a short leash: a slow one must not cost the rider half a minute
-  for (const ep of OVERPASS) {
-    try {
-      const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(ql), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(13000) });
-      if (r.ok) { data = await r.json(); break; }
-      err = `overpass ${r.status}`;
-    } catch (e) { err = String(e && e.message || e); }
-  }
-  if (!data) return json({ error: "OpenStreetMap's query service did not answer (" + err + ")" }, 502);
-  const out = {}; for (const k of Object.keys(NEAR)) out[k] = [];
-  for (const el of data.elements || []) {
-    const t = el.tags || {}; const plat = el.lat ?? (el.center && el.center.lat), plon = el.lon ?? (el.center && el.center.lon);
-    if (plat == null || plon == null) continue;
-    const d = Math.round(dist([lon, lat], [plon, plat]));
-    const item = { name: (t.name || t.brand || t.operator || "").slice(0, 80), lon: +plon.toFixed(5), lat: +plat.toFixed(5), d, bearing: Math.round(bearing(lat, lon, plat, plon)) };
-    let k = null;
-    if (t.amenity === "fuel") k = "fuel";
-    else if (/^(restaurant|cafe|fast_food|bar|pub|food_court)$/.test(t.amenity || "") || /^(supermarket|convenience|general|bakery)$/.test(t.shop || "")) { k = "food"; item.kind = t.amenity || t.shop; }
-    else if (/^(camp_site|caravan_site|camp_pitch)$/.test(t.tourism || "")) { k = "camping"; item.fee = t.fee === "no" ? "free" : t.fee === "yes" ? "fee" : ""; item.kind = t.tourism === "camp_site" ? (t.backcountry === "yes" ? "backcountry" : "campground") : "RV"; if (t.operator) item.operator = t.operator.slice(0, 40); }
-    else if (t.amenity === "drinking_water" || t.natural === "spring" || t.man_made === "water_well") { k = "water"; item.kind = t.amenity === "drinking_water" ? "tap" : t.natural === "spring" ? "spring" : "well"; if (t.drinking_water === "no") item.kind += ", not potable"; }
-    else if (/^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$/.test(t.tourism || "")) { k = "lodging"; item.kind = t.tourism.replace("_", " "); }
-    else if (/^(motorcycle|motorcycle_repair|car_repair|tyres)$/.test(t.shop || "") || t.amenity === "car_repair") { k = "repair"; item.kind = t.shop === "motorcycle" ? "motorcycle shop" : t.shop === "motorcycle_repair" ? "motorcycle repair" : "car repair"; }
-    else if (/^(city|town|village|hamlet)$/.test(t.place || "")) { k = "town"; item.kind = t.place; if (t.population) item.population = Number(t.population) || undefined; }
-    if (!k) continue;
-    if (t.opening_hours) item.hours = t.opening_hours.slice(0, 60);
-    if (t.phone || t["contact:phone"]) item.phone = (t.phone || t["contact:phone"]).slice(0, 24);
-    if (t.website || t["contact:website"]) { const w = t.website || t["contact:website"]; if (/^https?:\/\//.test(w)) item.website = w.slice(0, 120); }
-    out[k].push(item);
-  }
-  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, k === "town" ? 3 : 5); }
-  const res = json({ center: [lon, lat], near: out, source: "OpenStreetMap via Overpass", at: new Date().toISOString().slice(0, 10) }, 200, { "Cache-Control": "public, max-age=86400" });
-  ctx && ctx.waitUntil(cache.put(ckey, res.clone()));
-  return res;
-}
-function bearing(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r); const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }
+// ---- what is around a spot ----------------------------------------------------------------------------------------
+// The planner reads places straight out of the pack tiles in the browser. The public Overpass instances do not
+// answer requests from Cloudflare's edge (every one times out), so there is no server-side lookup for now; a
+// POI index inside the packs is the planned replacement for the wider ring.
+async function near() { return json({ error: "Nearby places come from the map pack in the planner; there is no server lookup" }, 410); }
 
 // ---- helpers -----------------------------------------------------------------------------------------
 

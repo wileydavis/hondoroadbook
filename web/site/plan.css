@@ -121,6 +121,10 @@ button.icon:hover { border-color: var(--soft); }
 .maplibregl-ctrl-attrib { font-size: 10px; }
 .maplibregl-popup-content { font: 13px/1.4 var(--sans); color: var(--ink); background: var(--card); border-radius: 10px; padding: 8px 10px; }
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip { border-top-color: var(--card); }
+.placepop b { font-size: 14px; }
+.placepop-actions { display: flex; gap: 6px; margin-top: 8px; }
+.placepop-actions button { font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 99px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+.placepop-actions button:hover { border-color: var(--track); color: var(--track); }
 .marker-pt { z-index: 3; width: 26px; height: 26px; border-radius: 13px; background: var(--ink); color: var(--paper); font: 700 13px/26px var(--sans); text-align: center; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.35); cursor: grab; user-select: none; }
 .marker-pt.a { background: #16a34a; } .marker-pt.b { background: #dc2626; }
 .marker-pt.via { width: 18px; height: 18px; border-radius: 9px; font-size: 0; background: #fff; border: 3px solid var(--ink); }
