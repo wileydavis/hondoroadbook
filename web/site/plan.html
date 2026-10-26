@@ -25,7 +25,7 @@
 
   <section id="empty" class="hint">
     <p><b>Click the map twice</b>: a start and a finish. The route follows the mode above.</p>
-    <p><b>Drag the line</b> onto any road or trail to pull the route through it. Drag a point to move it; click a point to delete it.</p>
+    <p><b>Drag the line</b> onto any road or trail to pull the route through it. Drag a point to move it; click a point to delete it. Drop B onto A, or press <i>loop</i>, to finish where you started.</p>
     <p><b>Click the line</b> to add a cue, inspect the spot, or add a stop.</p>
     <p class="muted">Or <label class="link" for="file">open a GPX</label> to edit its cues. <input id="file" type="file" accept=".gpx,application/gpx+xml" hidden></p>
   </section>
@@ -51,6 +51,7 @@
       <button id="btnPublish" class="cta alt">Publish</button>
       <button id="btnClear" class="mini">clear</button>
       <button id="btnReverse" class="mini">reverse</button>
+      <button id="btnLoop" class="mini" title="Finish where you started">loop</button>
       <label class="mini link" for="file">open GPX</label>
     </div>
     <p class="muted small">Name: <input id="name" value="Roadbook" maxlength="80"></p>

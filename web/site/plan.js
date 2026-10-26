@@ -305,7 +305,9 @@ function renderPoints() {
       setElastic([prev && [prev.lon, prev.lat], at, next && [next.lon, next.lat]].filter(Boolean));
     });
     mk.on("dragend", () => {
-      const ll = mk.getLngLat(); const at = snapped || { lon: ll.lng, lat: ll.lat };
+      const ll = mk.getLngLat(); let at = snapped || { lon: ll.lng, lat: ll.lat };
+      // the finish dropped onto the start closes a loop: the same point exactly, so the router ends where it began
+      if (last && i > 1) { const a = S.pts[0]; const d = map.project([a.lon, a.lat]); const b = map.project([at.lon, at.lat]); if (Math.hypot(d.x - b.x, d.y - b.y) < 18) { at = { lon: a.lon, lat: a.lat }; status("Loop closed at the start"); } }
       S.pts[i] = { lon: at.lon, lat: at.lat }; mk.setLngLat([at.lon, at.lat]); el.classList.remove("dragging", "snapped");
       reroute();
     });
@@ -462,6 +464,8 @@ function renderAll() { renderPoints(); renderCues(); renderStats(); saveHash(); 
 function renderStats() {
   const c = lineCoords();
   const have = !!c;
+  $("#btnLoop").textContent = isLoop() ? "open loop" : "loop";
+  $("#btnLoop").title = isLoop() ? "Make the last stop the finish again" : "Finish where you started";
   $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have; $("#actions").hidden = !have;
   if (!have) return;
   const len = S.route ? S.route.length : lineLength(c);
@@ -1055,6 +1059,15 @@ $("#btnPublish").onclick = async () => {
 };
 $("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
 const MIRROR = { LEFT: "RIGHT", RIGHT: "LEFT", SLIGHT_LEFT: "SLIGHT_RIGHT", SLIGHT_RIGHT: "SLIGHT_LEFT", SHARP_LEFT: "SHARP_RIGHT", SHARP_RIGHT: "SHARP_LEFT", KEEP_LEFT: "KEEP_RIGHT", KEEP_RIGHT: "KEEP_LEFT" };
+/** A loop: the finish is the start. With only two points that is an out-and-back; drag the line to make it a circuit. */
+function isLoop() { return S.pts.length >= 2 && Math.abs(S.pts[0].lon - S.pts[S.pts.length - 1].lon) < 1e-9 && Math.abs(S.pts[0].lat - S.pts[S.pts.length - 1].lat) < 1e-9; }
+$("#btnLoop").onclick = () => {
+  if (S.track) { status("This is a loaded track; clear it to plan a loop", true); return; }
+  if (S.pts.length < 2) { status("Click a start and at least one more point first", true); return; }
+  if (isLoop()) { S.pts.pop(); status("The loop is open again: the last stop is the finish"); }
+  else { S.pts.push({ ...S.pts[0] }); status(S.pts.length === 3 ? "Out and back for now — drag the line to make it a circuit" : "Looped back to the start"); }
+  afterPointsChange();
+};
 $("#btnReverse").onclick = () => {
   if (S.track) {
     // a new array, so every cached distance is rebuilt; turns mirror, the rest is the author's to check
