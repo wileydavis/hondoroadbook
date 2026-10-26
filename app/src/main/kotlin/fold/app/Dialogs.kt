@@ -95,7 +95,7 @@ object SearchDialog {
 
 /** Installed packs, import, delete, units. The only screen with any settings. */
 object MapsDialog {
-    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null) {
+    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null, terrainOn: Boolean = true, onTerrain: ((Boolean) -> Unit)? = null) {
         val ctx = act
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(16), ctx.dp(20), ctx.dp(8)) }
         val list = packs.packs
@@ -118,7 +118,17 @@ object MapsDialog {
             text = label(); textSize = 14f
             setOnClickListener { onUnits(!Units.metric); text = label() }
         }
-        root.addView(units)
+        val settings = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        settings.addView(units, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        if (onTerrain != null && packs.packs.any { it.isTerrain }) {
+            var on = terrainOn
+            settings.addView(Button(ctx).apply {
+                fun label() = if (on) "TERRAIN: ON" else "TERRAIN: OFF"
+                text = label(); textSize = 14f
+                setOnClickListener { on = !on; onTerrain(on); text = label() }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        }
+        root.addView(settings)
         val n = marks.marks.size
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(10), 0, 0) }
         row.addView(TextView(ctx).apply { text = "Marks: $n"; textSize = 15f }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))

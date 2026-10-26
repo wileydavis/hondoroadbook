@@ -30,6 +30,10 @@ class Prefs(ctx: Context) {
     var metric: Boolean
         get() = p.getBoolean("metric", false)
         set(v) { p.edit().putBoolean("metric", v).apply() }
+    /** draw installed terrain (hillshade) packs under the roads */
+    var terrain: Boolean
+        get() = p.getBoolean("terrain", true)
+        set(v) { p.edit().putBoolean("terrain", v).apply() }
     /** Modes shown on the compare screen. */
     var modes: Set<Profile>
         get() = (p.getStringSet("modes", null) ?: setOf("FAST", "BACKROADS", "RIDE")).mapNotNull { try { Profile.valueOf(it) } catch (_: Throwable) { null } }.toSet().ifEmpty { setOf(Profile.FAST) }

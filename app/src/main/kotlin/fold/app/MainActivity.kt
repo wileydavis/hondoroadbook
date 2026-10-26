@@ -221,7 +221,8 @@ class MainActivity : AppCompatActivity() {
             onExportMarks = { val tree = FilePicker.folder(this); if (tree == null) chooseFolder { exportMarks() } else exportMarks() },
             onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
             onDownload = if (BuildConfig.ROADBOOK) ({ Catalog.show(this, packs) { onPacksChanged() } }) else null,
-            onBrowse = if (BuildConfig.ROADBOOK) ({ showLibrary(true) }) else null) }
+            onBrowse = if (BuildConfig.ROADBOOK) ({ showLibrary(true) }) else null,
+            terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
         findViewById<Button>(R.id.btnVia).setOnClickListener { pin?.let { addVia(it, pinName) } }
@@ -363,13 +364,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshVisiblePacks() {
         if (packs.packs.size <= 6) return
-        val v = visiblePacks()
+        val v = visiblePacks().filter { prefs.terrain || !it.isTerrain }
         if (v.map { it.dir } != styledPacks.map { it.dir }) loadStyle()
     }
 
     private fun loadStyle() {
         val m = map ?: return
-        val chosen = visiblePacks()
+        val chosen = visiblePacks().filter { prefs.terrain || !it.isTerrain }
         val json = try { StyleBuilder.build(this, chosen, prefs.night) } catch (e: Throwable) { toast("Style error: ${e.message}"); return }
         styledPacks = chosen
         m.setStyle(Style.Builder().fromJson(json)) { st ->
@@ -1568,6 +1569,7 @@ class MainActivity : AppCompatActivity() {
             items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
             if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
             if (libraryOn) items.add(MenuItem("HIDE ROADBOOKS", R.drawable.ic_list, on = true) { showLibrary(false) })
+            if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain) { prefs.terrain = !prefs.terrain; loadStyle() })
         }
         items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night) { findViewById<ImageButton>(R.id.btnNight).performClick() })
         items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })
