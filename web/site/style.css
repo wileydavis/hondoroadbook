@@ -135,9 +135,10 @@ footer a { color: var(--soft); }
 .mounts { display: grid; grid-template-columns: 1.1fr 1fr; gap: 30px; align-items: center; }
 .mounts .ctas { display: flex; flex-wrap: wrap; gap: 10px; }
 .mounts .ctas .cta.alt { margin-left: 0; }
-.mounts-art { display: grid; gap: 12px; }
-.mounts-art img { width: 100%; display: block; }
-.mounts-art img.narrow { max-width: 200px; justify-self: center; }
+.mounts-art { display: grid; grid-template-columns: 1fr 1.3fr; gap: 12px; align-items: stretch; }
+.mounts-art a { display: block; }
+.mounts-art img { width: 100%; height: 100%; object-fit: cover; border-radius: 14px; border: 1px solid var(--rule); display: block; }
+@media (max-width: 820px) { .mounts-art { grid-template-columns: 1fr 1.3fr; } }
 @media (max-width: 820px) { .mounts { grid-template-columns: 1fr; } }
 /* get ready */
 .ready { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 10px; }
