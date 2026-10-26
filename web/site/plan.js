@@ -777,13 +777,15 @@ const POI_KIND = { fuel: "fuel", restaurant: "food", cafe: "food", fast_food: "f
   camp_site: "camping", camp_pitch: "camping", caravan_site: "camping", drinking_water: "water", spring: "water", water_well: "water", hotel: "lodging", motel: "lodging", hostel: "lodging", guest_house: "lodging", chalet: "lodging", alpine_hut: "lodging",
   car_repair: "repair", motorcycle: "repair", motorcycle_repair: "repair", city: "town", town: "town", village: "town", hamlet: "town" };
 const pmCache = new Map();
-/** Points of interest from the pack tiles around a spot: the 5×5 zoom-14 tiles (about 5 mi across) for places, a zoom-10 tile for the towns. */
+/** Points of interest from the pack tiles around a spot: 5×5 tiles at zoom 15 (everything, about 2½ mi across) and at zoom 14 (the prominent ones, about 5 mi), a zoom-10 tile for the towns. */
 async function peekPois(lon, lat) {
   if (!window.MVT) return null;
   const pack = roadsPacks().find(p => lon >= p.bbox[0] && lon <= p.bbox[2] && lat >= p.bbox[1] && lat <= p.bbox[3]); if (!pack) return null;
   let pm = pmCache.get(pack.id); if (!pm) { pm = new pmtiles.PMTiles(`${ORIGIN}/tiles/${pack.id}/tiles.pmtiles`); pmCache.set(pack.id, pm); }
   const txy = (z) => { const n = 2 ** z; return { x: Math.floor((lon + 180) / 360 * n), y: Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n) }; };
   const jobs = [];
+  // zoom 15 carries every place (a cafe's min_zoom is 16, which zoom-14 tiles leave out); zoom 14 widens the ring with the prominent ones
+  const c15 = txy(15); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) jobs.push(pm.getZxy(15, c15.x + dx, c15.y + dy).then(t => t ? { z: 15, x: c15.x + dx, y: c15.y + dy, data: t.data } : null).catch(() => null));
   const c14 = txy(14); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) jobs.push(pm.getZxy(14, c14.x + dx, c14.y + dy).then(t => t ? { z: 14, x: c14.x + dx, y: c14.y + dy, data: t.data } : null).catch(() => null));
   const c10 = txy(10); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) jobs.push(pm.getZxy(10, c10.x + dx, c10.y + dy).then(t => t ? { z: 10, x: c10.x + dx, y: c10.y + dy, data: t.data } : null).catch(() => null));
   const tiles = (await Promise.all(jobs)).filter(Boolean);
