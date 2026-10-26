@@ -59,7 +59,34 @@
       <figure><img src="/img/phone-night.png" alt="Night mode with a spoken cue" loading="lazy"><figcaption><b>Hear the approach.</b> Spoken cues, rising pips and a chime at the turn — to a helmet headset or the stereo.</figcaption></figure>
       <figure><img src="/img/phone-menu.png" alt="The glove menu while navigating" loading="lazy"><figcaption><b>Built for gloved hands.</b> Extra-large controls and a simple menu make the essentials easy to reach.</figcaption></figure>
       <figure><img src="/img/phone-hero.png" alt="The riding screen: next cue, distance, the route" loading="lazy"><figcaption><b>Read it at a glance.</b> Your next cue, the distance to it, and a clear view of the route.</figcaption></figure>
-      <figure><img src="/img/phone-compare.png" alt="The whole route on screen" loading="lazy"><figcaption><b>One tap to zoom.</b> Tap the map while moving to loop whole route → next turn → close up. A buzz tells you which view you landed in, so you don't have to look.</figcaption></figure>
+      <figure class="tapdemo">
+        <div class="fakephone" id="tapPhone" role="button" tabindex="0" aria-label="Tap to cycle the three riding views">
+          <svg viewBox="0 0 280 560" width="100%" aria-hidden="true">
+            <rect width="280" height="560" fill="#f4efe6"/>
+            <g id="tapWorld" style="transform-origin:0 0">
+              <!-- a few roads -->
+              <g fill="none" stroke="#d9d3c5" stroke-width="5" stroke-linecap="round"><path d="M-200 520 H700"/><path d="M-200 300 H700"/><path d="M60 -200 V900"/><path d="M330 -200 V900"/><path d="M-100 120 Q200 140 600 60"/></g>
+              <g fill="none" stroke="#e7b400" stroke-width="5" stroke-linecap="round"><path d="M330 300 Q420 200 560 190"/></g>
+              <!-- the route -->
+              <path id="tapRoute" d="M160 760 L160 520 L160 300 L330 300 L330 120 Q360 60 470 40" fill="none" stroke="#7c3aed" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <!-- cues -->
+              <g fill="#fff" stroke="#d8502f" stroke-width="3"><circle cx="160" cy="300" r="9"/><circle cx="330" cy="300" r="9"/><circle cx="330" cy="120" r="9"/><circle cx="470" cy="40" r="9"/></g>
+              <text x="178" y="294" font-size="13" fill="#444" font-family="Inter, system-ui, sans-serif">Dry Creek Rd</text>
+              <!-- the puck: heading north, 220 units below the first turn -->
+              <g transform="translate(160 520)"><path d="M0 -16 L12 12 L0 5 L-12 12 Z" fill="#d8502f" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></g>
+            </g>
+            <!-- HUD -->
+            <g transform="translate(14 22)"><rect width="252" height="70" rx="14" fill="#fff" stroke="#e2dccf"/>
+              <path d="M44 60 L44 38 Q44 28 34 28 L24 28 M30 20 L22 28 L30 36" fill="none" stroke="#d8502f" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+              <text x="70" y="38" font-size="26" font-weight="800" fill="#1b1b1b" font-family="Inter, system-ui, sans-serif">350 ft</text>
+              <text x="70" y="58" font-size="13" fill="#5a5a5a" font-family="Inter, system-ui, sans-serif">Dry Creek Road</text></g>
+            <!-- the view's name and the buzz -->
+            <g transform="translate(14 500)"><rect width="252" height="40" rx="12" fill="#fff" stroke="#e2dccf"/><text id="tapLabel" x="126" y="25" text-anchor="middle" font-size="14" font-weight="700" fill="#1b1b1b" font-family="Inter, system-ui, sans-serif">Tap the map</text></g>
+            <circle cx="140" cy="530" r="0" fill="#000" opacity="0"/>
+          </svg>
+        </div>
+        <figcaption><b>One tap to zoom.</b> Tap the map while moving to loop whole route → next turn → close up. A buzz tells you which view you landed in, so you don't have to look. <i>Try it on the phone above.</i></figcaption>
+      </figure>
     </div>
     <div class="roadbook-def">
       <h3>What's a roadbook?</h3>
