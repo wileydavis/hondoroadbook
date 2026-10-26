@@ -24,10 +24,12 @@ export async function serveTile(request, env, path, loadCatalog, fetchPack) {
     pack = cat.packs.find(p => p.id === id);
     if (!pack) return json({ error: "no such pack" }, 404);
     key = packKey(pack);                        // "us/montana-roads.mappack"
-    // cache identity is the catalog's build date plus the archive's byte size: a same-day rebuild changes the size
-    pack = { ...pack, built: `${pack.built}-${pack.bytes || 0}` };
+    // cache identity is the catalog's build date plus the archive's byte size as it is on the shelf right now
+    // (probed, cached a minute): while a rebuild is replacing packs one state at a time, the catalog still lists
+    // the old sizes for hours, and the new archive must be served as itself rather than refused or mixed with old ranges
+    const live = await liveSize(env, key, fetchPack);
+    pack = { ...pack, built: `${pack.built}-${live || pack.bytes || 0}` };
     const index = await zipIndex(env, pack, key, fetchPack);
-    if (pack.bytes && index.total !== pack.bytes) return json({ error: "the pack on the shelf does not match the catalog yet; try again in a minute" }, 409);
     entry = index.entries[file];
     if (!entry) return json({ error: `${file} is not in this pack` }, 404);
   }
@@ -69,6 +71,20 @@ async function objectSize(env, pack, key, fetchPack) {
   const total = Number((probe.headers.get("Content-Range") || "").split("/")[1]) || 0;
   await probe.arrayBuffer();
   if (total) await cache.put(ckey, new Response(String(total), { headers: { "Cache-Control": "public, max-age=3600" } }));
+  return total;
+}
+
+/** The archive's current byte size, remembered a minute: a rebuilt pack is noticed within that long. */
+async function liveSize(env, key, fetchPack) {
+  const cache = caches.default;
+  const ckey = new Request(`https://zipindex.roadbook.internal/live/${key}`);
+  const hit = await cache.match(ckey);
+  if (hit) return Number(await hit.text());
+  const probe = await fetchPack(env, key, "bytes=0-0");
+  if (probe.status !== 206) return 0;
+  const total = Number((probe.headers.get("Content-Range") || "").split("/")[1]) || 0;
+  await probe.arrayBuffer();
+  if (total) await cache.put(ckey, new Response(String(total), { headers: { "Cache-Control": "public, max-age=60" } }));
   return total;
 }
 
