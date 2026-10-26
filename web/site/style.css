@@ -165,3 +165,5 @@ section h2 { font-size: 28px; }
 @keyframes buzz { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-2px); } 75% { transform: translateX(2px); } }
 .tapbuzz { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #fff; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .tapbuzz.on { opacity: .9; }
+.callout { margin-top: 18px; background: var(--card); border-left: 4px solid var(--accent); border-radius: 0 12px 12px 0; padding: 12px 16px; color: var(--soft); font-size: 15px; }
+.callout b { color: var(--ink); }
