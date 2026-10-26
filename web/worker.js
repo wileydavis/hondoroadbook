@@ -32,8 +32,8 @@ export default {
 // planner makes are listed explicitly. A library entry that smuggled markup past the API would still
 // not be allowed to run anything.
 const CSP = [
-  "default-src 'self'", "script-src 'self'", "worker-src 'self' blob:", "child-src 'self' blob:", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https:", "connect-src 'self' https://en.wikipedia.org https://gis.blm.gov https://s3.amazonaws.com https://imagery.nationalmap.gov https://tiles.maps.eox.at",
+  "default-src 'self'", "script-src 'self' https://static.cloudflareinsights.com", "worker-src 'self' blob:", "child-src 'self' blob:", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob: https:", "connect-src 'self' https://cloudflareinsights.com https://en.wikipedia.org https://gis.blm.gov https://s3.amazonaws.com https://imagery.nationalmap.gov https://tiles.maps.eox.at",
   "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'", "object-src 'none'",
 ].join("; ");
 function withSiteHeaders(res) {
