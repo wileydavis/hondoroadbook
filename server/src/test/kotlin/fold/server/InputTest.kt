@@ -16,7 +16,7 @@ class InputTest {
             assertEquals(400, status { api.route(mapOf("pts" to pts, "mode" to "FAST")) }, pts)
         assertEquals(400, status { api.snap(mapOf("lon" to "NaN", "lat" to "45")) })
         assertEquals(400, status { api.snap(mapOf("lon" to "-111", "lat" to "95")) })
-        for (bb in listOf("NaN,NaN,NaN,NaN", "-120,40,-100,41", "-111,45,-112,46", "1,2,3", "-200,0,-100,1"))
+        for (bb in listOf("NaN,NaN,NaN,NaN", "-111,45,-112,46", "1,2,3", "-200,0,-100,1"))   // a merely wide box is shrunk, not refused
             assertEquals(400, status { api.search(mapOf("q" to "bozeman", "bbox" to bb)) }, bb)
     }
 

@@ -203,11 +203,14 @@ class Api(private val packs: PackSet) {
         if (text.length < 2) return Json.obj("hits" to "[]")
         val lon = finite(q["lon"], 180.0); val lat = finite(q["lat"], 90.0)
         if ((q["lon"] != null || q["lat"] != null) && (lon == null || lat == null)) throw ApiError(400, "bad lon/lat")
-        // a bbox is four finite ordered numbers covering at most 12° on a side; anything else is refused before any pack is touched
+        // a bbox is four finite ordered numbers; one wider than 12° on a side (a map zoomed out to the continent) is
+        // shrunk to 12° around its centre rather than refused, since the cost is what the limit is for
         val bbox = q["bbox"]?.let { raw ->
             val b = raw.split(',').map { it.toDoubleOrNull()?.takeIf { v -> v.isFinite() } ?: throw ApiError(400, "bad bbox") }
-            if (b.size != 4 || b[0] > b[2] || b[1] > b[3] || b[2] - b[0] > 12.0 || b[3] - b[1] > 12.0 || b.any { Math.abs(it) > 180 }) throw ApiError(400, "bad bbox")
-            b
+            if (b.size != 4 || b[0] > b[2] || b[1] > b[3] || b.any { Math.abs(it) > 180 }) throw ApiError(400, "bad bbox")
+            val cx = (b[0] + b[2]) / 2; val cy = (b[1] + b[3]) / 2
+            val hw = Math.min(6.0, (b[2] - b[0]) / 2); val hh = Math.min(6.0, (b[3] - b[1]) / 2)
+            listOf(cx - hw, cy - hh, cx + hw, cy + hh)
         }
         // a state named at the end of the query picks the packs
         val words = text.lowercase().replace(Regex("[,.]"), " ").split(Regex("\\s+")).filter { it.isNotEmpty() }

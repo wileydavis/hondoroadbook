@@ -1051,9 +1051,12 @@ async function search() {
   const cc = parseCoords(q);
   if (cc) { box.innerHTML = `<div data-lon="${cc[0]}" data-lat="${cc[1]}">Go to ${cc[1].toFixed(5)}, ${cc[0].toFixed(5)}<small>a coordinate — then add it as a stop, a note, or inspect it</small></div>`; box.hidden = false; box.querySelector("div").onclick = () => { box.hidden = true; goToCoords(cc); }; return; }
   const c = map.getCenter(); const b = map.getBounds();
+  // the view, but never wider than the router's 12° (zoomed out to the continent, the search still works around the centre)
+  const hw = Math.min(6, (b.getEast() - b.getWest()) / 2), hh = Math.min(6, (b.getNorth() - b.getSouth()) / 2);
+  const bb = [Math.max(-180, c.lng - hw), Math.max(-85, c.lat - hh), Math.min(180, c.lng + hw), Math.min(85, c.lat + hh)].map(v => v.toFixed(4));
   box.innerHTML = `<div class="muted">Searching…</div>`; box.hidden = false;
   try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng}&lat=${c.lat}&bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`); const j = await r.json();
+    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng.toFixed(5)}&lat=${c.lat.toFixed(5)}&bbox=${bb.join(",")}`); const j = await r.json();
     if ($("#q").value.trim() !== q) return;
     const hits = j.hits || [];
     box.innerHTML = j.error ? `<div class="muted">${esc(j.error)}</div>` : hits.length ? hits.map(h => `<div data-lon="${h.lon}" data-lat="${h.lat}">${esc(h.name)}<small>${esc([h.context, h.region].filter(Boolean).join(" · "))}${h.distance ? " · " + fmtDist(h.distance) : ""}</small></div>`).join("") : `<div class="muted">Nothing found under the map. Add the state to look elsewhere: “manhattan, mt”.</div>`;
