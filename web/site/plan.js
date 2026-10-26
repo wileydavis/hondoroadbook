@@ -1056,7 +1056,11 @@ async function search() {
   const bb = [Math.max(-180, c.lng - hw), Math.max(-85, c.lat - hh), Math.min(180, c.lng + hw), Math.min(85, c.lat + hh)].map(v => v.toFixed(4));
   box.innerHTML = `<div class="muted">Searching…</div>`; box.hidden = false;
   try {
-    const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng.toFixed(5)}&lat=${c.lat.toFixed(5)}&bbox=${bb.join(",")}`); const j = await r.json();
+    const ac = new AbortController(); const giveUp = setTimeout(() => ac.abort(), 25000);
+    let r, j;
+    try { r = await fetch(`/api/search?q=${encodeURIComponent(q)}&lon=${c.lng.toFixed(5)}&lat=${c.lat.toFixed(5)}&bbox=${bb.join(",")}`, { signal: ac.signal }); j = await r.json(); }
+    catch (e) { if (e.name === "AbortError") { if ($("#q").value.trim() === q) box.innerHTML = `<div class="muted">The maps here are still loading on the server — try again in a moment, or zoom in</div>`; return; } throw e; }
+    finally { clearTimeout(giveUp); }
     if ($("#q").value.trim() !== q) return;
     const hits = j.hits || [];
     box.innerHTML = j.error ? `<div class="muted">${esc(j.error)}</div>` : hits.length ? hits.map(h => `<div data-lon="${h.lon}" data-lat="${h.lat}">${esc(h.name)}<small>${esc([h.context, h.region].filter(Boolean).join(" · "))}${h.distance ? " · " + fmtDist(h.distance) : ""}</small></div>`).join("") : `<div class="muted">Nothing found under the map. Add the state to look elsewhere: “manhattan, mt”.</div>`;

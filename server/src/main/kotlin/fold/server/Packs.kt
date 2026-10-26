@@ -74,6 +74,12 @@ open class PackSet(private val catalogUrl: String, private val dir: File, privat
         val want = catalog().filter { it.intersects(minLon, minLat, maxLon, maxLat) }
         return want.map { ensure(it) }
     }
+    /** The same, but only what is already in memory: nothing is downloaded, and the rest is warmed in the background. */
+    fun forBboxLoaded(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double): List<Loaded> {
+        val want = catalog().filter { it.intersects(minLon, minLat, maxLon, maxLat) }
+        warm(minLon, minLat, maxLon, maxLat)
+        return synchronized(lock) { want.mapNotNull { loaded[it.id]?.also { l -> l.lastUsed = System.currentTimeMillis() } } }
+    }
 
     fun ensure(p: CatalogPack): Loaded {
         val mine: java.util.concurrent.CompletableFuture<Loaded>

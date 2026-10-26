@@ -221,6 +221,12 @@ class Api(private val packs: PackSet) {
         }
         val loaded: List<Loaded> = when {
             region != null -> packs.catalog().filter { it.region.equals(region, ignoreCase = true) }.mapNotNull { try { packs.ensure(it) } catch (e: Throwable) { System.err.println("search: ${it.id} unavailable: ${e.message}"); null } }
+            // a wide view (several states) would mean downloading each of them before answering: search what is
+            // loaded plus the pack under the centre, and let the rest warm for the next keystroke
+            bbox != null && (bbox[2] - bbox[0] > 4.0 || bbox[3] - bbox[1] > 4.0) -> {
+                val centre = if (lon != null && lat != null) packs.forBbox(lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01) else emptyList()
+                (centre + packs.forBboxLoaded(bbox[0], bbox[1], bbox[2], bbox[3])).distinctBy { it.pack.id }
+            }
             bbox != null -> packs.forBbox(bbox[0], bbox[1], bbox[2], bbox[3])
             lon != null && lat != null -> packs.forBbox(lon - 2.0, lat - 2.0, lon + 2.0, lat + 2.0)
             else -> emptyList()
