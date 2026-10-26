@@ -758,7 +758,7 @@ async function inspect(lon, lat) {
       let near = null;
       try {
         const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
-        if (r.ok) { near = { fuel: j.fuel, food: j.food, camping: j.camping, water: j.water, lodging: j.lodging, repair: j.repair, town: j.town, reachKm: Math.round(j.reach / 1000), index: true };
+        if (r.ok && j.reach > 0) { near = { fuel: j.fuel, food: j.food, camping: j.camping, water: j.water, lodging: j.lodging, repair: j.repair, town: j.town, reachKm: Math.round(j.reach / 1000), index: true };
           for (const k of Object.keys(near)) if (Array.isArray(near[k])) for (const i of near[k]) { if (i.extra) { if (/^free\b/.test(i.extra)) i.fee = "free"; else if (/^fee\b/.test(i.extra)) i.fee = "fee"; i.hours = i.extra.replace(/^(free|fee)( · )?/, ""); } } }
       } catch {}
       if (near) { $("#inspAt").textContent = "from the map pack's place index"; render(near, `From the pack's place index: everything close, the prominent places (fuel, campgrounds, towns, repair) out to about ${fmtDist(60000)}. Tick <b>Places</b> in the layers box to see them on the map and click any to add it.`); return; }
