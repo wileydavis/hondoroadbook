@@ -178,16 +178,17 @@ async function webSearch(request, env, url, ctx) {
 // ---- what is around a spot: fuel, food, camping, water, beds, repair, the nearest town -----------------------------
 // Straight from OpenStreetMap through the public Overpass API, grouped and sorted by distance, cached a day per
 // two-kilometre cell. The same data the packs are built from, so what you see here is what the map draws.
+// nodes are cheap for Overpass, ways with `around` are not: ways only where places are commonly mapped as areas
 const NEAR = {
-  fuel: { r: 30000, sel: ['["amenity"="fuel"]'] },
-  food: { r: 15000, sel: ['["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court)$"]', '["shop"~"^(supermarket|convenience|general|bakery)$"]'] },
-  camping: { r: 25000, sel: ['["tourism"~"^(camp_site|caravan_site|camp_pitch)$"]'] },
-  water: { r: 15000, sel: ['["amenity"="drinking_water"]', '["natural"="spring"]', '["man_made"="water_well"]'] },
-  lodging: { r: 25000, sel: ['["tourism"~"^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$"]'] },
-  repair: { r: 40000, sel: ['["shop"~"^(motorcycle|motorcycle_repair|car_repair|tyres)$"]', '["amenity"="car_repair"]'] },
-  town: { r: 30000, sel: ['["place"~"^(city|town|village|hamlet)$"]'] },
+  fuel: { r: 25000, sel: ['nw["amenity"="fuel"]'] },
+  food: { r: 10000, sel: ['nw["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court)$"]', 'nw["shop"~"^(supermarket|convenience|general|bakery)$"]'] },
+  camping: { r: 20000, sel: ['nw["tourism"~"^(camp_site|caravan_site|camp_pitch)$"]'] },
+  water: { r: 12000, sel: ['node["amenity"="drinking_water"]', 'node["natural"="spring"]', 'node["man_made"="water_well"]'] },
+  lodging: { r: 20000, sel: ['nw["tourism"~"^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$"]'] },
+  repair: { r: 25000, sel: ['nw["shop"~"^(motorcycle|motorcycle_repair|car_repair|tyres)$"]', 'nw["amenity"="car_repair"]'] },
+  town: { r: 30000, sel: ['node["place"~"^(city|town|village|hamlet)$"]'] },
 };
-const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 async function near(request, env, url, ctx) {
   const lon = Number(url.searchParams.get("lon")), lat = Number(url.searchParams.get("lat"));
   if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lon) > 180 || Math.abs(lat) > 90) return json({ error: "lon/lat required" }, 400);
@@ -196,12 +197,13 @@ async function near(request, env, url, ctx) {
   const hit = await cache.match(ckey);
   if (hit) return withCors(hit);
   const parts = [];
-  for (const [k, d] of Object.entries(NEAR)) for (const sel of d.sel) parts.push(`nwr${sel}(around:${d.r},${lat.toFixed(5)},${lon.toFixed(5)});`);
-  const ql = `[out:json][timeout:20];(${parts.join("")});out center tags 300;`;
+  for (const [k, d] of Object.entries(NEAR)) for (const sel of d.sel) parts.push(`${sel}(around:${d.r},${lat.toFixed(5)},${lon.toFixed(5)});`);
+  const ql = `[out:json][timeout:12];(${parts.join("")});out center tags 300;`;
   let data = null, err = "";
+  // the three public instances in turn, each given a short leash: a slow one must not cost the rider half a minute
   for (const ep of OVERPASS) {
     try {
-      const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(ql), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(22000) });
+      const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(ql), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(13000) });
       if (r.ok) { data = await r.json(); break; }
       err = `overpass ${r.status}`;
     } catch (e) { err = String(e && e.message || e); }

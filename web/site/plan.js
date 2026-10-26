@@ -670,21 +670,29 @@ async function inspect(lon, lat) {
       else $("#inspFacts").innerHTML = `<span class="muted">${esc(j.error)}</span>`;
     } catch { $("#inspFacts").innerHTML = `<span class="muted">The router is not reachable right now.</span>`; }
   })();
-  // what is around: fuel, food, camping, water, beds, repair, the nearest town
+  // what is around: first from the map's own tiles (instant, the same data the phone carries), then
+  // OpenStreetMap's query service widens the ring — fuel to 25 km, camping to 20 — when it answers
   const nearby = (async () => {
+    const render = (near, note) => {
+      town = town || (near.town && near.town[0] && near.town[0].name) || "";
+      const sec = (title, items, fmt) => items && items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" title="Add as a note on the route here">+ note</button></div>`).join("") : "";
+      $("#inspNear").innerHTML =
+        (near.town && near.town.length ? `<div class="muted small">Nearest: ${near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
+        sec("Fuel", near.fuel, { label: "Fuel" }) + sec("Food & supplies", near.food, { label: "Food" }) + sec("Camping", near.camping, { label: "Camp", anon: "campsite" }) +
+        sec("Water", near.water, { label: "Water", anon: "water" }) + sec("Beds", near.lodging, { label: "Lodging" }) + sec("Repair", near.repair, { label: "Repair" }) +
+        (Object.values(near).every(a => !a || !a.length) ? `<span class="muted">Nothing tagged near this spot.</span>` : "") + (note ? `<div class="muted small">${note}</div>` : "");
+      $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
+    };
+    let fromTiles = null;
+    try { fromTiles = await peekPois(lon, lat); render(fromTiles, "Within about 2 mi, from the map. Asking OpenStreetMap for the wider ring…"); } catch {}
     try {
       const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
-      if (!r.ok) { $("#inspNear").innerHTML = `<span class="muted">${esc(j.error)}</span>`; return; }
-      town = (j.near.town[0] && j.near.town[0].name) || "";
+      if (!r.ok) { if (!fromTiles) $("#inspNear").innerHTML = `<span class="muted">${esc(j.error)}</span>`; else render(fromTiles, "Within about 2 mi, from the map. OpenStreetMap's wider lookup did not answer this time."); return; }
       $("#inspAt").textContent = "as of " + (j.at || "today");
-      const sec = (title, items, fmt) => items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" data-lon="${i.lon}" data-lat="${i.lat}" title="Add as a note on the route here">+ note</button></div>`).join("") : "";
-      $("#inspNear").innerHTML =
-        (j.near.town.length ? `<div class="muted small">Nearest: ${j.near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
-        sec("Fuel", j.near.fuel, { label: "Fuel" }) + sec("Food & supplies", j.near.food, { label: "Food" }) + sec("Camping", j.near.camping, { label: "Camp", anon: "campsite" }) +
-        sec("Water", j.near.water, { label: "Water", anon: "water" }) + sec("Beds", j.near.lodging, { label: "Lodging" }) + sec("Repair", j.near.repair, { label: "Repair" }) +
-        (Object.values(j.near).every(a => !a.length) ? `<span class="muted">Nothing tagged within reach of this spot. That itself is worth knowing.</span>` : "");
-      $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
-    } catch { $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
+      // merge: the tile hits stay (they are exact), the service adds what lies beyond them
+      const merged = {}; for (const k of Object.keys(j.near)) { const seen = new Set((fromTiles && fromTiles[k] || []).map(i => i.name.toLowerCase())); merged[k] = [...(fromTiles && fromTiles[k] || []), ...j.near[k].filter(i => !i.name || !seen.has(i.name.toLowerCase()))].sort((a, b) => a.d - b.d).slice(0, k === "town" ? 3 : 5); }
+      render(merged, "");
+    } catch { if (!fromTiles) $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
   })();
   // nearby Wikipedia
   (async () => {
@@ -723,6 +731,38 @@ async function inspect(lon, lat) {
     $("#inspWeb").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
   } catch { $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>${ext}`; }
 }
+// ---- POIs out of the pack tiles -------------------------------------------------------------------------------------
+const POI_KIND = { fuel: "fuel", restaurant: "food", cafe: "food", fast_food: "food", bar: "food", pub: "food", food_court: "food", supermarket: "food", convenience: "food", general: "food", bakery: "food", grocery: "food",
+  camp_site: "camping", camp_pitch: "camping", caravan_site: "camping", drinking_water: "water", spring: "water", water_well: "water", hotel: "lodging", motel: "lodging", hostel: "lodging", guest_house: "lodging", chalet: "lodging", alpine_hut: "lodging",
+  car_repair: "repair", motorcycle: "repair", motorcycle_repair: "repair", city: "town", town: "town", village: "town", hamlet: "town" };
+const pmCache = new Map();
+/** Points of interest within the 3×3 zoom-15 tiles around a spot (about 2 mi), decoded from the pack that covers it. */
+async function peekPois(lon, lat) {
+  if (!window.MVT) return null;
+  const pack = roadsPacks().find(p => lon >= p.bbox[0] && lon <= p.bbox[2] && lat >= p.bbox[1] && lat <= p.bbox[3]); if (!pack) return null;
+  let pm = pmCache.get(pack.id); if (!pm) { pm = new pmtiles.PMTiles(`${ORIGIN}/tiles/${pack.id}/tiles.pmtiles`); pmCache.set(pack.id, pm); }
+  const z = 15, n = 2 ** z; const cx = Math.floor((lon + 180) / 360 * n); const cy = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n);
+  const jobs = []; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) jobs.push(pm.getZxy(z, cx + dx, cy + dy).then(t => t ? { x: cx + dx, y: cy + dy, data: t.data } : null).catch(() => null));
+  const tiles = (await Promise.all(jobs)).filter(Boolean);
+  const out = { fuel: [], food: [], camping: [], water: [], lodging: [], repair: [], town: [] }; const seen = new Set();
+  for (const t of tiles) {
+    const vt = new MVT.VectorTile(new MVT.Pbf(new Uint8Array(t.data)));
+    for (const layerName of ["pois", "places"]) {
+      const L = vt.layers[layerName]; if (!L) continue;
+      for (let i = 0; i < L.length; i++) {
+        const f = L.feature(i); const p = f.properties || {}; const cat = POI_KIND[p.kind]; if (!cat) continue;
+        if (layerName === "places" && cat !== "town") continue;
+        const g = f.toGeoJSON(t.x, t.y, z); let c = g.geometry.coordinates; while (Array.isArray(c[0])) c = c[0];
+        const key = `${cat}|${(p.name || "").toLowerCase()}|${c[0].toFixed(3)},${c[1].toFixed(3)}`; if (seen.has(key)) continue; seen.add(key);
+        const d = Math.round(dist([lon, lat], c)); const b = Math.round(bearingDeg(lat, lon, c[1], c[0]));
+        out[cat].push({ name: p.name || "", kind: p.kind === "camp_site" ? "campground" : p.kind.replace(/_/g, " "), lon: c[0], lat: c[1], d, bearing: b });
+      }
+    }
+  }
+  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, 5); }
+  return out;
+}
+function bearingDeg(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r); const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }
 function compass(b) { return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
 /** A finding becomes a cue at the inspected spot: a note with the words, and the link kept for the GPX. */
 function addNoteHere(at, text, link) {
@@ -911,6 +951,6 @@ function restoreHash() {
 }
 
 window.addEventListener("beforeunload", e => { if (S.cues.some(c => !c.auto) || S.track) { e.preventDefault(); e.returnValue = ""; } });
-window.roadbookPlanner = { map, state: S, reroute };   // for the console and tests
+window.roadbookPlanner = { map, state: S, reroute, peekPois };   // for the console and tests
 init().catch(e => { console.error(e); status("The planner could not start: " + e.message, true); });
 })();
