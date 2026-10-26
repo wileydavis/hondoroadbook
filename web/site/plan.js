@@ -62,6 +62,8 @@ maplibregl.setWorkerUrl("/map/vendor/maplibre-gl-csp-worker.js");   // the CSP b
 const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 let layersLight = null, layersDark = null;
+// a browser without WebGL (hardware acceleration off, a locked-down machine, a headless review) gets a sentence, not a blank map
+(() => { try { const c = document.createElement("canvas"); if (c.getContext("webgl2") || c.getContext("webgl")) return; } catch {} const d = document.createElement("div"); d.className = "nogl"; d.innerHTML = `<b>This browser can't draw the map.</b><br>It needs WebGL, which is off or unsupported here. Turn on hardware acceleration in the browser's settings, or open the planner in a current Chrome, Firefox, Safari or Edge. Nothing else about the page is wrong.`; document.body.appendChild(d); })();
 const map = new maplibregl.Map({ container: "map", style: { version: 8, sources: {}, layers: [{ id: "background", type: "background", paint: { "background-color": "#f4efe6" } }] }, center: [-110.5, 45.5], zoom: 6, hash: false, attributionControl: false, maxPitch: 0, dragRotate: false, pitchWithRotate: false });
 map.touchZoomRotate.disableRotation();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
