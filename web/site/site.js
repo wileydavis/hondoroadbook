@@ -52,7 +52,8 @@
     });
     return buf;
   };
-  const play = (buf) => { const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(); };
+  // On Android, the system voice can take audio focus and suspend the context mid-demo; resume before each sound.
+  const play = (buf) => { if (ac.state !== 'running') ac.resume().catch(() => {}); const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(); };
   const pip = (progress) => { const step = Math.floor(Math.max(0, Math.min(1, progress)) * 16); play(render([[520 * Math.pow(2, step / 16), 70]])); };
   const chime = () => play(render([[1040, 90], [1320, 160]], 20));
   const pipInterval = (p) => 1600 - 1350 * Math.max(0, Math.min(1, p));
@@ -63,7 +64,10 @@
   btn.onclick = () => {
     if (running) { stop(); cap.textContent = ''; dist.textContent = '400 ft'; fill.setAttribute('y', 100); return; }
     if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
-    if (ac.state === 'suspended') ac.resume();
+    // Phones: the context must be unlocked inside the tap. A silent buffer started here does that
+    // (iOS and some Android browsers ignore the first resume() otherwise).
+    try { const u = ac.createBufferSource(); u.buffer = ac.createBuffer(1, 1, ac.sampleRate); u.connect(ac.destination); u.start(); } catch {}
+    if (ac.state !== 'running') ac.resume().catch(() => {});
     running = true; btn.textContent = '■ Stop';
     // one approach: 120 m out at 12 m/s (27 mph) is ten seconds; the app speaks about fifteen seconds out, so the words come first
     const total = 10000, speed = 12;
