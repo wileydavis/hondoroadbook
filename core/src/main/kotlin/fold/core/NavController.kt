@@ -14,7 +14,22 @@ interface NavSink {
     fun prepare(phrase: String)
     /** the controller's state changed in a way worth showing (a new view, arrival, a checkpoint written) */
     fun changed(c: NavController) {}
+    /**
+     * The rider should look now (a cue's window opened, the route was lost) or may stop looking (the turn is
+     * made, the line is found again). In battery mode the phone wakes the screen for `true` and lets it sleep
+     * after `false`; on iOS the same moments drive a Live Activity alert.
+     */
+    fun attention(on: Boolean) {}
 }
+
+/**
+ * What the ride needs from the platform right now, so a battery-saving phone can give exactly that and no
+ * more. [fixIntervalMs] is the longest gap between position fixes the follower can tolerate before the next
+ * cue (a bike far from its next turn needs one every 15 s, not every second); [awake] says whether the CPU must
+ * stay up between fixes (pips are due, or the route is lost) or may sleep until the next fix wakes it. On
+ * Android this becomes the location request interval and a wake lock; on iOS the desired-accuracy ladder.
+ */
+class Demand(val fixIntervalMs: Long, val awake: Boolean)
 
 enum class ToneKind { PIP, TURN, OFF_ROUTE, BACK, ARRIVE, DANGER, NOTE }
 
@@ -31,6 +46,11 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
     /** set by the platform: whether to play sounds at all, and whether a voice is ready to speak */
     var sound = false
     var speechReady = false
+    /** battery mode: ease the GPS between cues and only ask for the screen when a turn is near */
+    var batterySaver = false
+    /** the worst speed the rider might reach between fixes, for the fix-interval guarantee (bikes 10 m/s, motors 30) */
+    var worstSpeed = 30.0
+    private var attentionOn = false
     /** the last accepted fix, for the screen and for a checkpoint */
     var lastFix: Fix? = null; private set
     var ended = false; private set
@@ -55,7 +75,25 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
         return v
     }
 
-    fun end() { ended = true }
+    fun end() { ended = true; if (attentionOn) { attentionOn = false; sink.attention(false) } }
+
+    private fun attention(on: Boolean) { if (on != attentionOn) { attentionOn = on; sink.attention(on) } }
+
+    /**
+     * The fix cadence and wakefulness the ride needs now. Outside battery mode: one fix a second, always awake.
+     * In battery mode: at least six fixes before the next cue at [worstSpeed], never longer than 15 s apart,
+     * and one a second inside 300 m or 60 s of a cue, whenever the route is lost, and for the last 2 km of
+     * the ride; the CPU may sleep between fixes except while a cue window is open or the route is lost.
+     */
+    fun demand(nowMs: Long): Demand {
+        if (!batterySaver || ended) return Demand(1000L, true)
+        val v = follower.view(nowMs)
+        val gap = v.next?.let { it.at - v.along } ?: (route.length - v.along)
+        val busy = !v.onRoute || v.progress > 0.0 || v.fixState != FixState.VALID || gap < 300.0 || gap / max(1.0, v.speed) < 60.0 || v.remaining < 2000.0
+        if (busy) return Demand(1000L, true)
+        val interval = (gap / worstSpeed / 6.0 * 1000.0).toLong().coerceIn(1000L, 15_000L)
+        return Demand(interval, false)
+    }
 
     /** Interval between pips for a given progress: 1.6 s far out, 0.25 s at the turn. */
     fun pipIntervalMs(progress: Double): Long = (1600 - 1350 * progress.coerceIn(0.0, 1.0)).toLong()
@@ -73,20 +111,21 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
         announcePassed(hazardsOf(follower.drainMissed()))
         if (!sound) return
         if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) return
-        if (v.arrived) { if (!arrivedChimed) { arrivedChimed = true; sink.tone(ToneKind.ARRIVE) }; return }
-        if (!v.onRoute) { if (!wasOffRoute) { wasOffRoute = true; sink.tone(ToneKind.OFF_ROUTE) }; return }
-        if (wasOffRoute) { wasOffRoute = false; sink.tone(ToneKind.BACK) }
+        if (v.arrived) { if (!arrivedChimed) { arrivedChimed = true; sink.tone(ToneKind.ARRIVE); attention(true) }; return }
+        if (!v.onRoute) { if (!wasOffRoute) { wasOffRoute = true; sink.tone(ToneKind.OFF_ROUTE); attention(true) }; return }
+        if (wasOffRoute) { wasOffRoute = false; sink.tone(ToneKind.BACK); attention(false) }
         val m = v.next ?: return
         if (m !== cuedManeuver) {
             // the previous instruction's window never opened (passed it between two fixes): deliver its hazards now
             if (cuedManeuver != null && !spoken) announcePassed(hazardsOf(prevGroup))
             cuedManeuver = m; prevGroup = v.group; turnChimed = false; spoken = false; nextPipAt = 0L
+            attention(false)                                    // the last turn is made; the screen may sleep again
             if (m.turn != Turn.ARRIVE && speechReady) sink.prepare(v.phrase())
         }
         if (m.turn == Turn.ARRIVE) return
         if (v.progress <= 0.0) return
         // the window just opened (~15 s out): say what is coming, then the pips take over
-        if (!spoken) { spoken = true; if (speechReady) { val ph = v.phrase(); sink.say(ph); nextPipAt = now + 1500 + 60L * ph.length } }
+        if (!spoken) { spoken = true; attention(true); if (speechReady) { val ph = v.phrase(); sink.say(ph); nextPipAt = now + 1500 + 60L * ph.length } }
         if (v.progress >= 0.97 || v.distToNext < 12.0) {
             if (!turnChimed) { turnChimed = true; val lead = v.hazard ?: m; when (lead.turn) { Turn.DANGER -> sink.tone(ToneKind.DANGER, lead.level); Turn.NOTE -> sink.tone(ToneKind.NOTE); else -> sink.tone(ToneKind.TURN) } }
             return

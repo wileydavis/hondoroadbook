@@ -41,6 +41,10 @@ class Prefs(ctx: Context) {
     var sound: Boolean
         get() = p.getBoolean("sound", false)
         set(v) { p.edit().putBoolean("sound", v).apply() }
+    /** battery saver: the screen wakes for cues and sleeps after, the GPS eases between cues, the CPU rests */
+    var batterySaver: Boolean
+        get() = p.getBoolean("battery", false)
+        set(v) { p.edit().putBoolean("battery", v).apply() }
     /** Screen orientation to hold, as an ActivityInfo.SCREEN_ORIENTATION_* value; -1 = follow the sensor. */
     var orientation: Int
         get() = p.getInt("orientation", -1)

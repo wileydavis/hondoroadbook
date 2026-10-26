@@ -29,44 +29,58 @@
   function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 })();
 
-// ---- one turn, demonstrated: the app's own sounds, pre-rendered as /turn-demo.mp3 by the same arithmetic as
-// Tone.kt (pips 520→1040 Hz in 16 steps, 70 ms, 1.6 s apart far out and 0.25 s at the turn; the chime 1040 Hz
-// 90 ms then 1320 Hz 160 ms). One clip, played through an <audio> element: on iPhones that plays through the
-// mute switch and alongside the system voice, where live Web Audio is silenced. Nothing plays until pressed.
+// ---- one turn, demonstrated: the app's own sounds, rendered here by the same arithmetic as Tone.kt ------
+// (22,050 Hz, a sine with a touch of second harmonic, 10 ms ramps; pips 520→1040 Hz in 16 steps, 1.6 s apart
+// far out and 0.25 s at the turn; the chime 1040 Hz 90 ms then 1320 Hz 160 ms). Nothing plays until pressed.
 (() => {
   const btn = document.querySelector('#demoPlay'); if (!btn) return;
   const cap = document.querySelector('#demoCap'), hud = document.querySelector('#hudDemo'), dist = document.querySelector('#demoDist'), fill = document.querySelector('#fillRect');
-  const snd = new Audio('/turn-demo.mp3'); snd.preload = 'auto';
-  let running = false, timers = [], raf = 0;
+  const RATE = 22050;
+  let ac = null, running = false, timers = [];
+  const render = (notes, gap = 0) => {
+    const total = notes.reduce((a, n) => a + n[1], 0) + gap * (notes.length - 1);
+    const buf = ac.createBuffer(1, Math.ceil(total * RATE / 1000), RATE); const out = buf.getChannelData(0);
+    let pos = 0;
+    notes.forEach(([f, ms], i) => {
+      const len = Math.floor(ms * RATE / 1000); const ramp = Math.min(len / 4, RATE / 100);
+      for (let k = 0; k < len; k++) {
+        const env = k < ramp ? k / ramp : k > len - ramp ? (len - k) / ramp : 1;
+        const v = Math.sin(2 * Math.PI * f * k / RATE) * 0.8 + Math.sin(4 * Math.PI * f * k / RATE) * 0.2;
+        out[pos + k] = v * env * 0.6;
+      }
+      pos += len + (i < notes.length - 1 ? Math.floor(gap * RATE / 1000) : 0);
+    });
+    return buf;
+  };
+  const play = (buf) => { const s = ac.createBufferSource(); s.buffer = buf; s.connect(ac.destination); s.start(); };
+  const pip = (progress) => { const step = Math.floor(Math.max(0, Math.min(1, progress)) * 16); play(render([[520 * Math.pow(2, step / 16), 70]])); };
+  const chime = () => play(render([[1040, 90], [1320, 160]], 20));
+  const pipInterval = (p) => 1600 - 1350 * Math.max(0, Math.min(1, p));
   const say = (text) => { try { if (!('speechSynthesis' in window)) return; speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; speechSynthesis.speak(u); } catch {} };
   const later = (ms, f) => timers.push(setTimeout(f, ms));
-  const reset = () => { dist.textContent = '400 ft'; fill.setAttribute('y', 100); };
-  const stop = () => { running = false; cancelAnimationFrame(raf); timers.forEach(clearTimeout); timers = []; try { snd.pause(); snd.currentTime = 0; } catch {} btn.textContent = '▶ Play a turn'; hud.classList.remove('turn'); };
+  const stop = () => { running = false; timers.forEach(clearTimeout); timers = []; btn.textContent = '▶ Play a turn'; hud.classList.remove('turn'); };
   const ft = (m) => Math.round(m * 3.28084 / 10) * 10;
   btn.onclick = () => {
-    if (running) { stop(); cap.textContent = ''; reset(); return; }
+    if (running) { stop(); cap.textContent = ''; dist.textContent = '400 ft'; fill.setAttribute('y', 100); return; }
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
     running = true; btn.textContent = '■ Stop';
     // one approach: 120 m out at 12 m/s (27 mph) is ten seconds; the app speaks about fifteen seconds out, so the words come first
-    const total = 10, speed = 12;
+    const total = 10000, speed = 12;
     const t0 = performance.now();
     cap.textContent = 'Spoken first: "Left. Onto Dry Creek Road."';
     say('Left. Onto Dry Creek Road.');
-    snd.currentTime = 0;
-    const played = snd.play(); if (played && played.catch) played.catch(() => { cap.textContent = 'The sound could not start. Turn the media volume up and try again.'; });
-    let lastPhase = '';
+    let nextPip = 1400;
     const tick = () => {
       if (!running) return;
-      // the clip's own clock keeps the arrow in step with the pips; fall back to wall time until it starts
-      const t = snd.currentTime > 0 ? snd.currentTime : (performance.now() - t0) / 1000;
-      const p = Math.min(1, t / total); const m = (1 - p) * speed * total;
+      const t = performance.now() - t0; const p = Math.min(1, t / total); const m = (1 - p) * speed * total / 1000;
       dist.textContent = ft(m) + ' ft';
       fill.setAttribute('y', 100 - 100 * p);
-      const phase = t < 1.4 ? 'said' : p < 0.5 ? 'slow' : 'fast';
-      if (phase !== lastPhase) { lastPhase = phase; if (phase === 'slow') cap.textContent = 'Pips, slow and low: the turn is still a way off.'; if (phase === 'fast') cap.textContent = 'Rising and quickening as the arrow fills.'; }
-      if (p >= 1) { hud.classList.add('turn'); dist.textContent = 'Turn'; cap.textContent = 'The chime: turn now.'; later(1800, () => { stop(); reset(); cap.textContent = 'That was one approach. Play it again, or read on.'; }); return; }
-      raf = requestAnimationFrame(tick);
+      if (t >= nextPip && p < 1) { pip(p); nextPip = t + pipInterval(p); cap.textContent = p < 0.5 ? 'Pips, slow and low: the turn is still a way off.' : 'Rising and quickening as the arrow fills.'; }
+      if (p >= 1) { chime(); hud.classList.add('turn'); dist.textContent = 'Turn'; cap.textContent = 'The chime: turn now.'; later(1800, () => { stop(); dist.textContent = '400 ft'; fill.setAttribute('y', 100); cap.textContent = 'That was one approach. Play it again, or read on.'; }); return; }
+      requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
+    requestAnimationFrame(tick);
   };
 })();
 

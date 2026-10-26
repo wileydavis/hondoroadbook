@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import fold.core.Demand
 import fold.core.FixState
 import fold.core.Fix
 import fold.core.NavController
@@ -38,10 +39,14 @@ class NavService : Service() {
     private val ui = Handler(Looper.getMainLooper())
     private var lastNotify = 0L
     private var lastCheckpoint = 0L
+    private var lastDemand = 0L
+    private var fixInterval = 1000L
+    private var awake = true
     private val listener = object : LocationListener {
         override fun onLocationChanged(loc: Location) {
             val c = controller ?: return
             c.update(Fix(loc.latitude, loc.longitude, if (loc.hasSpeed()) loc.speed.toDouble() else -1.0, if (loc.hasBearing()) loc.bearing.toDouble() else -1.0, loc.elapsedRealtimeNanos / 1_000_000L, if (loc.hasAccuracy()) loc.accuracy.toDouble() else 50.0))
+            if (!awake) { ui.removeCallbacks(tick); ui.post(tick) }
             onFix?.invoke(c)
         }
         override fun onProviderEnabled(provider: String) {}
@@ -57,8 +62,10 @@ class NavService : Service() {
             if (v != null) {
                 if (now - lastNotify > 5000) { lastNotify = now; notifyLine(v) }
                 if (now - lastCheckpoint > 30_000) { lastCheckpoint = now; writeCheckpoint(c, now) }
+                if (now - lastDemand > 2000) { lastDemand = now; follow(c.demand(now)) }
             }
-            ui.postDelayed(this, 250)
+            // between fixes on a quiet leg the CPU sleeps; the next fix wakes us and the tick runs then
+            ui.postDelayed(this, if (awake) 250 else 1000)
         }
     }
 
@@ -83,6 +90,19 @@ class NavService : Service() {
         running = true
         ui.removeCallbacks(tick); ui.post(tick)
         return START_NOT_STICKY
+    }
+
+    /** Gives the ride what it asks for and no more: the GPS interval, and the CPU held awake or not. */
+    @SuppressLint("MissingPermission", "WakelockTimeout")
+    private fun follow(d: Demand) {
+        if (d.fixIntervalMs != fixInterval) {
+            fixInterval = d.fixIntervalMs
+            try { lm?.requestLocationUpdates(LocationManager.GPS_PROVIDER, fixInterval, 0f, listener, Looper.getMainLooper()) } catch (_: Throwable) {}
+        }
+        if (d.awake != awake) {
+            awake = d.awake
+            try { wake?.let { w -> if (awake && !w.isHeld) w.acquire() else if (!awake && w.isHeld) w.release() } } catch (_: Throwable) {}
+        }
     }
 
     private fun failed(why: String) { running = false; lastFailure = why; ui.post { onFailure?.invoke(why) } }
@@ -137,7 +157,10 @@ class NavService : Service() {
             }
             override fun say(phrase: String) = Speech.say(phrase)
             override fun prepare(phrase: String) = Speech.prepare(phrase)
+            override fun attention(on: Boolean) { onAttention?.invoke(on) }
         }
+        /** the activity's hook: wake the screen for a cue, let it sleep after */
+        var onAttention: ((Boolean) -> Unit)? = null
 
         fun checkpointFile(ctx: Context) = File(File(ctx.filesDir, "nav").apply { mkdirs() }, "active.nav")
 

@@ -21,6 +21,9 @@ import android.widget.Button
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.os.PowerManager
+import android.content.Context
+import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -193,6 +196,10 @@ class MainActivity : AppCompatActivity() {
         // the notification's End button, when the screen is off and the phone is in a pocket
         NavService.onStopRequested = { if (mode == Mode.NAV) endNavigation() else NavService.stop(this) }
         NavService.onFailure = { why -> toast("Navigation cannot run with the screen off: $why", 8000) }
+        NavService.onAttention = { on -> ui.post { onAttention(on) } }
+        if (prefs.batterySaver) applyBatteryFlags(true)
+        // under 15 % while navigating, the saver turns itself on rather than let the ride die on a long leg
+        registerReceiver(batteryRx, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         if (prefs.orientation >= 0) requestedOrientation = prefs.orientation
         if (BuildConfig.ROADBOOK) { Speech.init(this); Speech.enabled = prefs.sound }
         setContentView(R.layout.activity_main)
@@ -958,7 +965,9 @@ class MainActivity : AppCompatActivity() {
         route = r; isTrack = track
         // the ride itself — route, follower, what has been said — belongs to the service, so it outlives this screen
         val c = resumed ?: NavController(r, track, if (track) trackName else destName, profile.name, NavService.sink).also { c -> lastFix?.let { c.update(it) } }
+        c.batterySaver = prefs.batterySaver; c.worstSpeed = if (profile.bike) 10.0 else 30.0
         NavService.start(this, c)
+        if (prefs.batterySaver) { applyBatteryFlags(true); batteryHint() }
         drawRoute(r)
         drawVias()
         clearPinMarker()
@@ -999,8 +1008,70 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    // ---- battery saver: the screen wakes for a cue and sleeps after; between cues the GPS eases and the CPU rests
+    private val batteryRx = object : android.content.BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            val level = intent?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1; val scale = intent?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+            val charging = (intent?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+            if (level in 0..(scale * 15 / 100) && !charging && mode == Mode.NAV && !prefs.batterySaver) { setBatterySaver(true); toast("Battery at ${level * 100 / scale} % — battery saver on", 6000) }
+        }
+    }
+    private var dark: View? = null
+    private var darkText: TextView? = null
+    private var brightLock: PowerManager.WakeLock? = null
+    private var hinted = false
+    private fun setBatterySaver(on: Boolean) {
+        prefs.batterySaver = on
+        NavService.controller?.let { it.batterySaver = on; it.worstSpeed = if (profile.bike) 10.0 else 30.0 }
+        applyBatteryFlags(on)
+        if (on) { if (mode == Mode.NAV) { dim(true); batteryHint() } else toast("Battery saver: while navigating, the screen wakes for each cue and sleeps after; the GPS eases between cues", 6000) }
+        else { dim(false); if (mode == Mode.NAV) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+    private fun batteryHint() {
+        if (hinted) return; hinted = true
+        toast("Battery saver on. No signal out here? Airplane mode with Bluetooth on roughly doubles the battery — the maps and the voice do not need one.", 9000)
+    }
+    /** the screen may wake over the lock screen for a cue, without unlocking */
+    private fun applyBatteryFlags(on: Boolean) {
+        if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(on); setTurnScreenOn(on) }
+    }
+    /** The dark HUD: the map black, the next cue in grey at minimum brightness; keep-screen-on dropped so the phone's own timeout can sleep the screen. */
+    private fun dim(on: Boolean) {
+        if (on) {
+            if (dark == null) {
+                val root = findViewById<android.widget.FrameLayout>(R.id.root)
+                val d = android.widget.FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()); isClickable = true }
+                val t = TextView(this).apply { setTextColor(0xFF9A9A9A.toInt()); textSize = 28f; gravity = android.view.Gravity.CENTER; setPadding(dp(24), dp(24), dp(24), dp(24)) }
+                d.addView(t, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER))
+                d.setOnClickListener { dim(false); window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); ui.postDelayed({ if (prefs.batterySaver && mode == Mode.NAV && NavService.controller?.view(android.os.SystemClock.elapsedRealtime())?.progress == 0.0) dim(true) }, 20_000) }
+                root.addView(d, root.indexOfChild(mapView) + 1, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
+                dark = d; darkText = t
+            }
+            dark?.visibility = View.VISIBLE; hud.visibility = View.GONE
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+            try { brightLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) {}
+        } else {
+            dark?.visibility = View.GONE
+            window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
+    }
+    /** A cue is near (or the line is lost): light the screen, over the lock screen if need be, for half a minute. */
+    @Suppress("DEPRECATION")
+    private fun onAttention(on: Boolean) {
+        if (!prefs.batterySaver || mode != Mode.NAV) return
+        if (on) {
+            dim(false); window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            try {
+                if (brightLock == null) brightLock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE, "roadbook:cue")
+                brightLock?.acquire(45_000L)
+            } catch (_: Throwable) {}
+        } else dim(true)
+    }
+
     private fun endNavigation() {
         Speech.stop()
+        dim(false); try { brightLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) {}
         NavService.stop(this)
         routeGeneration++
         route = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
@@ -1059,6 +1130,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHud(v: NavView) {
+        darkText?.let { t -> if (dark?.visibility == View.VISIBLE) { val m = v.next; t.text = when { v.arrived -> getString(R.string.arrived); !v.onRoute -> getString(R.string.off_track); m == null -> Units.distance(v.remaining); else -> Units.cue(v.distToNext) + "\n" + (if (m.turn == Turn.ARRIVE) "Destination" else m.phrase()) } } }
         if (mode != Mode.NAV) { if (v.onRoute) updatePuck(v.lat, v.lon, follower?.route?.segmentBearing(v.segment) ?: heading); return }
         if (v.arrived) {
             hud.visibility = View.VISIBLE; offPanel.visibility = View.GONE
@@ -1591,6 +1663,7 @@ class MainActivity : AppCompatActivity() {
         if (nav) {
             items.add(MenuItem("END", R.drawable.ic_end, accent = true) { endNavigation() })
             items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound) { findViewById<ImageButton>(R.id.btnSound).performClick() })
+            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
             if (BuildConfig.ROADBOOK && isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })
             if (!isTrack) items.add(MenuItem("TURN LIST", R.drawable.ic_list) { route?.let { showTurnList(it) } })
             if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
@@ -1601,6 +1674,7 @@ class MainActivity : AppCompatActivity() {
             if (BuildConfig.ROADBOOK) items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
             if (libraryOn) items.add(MenuItem("HIDE ROADBOOKS", R.drawable.ic_list, on = true) { showLibrary(false) })
             if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain) { prefs.terrain = !prefs.terrain; loadStyle() })
+            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
         }
         items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night) { findViewById<ImageButton>(R.id.btnNight).performClick() })
         items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })
@@ -1672,6 +1746,7 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) { super.onSaveInstanceState(outState); mapView.onSaveInstanceState(outState) }
     override fun onDestroy() {
         super.onDestroy()
+        try { unregisterReceiver(batteryRx) } catch (_: Throwable) {}
         try { locationManager.removeUpdates(locationListener) } catch (_: Throwable) {}
         ui.removeCallbacks(hudTick)
         mapView.onDestroy()

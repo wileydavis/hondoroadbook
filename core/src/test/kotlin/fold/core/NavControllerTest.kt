@@ -62,3 +62,50 @@ class NavControllerTest {
         assertEquals("tone:ARRIVE", rec2.log.last { it.startsWith("tone:") })
     }
 }
+
+/** Battery mode: the GPS eases between cues and never so far that a turn can be missed; the screen is asked for only around cues. */
+class BatteryDemandTest {
+    private fun p(e: Double, n: Double) = doubleArrayOf(e, n)
+    private val long = (0..200).map { p(it * 50.0, 0.0) }   // 10 km straight east, a point every 50 m
+    private class Rec : NavSink {
+        val attention = ArrayList<Boolean>()
+        override fun tone(kind: ToneKind, level: Int, progress: Double) {}
+        override fun say(phrase: String) {}
+        override fun prepare(phrase: String) {}
+        override fun attention(on: Boolean) { attention.add(on) }
+    }
+
+    @Test fun farFromACueTheGpsEasesAndNearItTightens() {
+        val cues = listOf(Fixtures.cue(8000.0, 0.0, Turn.DANGER, "washout", 2))
+        val r = Fixtures.track(long, cues)
+        val rec = Rec(); val c = NavController(r, true, "Test", "RIDE", rec).also { it.sound = true; it.batterySaver = true; it.worstSpeed = 10.0 }
+        val fixes = Fixtures.ride(long, 6.0)   // 6 m/s, a bike
+        var eased = 0; var tight = 0; var longestGapBeforeCue = 0L
+        for (f in fixes) {
+            c.update(f); c.tick(f.timeMs)
+            val v = c.view(f.timeMs); val d = c.demand(f.timeMs)
+            if (v.along < 5000.0) { if (d.fixIntervalMs > 5000L) eased++ } else if (v.along > 7700.0 && v.along < 8000.0) { if (d.fixIntervalMs == 1000L) tight++ }
+            // the guarantee: at the worst speed, at least six fixes fit before the cue
+            val gap = 8000.0 - v.along; if (gap > 0 && v.along < 7900.0) assertTrue(d.fixIntervalMs <= (gap / 10.0 / 6.0 * 1000.0).toLong().coerceAtLeast(1000L), "interval ${d.fixIntervalMs} ms leaves six fixes at 10 m/s before the cue ${"%.0f".format(gap)} m away")
+            longestGapBeforeCue = Math.max(longestGapBeforeCue, d.fixIntervalMs)
+        }
+        assertTrue(eased > 100, "the GPS eased on the long empty leg ($eased fixes at >5 s)")
+        assertTrue(tight > 20, "and tightened to 1 Hz on the approach ($tight)")
+        assertTrue(longestGapBeforeCue <= 15_000L, "never more than 15 s between fixes")
+        assertTrue(rec.attention.first(), "the screen was asked for when the cue's window opened")
+        assertTrue(rec.attention.count { it } in 1..3, "asked for around the cue and arrival, not all ride: ${rec.attention}")
+    }
+
+    @Test fun offTheRouteEverythingWakes() {
+        val r = Fixtures.track(long)
+        val rec = Rec(); val c = NavController(r, true, "Test", "RIDE", rec).also { it.sound = true; it.batterySaver = true; it.worstSpeed = 10.0 }
+        val fixes = Fixtures.ride(long.take(60), 6.0)
+        for (f in fixes) { c.update(f); c.tick(f.timeMs) }
+        // wander 400 m north of the line for a while
+        val last = fixes.last(); var t = last.timeMs
+        for (k in 1..8) { t += 1000; val q = Fixtures.ll(3000.0 + k * 6.0, 400.0); c.update(Fix(q[0], q[1], 6.0, 90.0, t, 5.0)); c.tick(t) }
+        val d = c.demand(t)
+        assertEquals(1000L, d.fixIntervalMs, "lost the line: one fix a second"); assertTrue(d.awake)
+        assertTrue(rec.attention.contains(true), "and the screen is asked for")
+    }
+}
