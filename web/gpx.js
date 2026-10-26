@@ -40,9 +40,10 @@ export function parseGpx(text) {
     if (lat == null || lon == null) throw new GpxError("a cue has a bad coordinate");
     if (cues.length >= LIMITS.cues) throw new GpxError(`more than ${LIMITS.cues.toLocaleString()} cues`, 413);
     const words = unesc(inner(m[2], "desc") || inner(m[2], "name") || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, LIMITS.text);
-    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words }); else throw new GpxError(`unknown cue type ${type.slice(0, 30)}`); }
-    else if (type.startsWith("danger")) { const lv = Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)); cues.push({ lon, lat, turn: "DANGER", level: lv, text: words }); }
-    else if (words) cues.push({ lon, lat, turn: "NOTE", text: words });
+    const href = unesc((/<link\s+href="([^"]*)"/.exec(m[2]) || [, ""])[1]); const link = /^https?:\/\/[^\s"'<>]{1,200}$/.test(href) ? href : "";
+    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words, link }); else throw new GpxError(`unknown cue type ${type.slice(0, 30)}`); }
+    else if (type.startsWith("danger")) { const lv = Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)); cues.push({ lon, lat, turn: "DANGER", level: lv, text: words, link }); }
+    else if (words) cues.push({ lon, lat, turn: "NOTE", text: words, link });
   }
   const ext = /<roadbook>([\s\S]*?)<\/roadbook>/.exec(text);
   const meta = {};
@@ -165,7 +166,7 @@ export function writeGpx(name, pts, cues, meta = {}) {
   out.push("  </metadata>");
   for (const c of cues) {
     const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`;
-    out.push(`  <wpt lat="${c.lat}" lon="${c.lon}"><name>${esc(c.text || label(c.turn))}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}<type>${type}</type></wpt>`);
+    out.push(`  <wpt lat="${c.lat}" lon="${c.lon}"><name>${esc(c.text || label(c.turn))}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type></wpt>`);
   }
   out.push(`  <trk><name>${esc(name)}</name><trkseg>`);
   for (const p of pts) out.push(`    <trkpt lat="${p[1]}" lon="${p[0]}">${p.length > 2 ? `<ele>${Math.round(p[2])}</ele>` : ""}</trkpt>`);

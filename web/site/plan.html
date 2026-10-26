@@ -90,12 +90,23 @@
 
 <!-- inspect -->
 <div id="inspect" class="sheet wide" hidden>
-  <div class="sheet-head"><b>Inspect</b><span id="inspCoord" class="muted small"></span><button class="icon" data-close>×</button></div>
+  <div class="sheet-head"><b>Inspect</b><span id="inspCoord" class="muted small"></span><button id="btnSources" class="mini" title="The sites the web sections search">sources</button><button class="icon" data-close>×</button></div>
   <div id="inspMap" class="inspmap"></div>
   <div class="insp-links" id="inspLinks"></div>
   <div id="inspFacts" class="facts"></div>
+  <div id="inspNear" class="near"></div>
+  <div id="inspSections" class="sections"></div>
   <div id="inspWiki" class="wiki"></div>
   <div id="inspWeb" class="web"></div>
+  <p class="muted small" style="margin:10px 0 0">Everything here is a lead, not a verdict: OpenStreetMap for what is nearby (<span id="inspAt"></span>), your source list for the web. <b>+ note</b> puts a finding on the route as a cue with its link.</p>
+</div>
+
+<!-- the rider's own list of trusted sites -->
+<div id="sources" class="sheet" hidden>
+  <div class="sheet-head"><b>Web sources</b><button class="icon" data-close>×</button></div>
+  <p class="muted small">Each section of Inspect searches only these sites. One hostname per line; edit freely — this list lives in your browser, nowhere else.</p>
+  <div id="sourceGroups"></div>
+  <div class="sheet-actions"><button id="srcReset" class="mini">defaults</button><span></span><button id="srcSave" class="cta">Save</button></div>
 </div>
 
 <!-- send to phone / publish results -->

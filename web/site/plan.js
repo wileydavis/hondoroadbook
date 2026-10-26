@@ -493,7 +493,7 @@ function renderCues() {
   S.cues.forEach((c, idx) => {
     const li = document.createElement("li"); li.className = c.auto ? "auto" : "user";
     const g = arrowSvg(c.turn, c.level, c.exit);
-    li.innerHTML = `<span class="g">${g}</span><span><b>${esc(WORDS[c.turn] || c.turn)}</b>${c.text ? `<span class="words">${esc(c.text)}</span>` : ""}</span><span class="at">${fmtDistShort(c.at)}</span>`;
+    li.innerHTML = `<span class="g">${g}</span><span><b>${esc(WORDS[c.turn] || c.turn)}</b>${c.text ? `<span class="words">${esc(c.text)}${c.link ? ` <a href="${esc(c.link)}" target="_blank" rel="noopener" title="${esc(c.link)}">↗</a>` : ""}</span>` : ""}</span><span class="at">${fmtDistShort(c.at)}</span>`;
     li.onclick = () => { map.flyTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 14) }); editCue(idx); };
     ol.appendChild(li);
     const el = document.createElement("div"); el.className = "marker-cue" + (c.turn === "DANGER" ? " danger" : c.turn === "NOTE" ? " note" : "") + (c.auto ? "" : " user"); el.innerHTML = g; el.title = (WORDS[c.turn] || c.turn) + (c.text ? ": " + c.text : "");
@@ -523,7 +523,7 @@ $("#cueSave").onclick = () => {
   const on = $("#cueEd [data-turn].on"); if (!on) return;
   const turn = on.dataset.turn, level = turn === "DANGER" ? Number(on.dataset.level) : 0, text = $("#cueText").value.trim();
   if (turn === "NOTE" && !text) { $("#cueText").focus(); return; }
-  if (editing.idx != null) { const c = S.cues[editing.idx]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); Object.assign(c, { turn, level, text, auto: false }); }
+  if (editing.idx != null) { const c = S.cues[editing.idx]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); Object.assign(c, { turn, level, text, auto: false }); }   // c.link stays
   else S.cues.push({ lon: editing.lon, lat: editing.lat, turn, level, text, auto: false });
   $("#cueEd").hidden = true; renderCues();
 };
@@ -660,28 +660,98 @@ async function inspect(lon, lat) {
   const el = document.createElement("div"); el.className = "marker-pt via"; inspMap._mk = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(inspMap);
   $("#inspS2").onclick = () => { inspMap.setStyle(style("s2")); inspMap.jumpTo({ zoom: Math.min(inspMap.getZoom(), 14) }); };
   // what the graph knows
-  $("#inspFacts").innerHTML = `<span class="muted">Looking up…</span>`; $("#inspWiki").innerHTML = ""; $("#inspWeb").innerHTML = "";
-  let name = "", region = "";
-  try {
-    const r = await fetch(`/api/snap?lon=${lon}&lat=${lat}&max=400`); const j = await r.json();
-    if (r.ok) { name = j.name; region = j.region; const cls = (SURF[j.cls] || ["Road"])[0]; $("#inspFacts").innerHTML = `<b>${esc(j.name || "Unnamed " + j.cls.replace("_", " "))}</b><div class="muted">${esc(j.cls.replace("_", " "))} · ${j.unpaved ? "unpaved" : "paved or unknown surface"}${j.oneway ? " · one way" : ""} · ${Math.round(j.distance)} m from the point · ${esc(j.region)}</div>`; }
-    else $("#inspFacts").innerHTML = `<span class="muted">${esc(j.error)}</span>`;
-  } catch { $("#inspFacts").innerHTML = `<span class="muted">The router is not reachable right now.</span>`; }
+  $("#inspFacts").innerHTML = `<span class="muted">Looking up…</span>`; $("#inspNear").innerHTML = `<span class="muted">Asking OpenStreetMap what is nearby…</span>`; $("#inspSections").innerHTML = ""; $("#inspWiki").innerHTML = ""; $("#inspWeb").innerHTML = "";
+  const here = { lon, lat };
+  let name = "", region = "", town = "";
+  const facts = (async () => {
+    try {
+      const r = await fetch(`/api/snap?lon=${lon}&lat=${lat}&max=400`); const j = await r.json();
+      if (r.ok) { name = j.name; region = j.region; $("#inspFacts").innerHTML = `<b>${esc(j.name || "Unnamed " + j.cls.replace("_", " "))}</b><div class="muted">${esc(j.cls.replace("_", " "))} · ${j.unpaved ? "unpaved" : "paved or unknown surface"}${j.oneway ? " · one way" : ""} · ${Math.round(j.distance)} m from the point · ${esc(j.region)}</div>`; }
+      else $("#inspFacts").innerHTML = `<span class="muted">${esc(j.error)}</span>`;
+    } catch { $("#inspFacts").innerHTML = `<span class="muted">The router is not reachable right now.</span>`; }
+  })();
+  // what is around: fuel, food, camping, water, beds, repair, the nearest town
+  const nearby = (async () => {
+    try {
+      const r = await fetch(`/api/near?lon=${lon}&lat=${lat}`); const j = await r.json();
+      if (!r.ok) { $("#inspNear").innerHTML = `<span class="muted">${esc(j.error)}</span>`; return; }
+      town = (j.near.town[0] && j.near.town[0].name) || "";
+      $("#inspAt").textContent = "as of " + (j.at || "today");
+      const sec = (title, items, fmt) => items.length ? `<h4>${title}</h4>` + items.map(i => `<div class="row"><span><b>${esc(i.name || fmt.anon || "unnamed")}</b> ${i.kind ? `<span class="k">${esc(i.kind)}</span>` : ""}${i.fee === "free" ? ` <span class="free">free</span>` : i.fee === "fee" ? ` <span class="k">fee</span>` : ""}${i.operator ? ` <span class="k">· ${esc(i.operator)}</span>` : ""}${i.hours ? ` <span class="k">· ${esc(i.hours)}</span>` : ""}${i.phone ? ` <span class="k">· ${esc(i.phone)}</span>` : ""}${i.website ? ` <a target="_blank" rel="noopener" href="${esc(i.website)}">site</a>` : ""}</span><span class="d">${fmtDistShort(i.d)} ${compass(i.bearing)}</span><button data-note="${esc(`${fmt.label}: ${i.name || fmt.anon || "unnamed"}, ${fmtDistShort(i.d)} ${compass(i.bearing)}`)}" data-lon="${i.lon}" data-lat="${i.lat}" title="Add as a note on the route here">+ note</button></div>`).join("") : "";
+      $("#inspNear").innerHTML =
+        (j.near.town.length ? `<div class="muted small">Nearest: ${j.near.town.map(t => esc(t.name) + " (" + fmtDistShort(t.d) + " " + compass(t.bearing) + ")").join(", ")}</div>` : "") +
+        sec("Fuel", j.near.fuel, { label: "Fuel" }) + sec("Food & supplies", j.near.food, { label: "Food" }) + sec("Camping", j.near.camping, { label: "Camp", anon: "campsite" }) +
+        sec("Water", j.near.water, { label: "Water", anon: "water" }) + sec("Beds", j.near.lodging, { label: "Lodging" }) + sec("Repair", j.near.repair, { label: "Repair" }) +
+        (Object.values(j.near).every(a => !a.length) ? `<span class="muted">Nothing tagged within reach of this spot. That itself is worth knowing.</span>` : "");
+      $("#inspNear").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, ""));
+    } catch { $("#inspNear").innerHTML = `<span class="muted">Nearby lookup failed.</span>`; }
+  })();
   // nearby Wikipedia
+  (async () => {
+    try {
+      const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=6&format=json&origin=*`);
+      const j = await r.json(); const hits = (j.query && j.query.geosearch) || [];
+      if (hits.length) $("#inspWiki").innerHTML = `<h4>Nearby on Wikipedia</h4>` + hits.map(h => `<a target="_blank" rel="noopener" href="https://en.wikipedia.org/?curid=${h.pageid}">${esc(h.title)} <span class="muted">· ${fmtDistShort(h.dist)}</span></a>`).join("");
+    } catch {}
+  })();
+  // the curated web: each section asks only the rider's own sites for this road or place
+  await Promise.all([facts, nearby]);
+  const place = [name, town || region].filter(Boolean).join(" ") || [town, region].filter(Boolean).join(" ") || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  const src = sources();
+  const secs = [
+    ["Free & dispersed camping", src.camping, [town || name, region, "camping"].filter(Boolean).join(" ")],
+    ["Trip reports & forums", src.forums, name ? `"${name}" ${region}` : `${town} ${region} dual sport OR adventure ride`],
+    ["Trail & road guides", src.guides, name ? `${name} ${region}` : `${town} ${region} trail OR road`],
+  ];
+  const box = $("#inspSections"); box.innerHTML = secs.map((x, i) => `<div id="sec${i}"><h4>${x[0]}</h4><span class="muted">Searching…</span></div>`).join("");
+  await Promise.all(secs.map(async ([title, sites, q], i) => {
+    const el = $("#sec" + i); if (!sites.length) { el.innerHTML = `<h4>${title}</h4><span class="muted">no sites listed — see sources</span>`; return; }
+    const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(q + " (" + sites.map(s => "site:" + s).join(" OR ") + ")")}">open this search</a>`;
+    try {
+      const r = await fetch(`/api/web?q=${encodeURIComponent(q)}&sites=${encodeURIComponent(sites.join(","))}`); const j = await r.json();
+      if (r.ok && j.results && j.results.length) el.innerHTML = `<h4>${title}</h4>` + j.results.slice(0, 5).map(w => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}" title="Add this finding as a note on the route here">+ note</button></div>`).join("") + `<div class="muted small">${ext}</div>`;
+      else el.innerHTML = `<h4>${title}</h4><span class="muted">${r.status === 501 ? "web search is not set up on this site · " : "nothing found · "}</span>${ext}`;
+    } catch { el.innerHTML = `<h4>${title}</h4>${ext}`; }
+    el.querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
+  }));
+  // and the open web, last
+  const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(place)}">Search the web for “${esc(place)}”</a>`;
   try {
-    const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}|${lon}&gsradius=10000&gslimit=6&format=json&origin=*`);
-    const j = await r.json(); const hits = (j.query && j.query.geosearch) || [];
-    if (hits.length) $("#inspWiki").innerHTML = `<h4>Nearby on Wikipedia</h4>` + hits.map(h => `<a target="_blank" rel="noopener" href="https://en.wikipedia.org/?curid=${h.pageid}">${esc(h.title)} <span class="muted">· ${fmtDistShort(h.dist)}</span></a>`).join("");
-  } catch {}
-  // the web
-  const q = [name, region].filter(Boolean).join(" ") || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-  const ext = `<a target="_blank" rel="noopener" href="https://duckduckgo.com/?q=${encodeURIComponent(q + " trail OR road")}">Search the web for “${esc(q)}”</a>`;
-  try {
-    const r = await fetch(`/api/web?q=${encodeURIComponent(q + (name ? " road trail" : ""))}`); const j = await r.json();
-    if (r.ok && j.results && j.results.length) $("#inspWeb").innerHTML = `<h4>On the web</h4>` + j.results.map(w => `<a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><p>${esc(w.description || "")}</p>`).join("") + ext;
-    else $("#inspWeb").innerHTML = `<h4>On the web</h4>${ext}`;
-  } catch { $("#inspWeb").innerHTML = `<h4>On the web</h4>${ext}`; }
+    const r = await fetch(`/api/web?q=${encodeURIComponent(place + (name ? " road" : ""))}`); const j = await r.json();
+    if (r.ok && j.results && j.results.length) $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>` + j.results.slice(0, 5).map(w => `<div class="row"><span class="body"><a target="_blank" rel="noopener" href="${esc(w.url)}">${esc(w.title)}</a><small>${esc(w.site || "")} · ${esc((w.description || "").slice(0, 140))}</small></span><button data-note="${esc(w.title.slice(0, 120))}" data-link="${esc(w.url)}">+ note</button></div>`).join("") + `<div class="muted small">${ext}</div>`;
+    else $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>${ext}`;
+    $("#inspWeb").querySelectorAll("button[data-note]").forEach(b => b.onclick = () => addNoteHere(here, b.dataset.note, b.dataset.link));
+  } catch { $("#inspWeb").innerHTML = `<h4>Elsewhere on the web</h4>${ext}`; }
 }
+function compass(b) { return ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((b % 360) + 360) % 360 / 45) % 8]; }
+/** A finding becomes a cue at the inspected spot: a note with the words, and the link kept for the GPX. */
+function addNoteHere(at, text, link) {
+  if (!lineCoords()) { status("Plan a route first; then findings can go on it", true); return; }
+  S.cues.push({ lon: at.lon, lat: at.lat, turn: "NOTE", level: 0, text: String(text).slice(0, 120), link: link || "", auto: false });
+  renderCues(); status("Added as a note on the route" + (link ? " — the link travels with the GPX" : ""));
+}
+
+// ---- the rider's own source list ------------------------------------------------------------------------------------
+const DEFAULT_SOURCES = {
+  camping: ["freecampsites.net", "campendium.com", "ioverlander.com", "thedyrt.com", "fs.usda.gov", "blm.gov"],
+  forums: ["advrider.com", "reddit.com", "expeditionportal.com", "thumpertalk.com", "adventurerider.com"],
+  guides: ["trailsoffroad.com", "onxmaps.com", "alltrails.com", "fs.usda.gov", "blm.gov", "stateparks.com"],
+};
+function sources() {
+  try { const s = JSON.parse(localStorage.getItem("rb.sources") || "null"); if (s && typeof s === "object") return { ...DEFAULT_SOURCES, ...s }; } catch {}
+  return DEFAULT_SOURCES;
+}
+$("#btnSources").onclick = () => {
+  const cur = sources(); for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
+  $("#sourceGroups").innerHTML = [["camping", "Free & dispersed camping"], ["forums", "Trip reports & forums"], ["guides", "Trail & road guides"]].map(([k, t]) => `<label>${t}</label><textarea data-group="${k}">${esc(cur[k].join("\n"))}</textarea>`).join("");
+  $("#sources").hidden = false;
+};
+$("#srcSave").onclick = () => {
+  const out = {}; for (const ta of document.querySelectorAll("#sourceGroups textarea")) out[ta.dataset.group] = ta.value.split(/\n/).map(s => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter(s => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)).slice(0, 8);
+  try { localStorage.setItem("rb.sources", JSON.stringify(out)); } catch {}
+  $("#sources").hidden = true; status("Sources saved in this browser");
+};
+$("#srcReset").onclick = () => { try { localStorage.removeItem("rb.sources"); } catch {} $("#btnSources").onclick(); };
 
 // ---- search ---------------------------------------------------------------------------------------------------------
 let searchT;
@@ -710,7 +780,7 @@ function gpxOut() {
   const cues = S.cues.slice().sort((a, b) => a.at - b.at);
   let paved = 0, unpaved = 0; if (S.route) for (const r of S.route.surface) { if (r.unpaved || r.cls === "track" || r.cls === "path") unpaved += r.m; else paved += r.m; }
   const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<gpx version="1.1" creator="Roadbook Planner" xmlns="http://www.topografix.com/GPX/1/1">', `  <metadata><name>${esc(name)}</name><extensions><roadbook>${S.route ? `<mode>${S.route.mode}</mode><paved>${Math.round(paved)}</paved><unpaved>${Math.round(unpaved)}</unpaved>` : ""}<planner>1</planner></roadbook></extensions></metadata>`];
-  for (const c of cues) { const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`; out.push(`  <wpt lat="${c.lat.toFixed(6)}" lon="${c.lon.toFixed(6)}"><name>${esc(c.text || WORDS[c.turn])}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}<type>${type}</type></wpt>`); }
+  for (const c of cues) { const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`; out.push(`  <wpt lat="${c.lat.toFixed(6)}" lon="${c.lon.toFixed(6)}"><name>${esc(c.text || WORDS[c.turn])}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link && /^https?:\/\//.test(c.link) ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type></wpt>`); }
   out.push(`  <trk><name>${esc(name)}</name><trkseg>`);
   for (const p of line) out.push(`    <trkpt lat="${p[1].toFixed(6)}" lon="${p[0].toFixed(6)}"></trkpt>`);
   out.push("  </trkseg></trk>", "</gpx>", "");
@@ -771,9 +841,10 @@ function parseGpx(text) {
     const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A cue has a bad coordinate");
     if (cues.length >= IMPORT_LIMITS.cues) throw new Error(`More than ${IMPORT_LIMITS.cues.toLocaleString()} cues`);
     const words = unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] || /<name>([\s\S]*?)<\/name>/.exec(m[2])?.[1] || "").trim()).slice(0, 200);
-    if (type.startsWith("cue:") && TURNS.includes(type.slice(4).toUpperCase())) cues.push({ lon, lat, turn: type.slice(4).toUpperCase(), level: 0, text: words, auto: false });
-    else if (type.startsWith("danger")) cues.push({ lon, lat, turn: "DANGER", level: Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)), text: words, auto: false });
-    else if (type === "note" && words) cues.push({ lon, lat, turn: "NOTE", level: 0, text: words, auto: false });
+    const link = unesc(/<link\s+href="([^"]*)"/.exec(m[2])?.[1] || ""); const safeLink = /^https?:\/\/[^\s"'<>]+$/.test(link) ? link : "";
+    if (type.startsWith("cue:") && TURNS.includes(type.slice(4).toUpperCase())) cues.push({ lon, lat, turn: type.slice(4).toUpperCase(), level: 0, text: words, link: safeLink, auto: false });
+    else if (type.startsWith("danger")) cues.push({ lon, lat, turn: "DANGER", level: Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)), text: words, link: safeLink, auto: false });
+    else if (type === "note" && words) cues.push({ lon, lat, turn: "NOTE", level: 0, text: words, link: safeLink, auto: false });
   }
   const name = unesc((/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || /<trk>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || [, ""])[1].trim()).slice(0, 80);
   const mode = (/<roadbook>[\s\S]*?<mode>([A-Z_]+)<\/mode>/.exec(text) || [, ""])[1];

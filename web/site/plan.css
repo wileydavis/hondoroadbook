@@ -96,7 +96,20 @@ button.icon:hover { border-color: var(--soft); }
 .facts { font-size: 14px; }
 .facts b { font-size: 16px; }
 .facts .muted { font-size: 13px; }
-.wiki, .web { margin-top: 10px; font-size: 13px; }
+.wiki, .web, .near, .sections { margin-top: 10px; font-size: 13px; }
+.near h4, .sections h4 { margin: 10px 0 4px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.near .row, .sections .row { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--rule); }
+.near .row b, .sections .row b { font-weight: 600; }
+.near .row .d { color: var(--soft); white-space: nowrap; margin-left: auto; font-variant-numeric: tabular-nums; }
+.near .row .k, .sections .row .k { color: var(--soft); }
+.near .row button, .sections .row button { font: inherit; font-size: 11px; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--rule); background: transparent; color: var(--soft); cursor: pointer; white-space: nowrap; }
+.near .row button:hover, .sections .row button:hover { color: var(--ink); border-color: var(--soft); }
+.near .free { color: #15803d; font-weight: 600; }
+.sections .row a { display: inline; margin: 0; }
+.sections .row small { display: block; color: var(--soft); }
+.sections .row .body { min-width: 0; }
+#sourceGroups label { display: block; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); margin: 10px 0 4px; }
+#sourceGroups textarea { width: 100%; height: 72px; font: 13px/1.4 var(--mono); border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: var(--ink); padding: 6px 8px; resize: vertical; }
 .wiki h4, .web h4 { margin: 0 0 4px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
 .wiki a, .web a { display: block; margin: 3px 0; }
 .web p { margin: 0 0 6px; color: var(--soft); }

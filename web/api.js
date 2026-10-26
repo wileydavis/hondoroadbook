@@ -4,7 +4,7 @@
 //   roadbooks             -> the public library: D1 for the list, R2 for the GPX files
 //   web                   -> Brave web search for the inspect panel, when BRAVE_KEY is set
 // Nothing here identifies anyone: no accounts, no cookies, uploads keep only the line and the cues.
-import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError } from "./gpx.js";
+import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError, dist } from "./gpx.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const MAX_GPX = 6 << 20;
@@ -20,6 +20,7 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
     if (path.startsWith("roadbooks/")) return await roadbook(request, env, path.slice(10), url);
     if (path === "web") return await webSearch(request, env, url, ctx);
+    if (path === "near") return await near(request, env, url, ctx);
     if (path === "health") return json({ ok: true, router: !!(env.ROUTER || env.ROUTER_URL), library: !!env.DB, storage: !!env.PACKS, web: !!env.BRAVE_KEY });
     return json({ error: "no such endpoint" }, 404);
   } catch (e) {
@@ -155,9 +156,12 @@ async function roadbook(request, env, rest, url) {
 // ---- web search for the inspect panel ---------------------------------------------------------------
 
 async function webSearch(request, env, url, ctx) {
-  const q = (url.searchParams.get("q") || "").trim().slice(0, 200);
-  if (!q) return json({ error: "q required" }, 400);
+  const q0 = (url.searchParams.get("q") || "").trim().slice(0, 200);
+  if (!q0) return json({ error: "q required" }, 400);
   if (!env.BRAVE_KEY) return json({ error: "Web search is not configured on this site", configured: false }, 501);
+  // the planner may confine a search to the rider's own list of trusted sites (hostnames only, at most eight)
+  const sites = (url.searchParams.get("sites") || "").split(",").map(s => s.trim().toLowerCase()).filter(s => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)).slice(0, 8);
+  const q = sites.length ? `${q0} (${sites.map(s => "site:" + s).join(" OR ")})` : q0;
   const cache = caches.default;
   const ckey = new Request("https://websearch.roadbook.internal/?q=" + encodeURIComponent(q.toLowerCase()));
   const hit = await cache.match(ckey);
@@ -166,10 +170,69 @@ async function webSearch(request, env, url, ctx) {
   if (!r.ok) return json({ error: `search answered ${r.status}` }, 502);
   const data = await r.json();
   const results = ((data.web && data.web.results) || []).slice(0, 8).map(w => ({ title: w.title, url: w.url, description: w.description, site: w.meta_url && w.meta_url.hostname }));
-  const res = json({ q, results }, 200, { "Cache-Control": "public, max-age=86400" });
+  const res = json({ q: q0, sites, results }, 200, { "Cache-Control": "public, max-age=86400" });
   ctx && ctx.waitUntil(cache.put(ckey, res.clone()));
   return res;
 }
+
+// ---- what is around a spot: fuel, food, camping, water, beds, repair, the nearest town -----------------------------
+// Straight from OpenStreetMap through the public Overpass API, grouped and sorted by distance, cached a day per
+// two-kilometre cell. The same data the packs are built from, so what you see here is what the map draws.
+const NEAR = {
+  fuel: { r: 30000, sel: ['["amenity"="fuel"]'] },
+  food: { r: 15000, sel: ['["amenity"~"^(restaurant|cafe|fast_food|bar|pub|food_court)$"]', '["shop"~"^(supermarket|convenience|general|bakery)$"]'] },
+  camping: { r: 25000, sel: ['["tourism"~"^(camp_site|caravan_site|camp_pitch)$"]'] },
+  water: { r: 15000, sel: ['["amenity"="drinking_water"]', '["natural"="spring"]', '["man_made"="water_well"]'] },
+  lodging: { r: 25000, sel: ['["tourism"~"^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$"]'] },
+  repair: { r: 40000, sel: ['["shop"~"^(motorcycle|motorcycle_repair|car_repair|tyres)$"]', '["amenity"="car_repair"]'] },
+  town: { r: 30000, sel: ['["place"~"^(city|town|village|hamlet)$"]'] },
+};
+const OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"];
+async function near(request, env, url, ctx) {
+  const lon = Number(url.searchParams.get("lon")), lat = Number(url.searchParams.get("lat"));
+  if (!Number.isFinite(lon) || !Number.isFinite(lat) || Math.abs(lon) > 180 || Math.abs(lat) > 90) return json({ error: "lon/lat required" }, 400);
+  const cache = caches.default;
+  const ckey = new Request(`https://near.roadbook.internal/?c=${(Math.round(lon / 0.02) * 0.02).toFixed(2)},${(Math.round(lat / 0.02) * 0.02).toFixed(2)}`);
+  const hit = await cache.match(ckey);
+  if (hit) return withCors(hit);
+  const parts = [];
+  for (const [k, d] of Object.entries(NEAR)) for (const sel of d.sel) parts.push(`nwr${sel}(around:${d.r},${lat.toFixed(5)},${lon.toFixed(5)});`);
+  const ql = `[out:json][timeout:20];(${parts.join("")});out center tags 300;`;
+  let data = null, err = "";
+  for (const ep of OVERPASS) {
+    try {
+      const r = await fetch(ep, { method: "POST", body: "data=" + encodeURIComponent(ql), headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "roadbook-planner/1 (hondoroadbook.com)" }, signal: AbortSignal.timeout(22000) });
+      if (r.ok) { data = await r.json(); break; }
+      err = `overpass ${r.status}`;
+    } catch (e) { err = String(e && e.message || e); }
+  }
+  if (!data) return json({ error: "OpenStreetMap's query service did not answer (" + err + ")" }, 502);
+  const out = {}; for (const k of Object.keys(NEAR)) out[k] = [];
+  for (const el of data.elements || []) {
+    const t = el.tags || {}; const plat = el.lat ?? (el.center && el.center.lat), plon = el.lon ?? (el.center && el.center.lon);
+    if (plat == null || plon == null) continue;
+    const d = Math.round(dist([lon, lat], [plon, plat]));
+    const item = { name: (t.name || t.brand || t.operator || "").slice(0, 80), lon: +plon.toFixed(5), lat: +plat.toFixed(5), d, bearing: Math.round(bearing(lat, lon, plat, plon)) };
+    let k = null;
+    if (t.amenity === "fuel") k = "fuel";
+    else if (/^(restaurant|cafe|fast_food|bar|pub|food_court)$/.test(t.amenity || "") || /^(supermarket|convenience|general|bakery)$/.test(t.shop || "")) { k = "food"; item.kind = t.amenity || t.shop; }
+    else if (/^(camp_site|caravan_site|camp_pitch)$/.test(t.tourism || "")) { k = "camping"; item.fee = t.fee === "no" ? "free" : t.fee === "yes" ? "fee" : ""; item.kind = t.tourism === "camp_site" ? (t.backcountry === "yes" ? "backcountry" : "campground") : "RV"; if (t.operator) item.operator = t.operator.slice(0, 40); }
+    else if (t.amenity === "drinking_water" || t.natural === "spring" || t.man_made === "water_well") { k = "water"; item.kind = t.amenity === "drinking_water" ? "tap" : t.natural === "spring" ? "spring" : "well"; if (t.drinking_water === "no") item.kind += ", not potable"; }
+    else if (/^(hotel|motel|hostel|guest_house|chalet|alpine_hut)$/.test(t.tourism || "")) { k = "lodging"; item.kind = t.tourism.replace("_", " "); }
+    else if (/^(motorcycle|motorcycle_repair|car_repair|tyres)$/.test(t.shop || "") || t.amenity === "car_repair") { k = "repair"; item.kind = t.shop === "motorcycle" ? "motorcycle shop" : t.shop === "motorcycle_repair" ? "motorcycle repair" : "car repair"; }
+    else if (/^(city|town|village|hamlet)$/.test(t.place || "")) { k = "town"; item.kind = t.place; if (t.population) item.population = Number(t.population) || undefined; }
+    if (!k) continue;
+    if (t.opening_hours) item.hours = t.opening_hours.slice(0, 60);
+    if (t.phone || t["contact:phone"]) item.phone = (t.phone || t["contact:phone"]).slice(0, 24);
+    if (t.website || t["contact:website"]) { const w = t.website || t["contact:website"]; if (/^https?:\/\//.test(w)) item.website = w.slice(0, 120); }
+    out[k].push(item);
+  }
+  for (const k of Object.keys(out)) { out[k].sort((a, b) => a.d - b.d); out[k] = out[k].slice(0, k === "town" ? 3 : 5); }
+  const res = json({ center: [lon, lat], near: out, source: "OpenStreetMap via Overpass", at: new Date().toISOString().slice(0, 10) }, 200, { "Cache-Control": "public, max-age=86400" });
+  ctx && ctx.waitUntil(cache.put(ckey, res.clone()));
+  return res;
+}
+function bearing(lat1, lon1, lat2, lon2) { const r = Math.PI / 180; const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r); const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r); return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360; }
 
 // ---- helpers -----------------------------------------------------------------------------------------
 
