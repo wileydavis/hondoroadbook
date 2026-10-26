@@ -15,6 +15,28 @@ class FoldApp : Application() {
         // This also stops it from ever consulting ConnectivityManager (which would throw).
         MapLibre.setConnected(false)
         AppCompatDelegate.setDefaultNightMode(if (Prefs(this).night) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+        // no crash reporting leaves the phone by itself; a crash is written to a private file, and SEND FEEDBACK
+        // offers to include it in the rider's own email — they read it before it goes anywhere
+        val prior = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try { java.io.File(filesDir, "last-crash.txt").writeText("Roadbook ${BuildConfig.VERSION_NAME} · ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} · Android ${android.os.Build.VERSION.RELEASE}\n${java.util.Date()}\n\n" + android.util.Log.getStackTraceString(e).take(6000)) } catch (_: Throwable) {}
+            prior?.uncaughtException(t, e)
+        }
+    }
+
+    companion object {
+        /** Opens the rider's mail app with a feedback message started: version, phone, and the last crash if there was one. Nothing is sent until they press send. */
+        fun feedback(ctx: android.content.Context, extra: String = "") {
+            val crash = java.io.File(ctx.filesDir, "last-crash.txt").takeIf { it.exists() }?.readText()
+            val body = buildString {
+                append("What happened:\n\n\n")
+                append("— ").append("Roadbook ").append(BuildConfig.VERSION_NAME).append(" · ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL).append(" · Android ").append(android.os.Build.VERSION.RELEASE).append('\n')
+                if (extra.isNotEmpty()) append(extra).append('\n')
+                if (crash != null) append("\nThe app's last crash (delete this if you would rather not send it):\n").append(crash)
+            }
+            val i = android.content.Intent(android.content.Intent.ACTION_SENDTO, android.net.Uri.parse("mailto:")).putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("hello@hondogarage.com")).putExtra(android.content.Intent.EXTRA_SUBJECT, "Roadbook feedback").putExtra(android.content.Intent.EXTRA_TEXT, body)
+            try { ctx.startActivity(i) } catch (_: Throwable) { android.widget.Toast.makeText(ctx, "No mail app — write to hello@hondogarage.com", android.widget.Toast.LENGTH_LONG).show() }
+        }
     }
 }
 

@@ -1208,6 +1208,7 @@ async function openLibraryItem(id) {
 
 // ---- the URL carries the plan ------------------------------------------------------------------------------------------
 function saveHash() {
+  const fb = document.getElementById("fb"); if (fb) fb.href = "mailto:hello@hondogarage.com?subject=Planner%20feedback&body=" + encodeURIComponent("What happened:\n\n\nThe route I was looking at: " + location.href + "\n");
   const p = new URLSearchParams();
   if (S.pts.length) { p.set("m", S.mode); p.set("p", S.pts.map(x => `${x.lon.toFixed(5)},${x.lat.toFixed(5)}`).join(";")); }
   const rb = new URLSearchParams(location.hash.slice(1)).get("rb"); if (rb && !S.pts.length) p.set("rb", rb);

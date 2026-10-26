@@ -143,6 +143,7 @@ object MapsDialog {
         }
         root.addView(TextView(ctx).apply { text = ctx.getString(R.string.credits); textSize = 12f; setPadding(0, ctx.dp(12), 0, 0) })
         root.addView(TextView(ctx).apply { text = "Roadbook " + BuildConfig.VERSION_NAME + " · hondoroadbook.com"; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
+        root.addView(Button(ctx).apply { text = "SEND FEEDBACK"; textSize = 13f; setOnClickListener { FoldApp.feedback(ctx, "Maps: " + packs.packs.joinToString(", ") { it.name }) } })
         root.addView(TextView(ctx).apply { text = "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. No accounts, no history."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
         val b = AlertDialog.Builder(ctx).setTitle("Maps on this phone").setView(scroll)
