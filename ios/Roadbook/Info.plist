@@ -137,6 +137,9 @@
 			</dict>
 		</dict>
 	</array>
+	<!-- only HTTPS: no export-compliance question on each TestFlight build -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CATALOG_URL</key>
 	<string>https://hondoroadbook.com/packs/catalog.json</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>

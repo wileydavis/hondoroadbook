@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Roadbook</title>
+<meta name="description" content="What Roadbook stores, what it sends, and what it never collects.">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>by Hondo Garage</small></span></a>
+    <nav class="top"><a href="/plan.html">Planner</a><a href="/#get">Get the app</a><a href="/manual.html">Manual</a><a href="https://hondogarage.com/pages/motorcycle-adventure-products" class="dim">Mounts</a></nav>
+  </header>
+  <section class="prose">
+  <h1>Privacy</h1>
+  <p><strong>Short version:</strong> your movements are your own. Roadbook has no accounts, no analytics in the app, no crash-reporting service, and no advertising. The app sends nothing anywhere except when you press a button that needs the network, and even then it sends only what that button needs.</p>
+
+  <h2>What the app keeps on your phone</h2>
+  <ul>
+    <li>The map packs you download or import.</li>
+    <li>Your settings (units, day or night map, sound, battery saver, which modes to compare, screen lock).</li>
+    <li>Marks you save on purpose, as a GPX file you can export or delete.</li>
+    <li>Recordings you keep, and roadbooks you save, as GPX files in the app's folder.</li>
+    <li>While you navigate, a checkpoint of the ride so it can resume after a crash. It is deleted when you end the ride.</li>
+    <li>If the app crashes, a note about the crash. It leaves the phone only if you choose to include it in a feedback email you send yourself.</li>
+  </ul>
+  <p>Where you are and where you have been is used on the phone to guide you, and is not stored beyond the ride unless you are recording a track you chose to record.</p>
+
+  <h2>When the app uses the network</h2>
+  <p>Only on these actions, each one a button you press:</p>
+  <ul>
+    <li><strong>Download</strong> a map pack from hondoroadbook.com (the request carries the pack's name, nothing about you).</li>
+    <li><strong>Fetch code</strong>: a roadbook parked by the planner under a six-letter code.</li>
+    <li><strong>Publish</strong> a roadbook to the library. The published file keeps only the line and the cues: no times, no device, no name unless you type one.</li>
+    <li><strong>Browse roadbooks</strong>: the library's roadbooks in the part of the map on screen (the request carries that map area).</li>
+    <li><strong>Send feedback</strong>: opens your own mail app with a message started; nothing is sent until you send it.</li>
+  </ul>
+  <p>These requests reach hondoroadbook.com, which is hosted on Cloudflare. Like any web server it sees the network address a request comes from while serving it; we do not keep logs that tie requests to people, and we do not sell or share any data.</p>
+
+  <h2>Location permission</h2>
+  <p>Roadbook asks for location "while using the app", and on iPhone for background location, so a ride keeps going with the screen off: the voice and the chimes keep calling the turns. Your position never leaves the phone.</p>
+
+  <h2>The planner on this site</h2>
+  <p>The planner runs in your browser. Routes you plan are computed on our server and are not kept once returned, except a roadbook you choose to <em>Send to phone</em> (kept for 24 hours under its code) or <em>Publish</em> (kept in the public library until you ask for it to come down). The site keeps your planner settings in your own browser's storage. The website (not the app) uses Cloudflare's cookie-free page analytics, which counts visits without identifying anyone.</p>
+
+  <h2>Children</h2>
+  <p>Roadbook is not directed at children and collects no personal information from anyone.</p>
+
+  <h2>Changes and contact</h2>
+  <p>If this policy changes, the change will be described here. Questions, or a published roadbook you want taken down: <a href="mailto:wiley@machinenusa.com">wiley@machinenusa.com</a>.</p>
+  <p class="muted">Roadbook is made by Hondo Garage, Manhattan, Montana. Last updated October 2026.</p>
+  </section>
+  <footer>Map data © OpenStreetMap contributors; basemap © Protomaps. <a href="/">Roadbook</a> · <a href="/manual.html">Manual</a> · <a href="/packs.html">Map packs</a></footer>
+</div>
+</body>
+</html>

@@ -96,6 +96,14 @@ targets:
         # no outputFiles on purpose: Xcode would skip the step once the framework exists, and the Kotlin would go stale;
         # Gradle is incremental, so an unchanged engine costs a few seconds here
         basedOnDependencyAnalysis: false
+    postBuildScripts:
+      - name: Build number from git
+        script: |
+          # every upload to App Store Connect needs a higher build number; the commit count is one, and the app and
+          # the widget (which must match) both compute the same value
+          N=$(git -C "$SRCROOT" rev-list --count HEAD 2>/dev/null || echo 1)
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $N" "$TARGET_BUILD_DIR/$INFOPLIST_PATH" || true
+        basedOnDependencyAnalysis: false
   RoadbookWidget:
     type: app-extension
     platform: iOS
@@ -109,3 +117,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.hondogarage.roadbook.widget
         PRODUCT_NAME: RoadbookWidget
         SKIP_INSTALL: YES
+    postBuildScripts:
+      - name: Build number from git
+        script: |
+          # every upload to App Store Connect needs a higher build number; the commit count is one, and the app and
+          # the widget (which must match) both compute the same value
+          N=$(git -C "$SRCROOT" rev-list --count HEAD 2>/dev/null || echo 1)
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $N" "$TARGET_BUILD_DIR/$INFOPLIST_PATH" || true
+        basedOnDependencyAnalysis: false
