@@ -154,7 +154,9 @@ jobs:
             curl -fsSL --retry 5 -o index.json https://download.geofabrik.de/index-v1.json
             bbox=$(python3 -c "
           import json,sys
-          f=[x for x in json.load(open('index.json'))['features'] if x['properties']['id']=='$gf'][0]
+          # Geofabrik's ids: US states are 'us/<state>', Canada is 'north-america/canada/<province>'; accept either spelling
+          fs=json.load(open('index.json'))['features']
+          f=([x for x in fs if x['properties']['id']=='$gf'] or [x for x in fs if x['properties']['id']=='north-america/$gf'] or [x for x in fs if x['properties']['id'].endswith('/$gf')])[0]
           def pts(c):
               if isinstance(c[0],(int,float)): yield c
               else:
