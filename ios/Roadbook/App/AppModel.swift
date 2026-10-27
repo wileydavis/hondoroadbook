@@ -151,7 +151,8 @@ final class AppModel: ObservableObject, MapEvents {
         NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification).sink { [weak self] _ in self?.batteryChanged() }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification).sink { [weak self] _ in self?.uiVisible = true; if let s = self, s.follow, let f = s.lastFix { s.moveCamera(f.lat, f.lon, animate: false) } }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification).sink { [weak self] _ in self?.uiVisible = false }.store(in: &cancellables)
-        prefs.$night.dropFirst().sink { [weak self] _ in self?.loadStyle() }.store(in: &cancellables)
+        // @Published fires before the new value is stored: style from the value it hands over, never from prefs.night here
+        prefs.$night.dropFirst().sink { [weak self] night in self?.loadStyle(night: night) }.store(in: &cancellables)
         locSub = Location.shared.subscribe { [weak self] l in self?.onFix(l) }
         Location.shared.start()
         if recorder.recover() { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.offerRecovery() } }
@@ -192,10 +193,10 @@ final class AppModel: ObservableObject, MapEvents {
         if v.map({ $0.dir }) != map.styledPacks.map({ $0.dir }) { loadStyle() }
     }
 
-    func loadStyle() {
+    func loadStyle(night: Bool? = nil) {
         let chosen = visiblePacks().filter { prefs.terrain || !$0.isTerrain }
         map.isTrack = isTrack
-        do { try map.loadStyle(chosen, night: prefs.night) } catch { showToast("Style error: \(error.text)") }
+        do { try map.loadStyle(chosen, night: night ?? prefs.night) } catch { showToast("Style error: \(error.text)") }
     }
 
     func mapStyleLoaded() {
