@@ -95,7 +95,7 @@ service itself.
 
 `wrangler.jsonc` + `web/` is the Cloudflare Worker for hondoroadbook.com (static site, `/download/*`
 and `/packs/*`). `.github/workflows/packs.yml` builds every region in `packer/regions.json` (the US
-states and Baja California) in both kinds on GitHub's runners and publishes them to the rolling GitHub
+states, the Canadian provinces and territories, and Baja California) in both kinds on GitHub's runners and publishes them to the rolling GitHub
 release `packs`, which the Worker serves; an R2 bucket is an optional mirror. `release.yml` signs and
 publishes the APKs on a tag. Details: `web/README.md`.
 

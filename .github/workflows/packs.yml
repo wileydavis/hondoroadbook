@@ -1,7 +1,7 @@
 # Builds map packs on GitHub's runners and publishes them where hondoroadbook.com/packs/ serves them.
 # Free for a public repository; every region × kind is its own job, so one failure never costs the others.
 #
-# Regions live in packer/regions.json (US states + Baja California). Kinds:
+# Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California). Kinds:
 #   roads   — OSM extract → roads, routing graph, address index, vector tiles (fold-packer.jar)
 #   terrain — hillshade raster from AWS Terrain Tiles (packer/terrain/build_terrain.py)
 # Packs always go to the rolling GitHub release "packs" (no setup needed; the Worker proxies /packs/*

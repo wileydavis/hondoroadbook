@@ -11,7 +11,7 @@
     if (!packs.length) throw new Error('empty');
     const regions = new Map();
     for (const p of packs) { const k = p.region || p.name; if (!regions.has(k)) regions.set(k, { group: p.group || '', kinds: [] }); regions.get(k).kinds.push(p); }
-    if (cov) { const n = [...regions.keys()].length; const built = packs.map(p => p.built).sort().pop(); cov.textContent = `${n} regions are covered (rebuilt ${built})`; }
+    if (cov) { const n = [...regions.keys()].length; const built = packs.map(p => p.built).sort().pop(); const groups = [...new Set(packs.map(p => p.group).filter(Boolean))]; cov.textContent = `${n} regions are covered — ${groups.join(", ")} (rebuilt ${built})`; }
     if (!tb) return;
     const order = ['roads', 'terrain', 'imagery'];
     tb.innerHTML = [...regions.entries()].sort((a, b) => (a[1].group + a[0]).localeCompare(b[1].group + b[0])).map(([name, r]) => {
