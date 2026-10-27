@@ -93,8 +93,9 @@ targets:
           DEST="$SRCROOT/../core/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME"
           rm -rf "$DEST"; mkdir -p "$DEST"
           cp -R "core/build/bin/$D/releaseFramework/FoldCore.framework" "$DEST/"
-        outputFiles:
-          - "$(SRCROOT)/../core/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)/FoldCore.framework"
+        # no outputFiles on purpose: Xcode would skip the step once the framework exists, and the Kotlin would go stale;
+        # Gradle is incremental, so an unchanged engine costs a few seconds here
+        basedOnDependencyAnalysis: false
   RoadbookWidget:
     type: app-extension
     platform: iOS
