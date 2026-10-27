@@ -394,7 +394,8 @@
     "pbf": "north-america/canada/british-columbia-latest.osm.pbf",
     "geofabrik": "canada/british-columbia",
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: a million km\u00b2, like Alaska"
+    "notes": "terrain at zoom 10: a million km\u00b2, like Alaska",
+    "max_zoom": 13
   },
   "manitoba": {
     "name": "Manitoba",
