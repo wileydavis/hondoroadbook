@@ -19,7 +19,8 @@ struct GloveMenu: View {
             else { items.append(Item(label: "TURN LIST", icon: "list.bullet") { model.sheet = .turnList }) }
             items.append(Item(label: recorder.running ? "RECORDING…" : "RECORD", icon: "record.circle", on: recorder.running) { recorder.running ? model.stopRecording() : model.startRecording() })
         } else {
-            items.append(Item(label: "GO TO", icon: "magnifyingglass") { model.sheet = .search })
+            items.append(Item(label: "GO TO", icon: "magnifyingglass") { model.sheet = .search() })
+            items.append(Item(label: "PLAN", icon: "map.fill") { model.startPlan() })
             items.append(Item(label: "TRACK", icon: "point.topleft.down.to.point.bottomright.curvepath") { model.sheet = .trackPicker })
             items.append(Item(label: "MAPS", icon: "map") { model.sheet = .maps })
             items.append(Item(label: recorder.running ? "RECORDING…" : "RECORD", icon: "record.circle", on: recorder.running) { recorder.running ? model.stopRecording() : model.startRecording() })

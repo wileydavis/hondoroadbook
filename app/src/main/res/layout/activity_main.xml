@@ -224,9 +224,10 @@
             android:paddingTop="4dp" android:paddingBottom="4dp"
             android:layout_marginBottom="8dp" />
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/btnStops" style="@style/BigButton" android:layout_width="0dp" android:layout_weight="1" android:text="STOPS" android:layout_marginEnd="8dp" />
             <Button android:id="@+id/btnModes" style="@style/BigButton" android:layout_width="0dp" android:layout_weight="1" android:text="MODES" android:layout_marginEnd="8dp" />
             <Button android:id="@+id/btnSaveRoute" style="@style/BigButton" android:layout_width="0dp" android:layout_weight="1" android:text="SAVE" android:layout_marginEnd="8dp" />
-            <Button android:id="@+id/btnStartNav" style="@style/BigButton" android:layout_width="0dp" android:layout_weight="2" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:text="GO" android:layout_marginEnd="8dp" />
+            <Button android:id="@+id/btnStartNav" style="@style/BigButton" android:layout_width="0dp" android:layout_weight="1.4" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:text="GO" android:layout_marginEnd="8dp" />
             <Button android:id="@+id/btnCompareCancel" style="@style/BigButton" android:layout_width="48dp" android:text="✕" />
         </LinearLayout>
     </LinearLayout>

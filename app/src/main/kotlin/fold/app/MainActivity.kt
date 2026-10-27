@@ -83,6 +83,7 @@ class MainActivity : AppCompatActivity() {
     /** A planned route with the file's authored cues on it (when a file is being edited). */
     private fun planned(r: Route): Route = if (editCues.isEmpty()) r else try { Route.withCues(r, Route.authoredCues(editCues, r)) } catch (_: Throwable) { r }
     private var srcCues: GeoJsonSource? = null
+    private var srcTurns: GeoJsonSource? = null
     private lateinit var panelEdit: View
     private lateinit var recStrip: View
     private lateinit var recStatus: TextView
@@ -93,9 +94,13 @@ class MainActivity : AppCompatActivity() {
         var route: Route? = null; var isTrack = false; var destination: LatLng? = null
         /** points the route must pass through, in order; "go by Spokane" */
         var vias: MutableList<LatLng> = ArrayList()
+        /** the vias' names ("Lolo Pass", or "" for a point on the map), one per via */
+        val viaNames: MutableList<String> = ArrayList()
         var destName = ""
         /** a start chosen on the map for planning, instead of the GPS position */
         var planStart: LatLng? = null
+        /** the chosen start's name, "" for a point on the map or the GPS position */
+        var startName = ""
         /** the track being followed or edited, with its authored cues */
         var trackLats: DoubleArray? = null; var trackLons: DoubleArray? = null; var trackName = "Track"; var trackUri: Uri? = null
         val trackCues = ArrayList<Cue>()
@@ -158,8 +163,13 @@ class MainActivity : AppCompatActivity() {
     private var destination: LatLng?
         get() = NavSession.destination; set(v) { NavSession.destination = v }
     private val vias: MutableList<LatLng> get() = NavSession.vias
+    private val viaNames: MutableList<String> get() = NavSession.viaNames
     private var planStart: LatLng?
         get() = NavSession.planStart; set(v) { NavSession.planStart = v }
+    private var startName: String
+        get() = NavSession.startName; set(v) { NavSession.startName = v }
+    /** a plan is being set up on the map: the first GPS fix must not yank the camera away from it */
+    private val planningCamera: Boolean get() = planStart != null || mode == Mode.COMPARE || mode == Mode.EDIT || mode == Mode.PIN
     private var srcStart: GeoJsonSource? = null
     private var destName: String
         get() = NavSession.destName; set(v) { NavSession.destName = v }
@@ -233,6 +243,7 @@ class MainActivity : AppCompatActivity() {
         turnChip = findViewById(R.id.turnChip); hudCompass = findViewById(R.id.hudCompass)
         findViewById<Button>(R.id.btnStartNav).setOnClickListener { goWithSelected() }
         findViewById<Button>(R.id.btnCompareCancel).setOnClickListener { cancelCompare() }
+        findViewById<Button>(R.id.btnStops).setOnClickListener { showStops() }
         findViewById<Button>(R.id.btnModes).setOnClickListener { pickModes() }
 
         findViewById<ImageButton>(R.id.btnGo).setOnClickListener { SearchDialog.show(this, packs, marks, { hit -> onSearchPick(hit) }, { m -> goToMark(m) }) }
@@ -316,8 +327,11 @@ class MainActivity : AppCompatActivity() {
                 val hit = try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(22), pt.y - dp(22), pt.x + dp(22), pt.y + dp(22)), "marks-layer").firstOrNull() } catch (_: Throwable) { null }
                 val id = hit?.getNumberProperty("id")?.toLong()
                 val mark = id?.let { v -> marks.marks.firstOrNull { it.id == v } }
-                val cueHit = if (mode == Mode.EDIT || (mode == Mode.NAV && isTrack)) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(22), pt.y - dp(22), pt.x + dp(22), pt.y + dp(22)), "cues-layer").firstOrNull() } catch (_: Throwable) { null } else null
-                val cue = cueHit?.getNumberProperty("idx")?.toInt()?.let { trackCues.getOrNull(it) }
+                val cueHit = if (mode == Mode.EDIT || mode == Mode.COMPARE || (mode == Mode.NAV && isTrack)) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(22), pt.y - dp(22), pt.x + dp(22), pt.y + dp(22)), "cues-layer").firstOrNull() } catch (_: Throwable) { null } else null
+                val cue = cueHit?.getNumberProperty("idx")?.toInt()?.let { (if (mode == Mode.COMPARE) editCues else trackCues).getOrNull(it) }
+                // plan mode: the router's own turns on the selected route can be reworded
+                val turnHit = if (mode == Mode.COMPARE && cue == null) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(18), pt.y - dp(18), pt.x + dp(18), pt.y + dp(18)), "turns-layer").firstOrNull() } catch (_: Throwable) { null } else null
+                val turnIdx = turnHit?.getNumberProperty("idx")?.toInt()
                 val line = if (mode == Mode.COMPARE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(14), pt.y - dp(14), pt.x + dp(14), pt.y + dp(14)), "cmp-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val pickedMode = line?.getStringProperty("mode")?.let { try { Profile.valueOf(it) } catch (_: Throwable) { null } }
                 val viaHit = if (vias.isNotEmpty() && (mode == Mode.COMPARE || mode == Mode.NAV || mode == Mode.PIN)) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(20), pt.y - dp(20), pt.x + dp(20), pt.y + dp(20)), "via-layer").firstOrNull() } catch (_: Throwable) { null } else null
@@ -325,7 +339,9 @@ class MainActivity : AppCompatActivity() {
                 val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val libItem = libHit?.getStringProperty("id")?.let { id -> libraryItems.firstOrNull { it.id == id } }
                 when {
+                    cue != null && mode == Mode.COMPARE -> { editPlanCue(cue); true }
                     cue != null -> { editCue(cue); true }
+                    turnIdx != null -> { rewordTurn(turnIdx); true }
                     viaIdx != null -> { offerRemoveVia(viaIdx); true }
                     libItem != null -> { openLibraryItem(libItem); true }
                     mark != null -> { openMark(mark); true }
@@ -432,6 +448,8 @@ class MainActivity : AppCompatActivity() {
         srcRoute = GeoJsonSource("route-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         srcCues = GeoJsonSource("cues-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         st.addImage("cue", cueBitmap(false)); st.addImage("cue-danger", cueBitmap(true))
+        srcTurns = GeoJsonSource("turns-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
+        st.addImage("turn", turnBitmap())
         srcPin = GeoJsonSource("pin-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         srcPuck = GeoJsonSource("puck-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
         addLibraryLayers(st)
@@ -477,6 +495,8 @@ class MainActivity : AppCompatActivity() {
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
         addUnderLabels(LineLayer("lead-line", "lead-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.ink)), lineWidth(2.5f), lineOpacity(0.45f), lineDasharray(arrayOf(2f, 2f)), lineCap(Property.LINE_CAP_ROUND)))
+        // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
+        st.addLayer(SymbolLayer("turns-layer", "turns-src").withProperties(iconImage("turn"), iconAllowOverlap(true), iconIgnorePlacement(true)).also { it.minZoom = 10f })
         if (mode == Mode.COMPARE) drawCandidates()
         st.addLayer(SymbolLayer("start-layer", "start-src").withProperties(iconImage("start"), iconAllowOverlap(true), iconIgnorePlacement(true)))
         drawStart()
@@ -508,7 +528,7 @@ class MainActivity : AppCompatActivity() {
 
     /** Plan from a point on the map instead of where the phone is. Cleared by END. */
     private fun setStart(ll: LatLng) {
-        planStart = ll; drawStart()
+        planStart = ll; startName = placeName(pinName); drawStart()
         pin = null; clearPinMarker()
         toast("Start set — now pick a destination (GO TO, or long-press and ROUTE HERE)", 5000)
         val dest = destination
@@ -529,6 +549,15 @@ class MainActivity : AppCompatActivity() {
         return b
     }
 
+    /** A router's turn in plan mode: a small hollow ring in the route colour. */
+    private fun turnBitmap(): Bitmap {
+        val s = dp(16); val b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888); val c = Canvas(b)
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ContextCompat.getColor(this@MainActivity, R.color.ink); style = Paint.Style.STROKE; strokeWidth = dp(2).toFloat() }
+        c.drawCircle(s / 2f, s / 2f, s * 0.3f, fill); c.drawCircle(s / 2f, s / 2f, s * 0.3f, stroke)
+        return b
+    }
+
     /** Cue marker: a small round sign, orange for a danger, ink for everything else. */
     private fun cueBitmap(danger: Boolean): Bitmap {
         val s = dp(22); val b = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888); val c = Canvas(b)
@@ -539,7 +568,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun drawCues() {
-        val shown = if (mode == Mode.COMPARE && editCues.isNotEmpty()) editCues else trackCues
+        val shown = if (mode == Mode.COMPARE) editCues else trackCues
         val feats = shown.mapIndexed { i, c -> Feature.fromGeometry(Point.fromLngLat(c.lon, c.lat)).also { f ->
             f.addStringProperty("icon", if (c.turn == Turn.DANGER) "cue-danger" else "cue"); f.addNumberProperty("idx", i)
             f.addStringProperty("label", if (c.note.isNotEmpty()) c.note.take(24) else c.turn.spoken) } }
@@ -641,7 +670,7 @@ class MainActivity : AppCompatActivity() {
             if (mode == Mode.NAV) { updatePuck(v.lat, v.lon, if (v.onRoute && v.speed > 1.5) f.route.segmentBearing(v.segment) else heading); handleOffRoute(v, fix) }
             else updatePuck(fix.lat, fix.lon, heading)
         } else updatePuck(fix.lat, fix.lon, heading)
-        if ((follow || first) && uiVisible) moveCamera(fix.lat, fix.lon, animate = !first)
+        if ((follow || (first && !planningCamera)) && uiVisible) moveCamera(fix.lat, fix.lon, animate = !first)
     }
 
     private fun haptic(times: Int, long: Boolean = false) {
@@ -709,6 +738,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun onLongPress(ll: LatLng) {
         if (mode == Mode.EDIT) { addCueAt(ll.latitude, ll.longitude, snapToTrack = true); return }
+        if (mode == Mode.COMPARE && snapToPlan(ll.latitude, ll.longitude) != null) { addPlanCueAt(ll.latitude, ll.longitude); return }
         if (route != null) follow = false
         pin = ll; pinName = "%.5f, %.5f".format(ll.latitude, ll.longitude)
         showPinMarker(ll)
@@ -758,7 +788,7 @@ class MainActivity : AppCompatActivity() {
         val f0 = fix!!
         if (packs.packFor(f0.lat, f0.lon) == null) { toast(if (lastFix == null) "No GPS fix, and the map center is outside your maps. Move the map over an installed pack or wait for GPS." else "You are outside your maps.", 6000); return }
         if (packs.packFor(dest.latitude, dest.longitude) == null) { toast(getString(R.string.outside_maps), 6000); return }
-        destination = dest; destName = label; vias.clear()
+        destination = dest; destName = label; vias.clear(); viaNames.clear()
         if (fromWhere.isNotEmpty()) toast(fromWhere, 6000)
         pin = null; clearPinMarker(); showPinMarker(dest)
         startCompare(f0, dest)
@@ -775,10 +805,10 @@ class MainActivity : AppCompatActivity() {
             fun along(p: LatLng): Double { var best = Double.MAX_VALUE; var at = 0.0; for (i in 0 until r.size) { val d = Geo.fastDistance(p.latitude, p.longitude, r.lats[i], r.lons[i]); if (d < best) { best = d; at = r.cum[i] } }; return at }
             val a = along(ll); vias.indexOfFirst { along(it) > a }.let { if (it < 0) vias.size else it }
         }
-        vias.add(idx, ll)
+        vias.add(idx, ll); viaNames.add(idx, placeName(label))
         pin = null; clearPinMarker()
         val fix = startFix()
-        toast("Via " + (if (label.isNotEmpty() && !label.first().isDigit() && label.first() != '-') label else "point") + " — routing…")
+        toast("Via " + viaNames[idx].ifEmpty { "point" } + " — routing…")
         drawVias()
         if (mode == Mode.NAV) computeRoute(fix, dest, initial = true) else startCompare(compareFrom ?: fix, dest)
     }
@@ -787,10 +817,13 @@ class MainActivity : AppCompatActivity() {
         srcVia?.setGeoJson(FeatureCollection.fromFeatures(vias.mapIndexed { i, v -> Feature.fromGeometry(Point.fromLngLat(v.longitude, v.latitude)).also { it.addNumberProperty("idx", i) } }))
     }
 
+    /** A search label is a name; a long-press label is coordinates, which is no name at all. */
+    private fun placeName(label: String): String = if (label.isNotEmpty() && !label.first().isDigit() && label.first() != '-') label else ""
+
     /** Tap on a via: take it out of the route (and route again without it). */
     private fun offerRemoveVia(idx: Int) {
         val v = vias[idx]
-        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Via ${'A' + idx}")
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Stop ${'A' + idx}" + viaNames.getOrNull(idx)?.takeIf { it.isNotEmpty() }?.let { " · $it" }.orEmpty())
             .setMessage("%.5f, %.5f".format(v.latitude, v.longitude))
             .setPositiveButton("REMOVE VIA") { _, _ -> removeVia(idx) }
             .setNegativeButton(R.string.cancel, null).show()
@@ -798,7 +831,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun removeVia(idx: Int) {
         if (idx !in vias.indices) return
-        vias.removeAt(idx); drawVias()
+        vias.removeAt(idx); if (idx in viaNames.indices) viaNames.removeAt(idx); drawVias()
         val dest = destination ?: return
         toast("Via removed — routing…")
         if (mode == Mode.NAV) computeRoute(lastFix ?: startFix(), dest, initial = true) else startCompare(compareFrom ?: startFix(), dest)
@@ -884,6 +917,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun rebuildCompareRows(modes: List<Profile>, inProgress: Boolean) {
         compareRows.removeAllViews()
+        if (planStart != null || vias.isNotEmpty() || startName.isNotEmpty()) compareRows.addView(TextView(this).apply {
+            text = planTitle(); textSize = 13f; setTextColor(ContextCompat.getColor(this@MainActivity, R.color.ink_soft)); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(14), dp(6), dp(14), dp(2)); setOnClickListener { showStops() } })
         for (p in modes) {
             val r = candidates[p]
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(8)) }
@@ -905,6 +941,20 @@ class MainActivity : AppCompatActivity() {
             Feature.fromGeometry(LineString.fromLngLats(pts)).also { f -> f.addStringProperty("color", p.color); f.addBooleanProperty("sel", p == profile); f.addStringProperty("mode", p.name) }
         }
         srcCompare?.setGeoJson(FeatureCollection.fromFeatures(feats))
+        drawTurns()
+    }
+
+    /** Plan mode: the router's turns on the selected route (those not already reworded), so a tap can reword them. */
+    private fun drawTurns() {
+        val r = if (mode == Mode.COMPARE) candidates[profile] else null
+        if (r == null) { srcTurns?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); return }
+        val feats = ArrayList<Feature>()
+        for ((i, m) in r.maneuvers.withIndex()) {
+            if (m.turn == Turn.DEPART || m.turn == Turn.ARRIVE) continue
+            if (editCues.any { c -> c.turn == m.turn && Geo.fastDistance(c.lat, c.lon, r.lats[m.vertex], r.lons[m.vertex]) < 40.0 }) continue
+            feats.add(Feature.fromGeometry(Point.fromLngLat(r.lons[m.vertex], r.lats[m.vertex])).also { it.addNumberProperty("idx", i) })
+        }
+        srcTurns?.setGeoJson(FeatureCollection.fromFeatures(feats))
     }
 
     private fun fitCandidates() {
@@ -926,20 +976,192 @@ class MainActivity : AppCompatActivity() {
         compareGeneration++
         candidates.clear()
         srcCompare?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
-        if (route != null) { switchMode(Mode.NAV) } else { destination = null; vias.clear(); drawVias(); clearPinMarker(); planStart = null; drawStart(); editCues.clear(); compareModes = null; drawCues(); switchMode(Mode.IDLE) }
+        if (route != null) { switchMode(Mode.NAV) } else { destination = null; destName = ""; vias.clear(); viaNames.clear(); drawVias(); clearPinMarker(); planStart = null; startName = ""; drawStart(); editCues.clear(); compareModes = null; drawCues(); switchMode(Mode.IDLE) }
+    }
+
+    // ---------------------------------------------------------------- plan mode: the planner's job, on the phone, offline
+    //
+    // PLAN asks for a start and an end by name; stops are added by search (VIA) or a long press; STOPS reorders them, closes a
+    // loop or reverses the ride; a long press on the chosen route adds a note or a danger; a tap on one of the router's
+    // turns rewords it. Everything lands in editCues, which `planned()` lays onto whichever route is chosen, and SAVE writes
+    // the lot as a roadbook GPX that EDIT ROUTE opens again.
+
+    /** PLAN from the menu: a plan in progress comes back up; otherwise the start is asked for, then the end. */
+    private fun startPlan() {
+        if (destination != null && candidates.isNotEmpty()) { switchMode(Mode.COMPARE); drawCandidates(); drawCues(); fitCandidates(); return }
+        if (route != null) { toast("End the ride first (menu → END)"); return }
+        follow = false
+        val fromHere: Pair<String, () -> Unit>? = if (lastFix != null) Pair<String, () -> Unit>("FROM WHERE I AM", { planStart = null; startName = ""; drawStart(); askEnd() }) else null
+        SearchDialog.show(this, packs, marks, { hit -> setStartNamed(LatLng(hit.lat, hit.lon), hit.label); askEnd() }, { m -> setStartNamed(LatLng(m.lat, m.lon), m.name); askEnd() },
+            title = "Plan a ride · where does it start?", extra = fromHere)
+    }
+
+    private fun askEnd() {
+        SearchDialog.show(this, packs, marks, { hit -> routeTo(LatLng(hit.lat, hit.lon), hit.label) }, { m -> routeTo(LatLng(m.lat, m.lon), m.name) },
+            title = "…and where does it end?", extra = Pair<String, () -> Unit>("BACK TO THE START (LOOP)", { planLoopFromStart() }))
+    }
+
+    /** A loop needs somewhere to ride out to: the end is the start, and the first stop is asked for next. */
+    private fun planLoopFromStart() {
+        val ps = planStart ?: lastFix?.let { LatLng(it.lat, it.lon) } ?: run { toast("Waiting for a GPS fix…"); return }
+        if (packs.packFor(ps.latitude, ps.longitude) == null) { toast("The start is outside your maps", 6000); return }
+        if (planStart == null) { planStart = ps; drawStart() }
+        destination = ps; destName = startName.ifEmpty { "Start" }; vias.clear(); viaNames.clear(); editCues.clear(); compareModes = null
+        pin = null; clearPinMarker(); showPinMarker(ps)
+        SearchDialog.show(this, packs, marks, { hit -> addVia(LatLng(hit.lat, hit.lon), hit.label) }, { m -> addVia(LatLng(m.lat, m.lon), m.name) },
+            title = "A loop · where does it turn around?", extra = Pair<String, () -> Unit>("PICK ON THE MAP", { toast("Long-press the map where the ride turns around, then VIA", 6000) }))
+    }
+
+    private fun setStartNamed(ll: LatLng, label: String) {
+        planStart = ll; startName = placeName(label); drawStart()
+        follow = false
+        map?.easeCamera(CameraUpdateFactory.newLatLngZoom(ll, 12.0), 600)
+    }
+
+    /** The plan's points in ride order with their names: start, stops, end. */
+    private fun planPoints(): List<Pair<LatLng, String>> {
+        val from = planStart ?: compareFrom?.let { LatLng(it.lat, it.lon) } ?: lastFix?.let { LatLng(it.lat, it.lon) } ?: return emptyList()
+        val out = ArrayList<Pair<LatLng, String>>()
+        out.add(from to startName)
+        for (i in vias.indices) out.add(vias[i] to viaNames.getOrElse(i) { "" })
+        destination?.let { out.add(it to destName) }
+        return out
+    }
+
+    private fun planTitle(): String {
+        val pts = planPoints(); if (pts.size < 2) return destName
+        fun nm(p: Pair<LatLng, String>, fallback: String) = p.second.ifEmpty { fallback }
+        val loop = isLoop()
+        val mid = if (vias.isEmpty()) "" else " → " + vias.indices.joinToString(" → ") { viaNames.getOrElse(it) { "" }.ifEmpty { "stop ${'A' + it}" } }
+        return nm(pts.first(), if (planStart == null) "Here" else "Start") + mid + " → " + (if (loop) "back to start" else nm(pts.last(), "End"))
+    }
+
+    private fun isLoop(): Boolean {
+        val d = destination ?: return false
+        val from = planStart ?: compareFrom?.let { LatLng(it.lat, it.lon) } ?: return false
+        return Geo.fastDistance(d.latitude, d.longitude, from.latitude, from.longitude) < 30.0
+    }
+
+    /** LOOP: the end becomes the last stop and the ride ends where it started. OPEN LOOP undoes that. */
+    private fun toggleLoop() {
+        val d = destination ?: return
+        val from = planStart ?: compareFrom?.let { LatLng(it.lat, it.lon) } ?: return
+        if (isLoop()) {
+            if (vias.isEmpty()) { toast("An out-and-back needs a stop to turn around at — add one with VIA"); return }
+            destination = vias.removeAt(vias.size - 1); destName = viaNames.removeAt(viaNames.size - 1)
+        } else {
+            vias.add(d); viaNames.add(destName)
+            if (planStart == null) { planStart = from; drawStart() }
+            destination = from; destName = startName.ifEmpty { "Start" }
+        }
+        drawVias(); clearPinMarker(); destination?.let { showPinMarker(it) }
+        startCompare(startFix(), destination!!)
+    }
+
+    /** REVERSE: ride it the other way round. Notes and dangers stay where they are; reworded turns are dropped (they would face the wrong way). */
+    private fun reversePlan() {
+        val d = destination ?: return
+        val from = planStart ?: compareFrom?.let { LatLng(it.lat, it.lon) } ?: return
+        val loop = isLoop()
+        if (!loop) {
+            planStart = d; val sn = startName; startName = destName
+            destination = from; destName = sn.ifEmpty { "Start" }
+        }
+        vias.reverse(); viaNames.reverse()
+        val dropped = editCues.count { it.turn != Turn.NOTE && it.turn != Turn.DANGER }
+        editCues.removeAll { it.turn != Turn.NOTE && it.turn != Turn.DANGER }
+        drawStart(); drawVias(); clearPinMarker(); destination?.let { showPinMarker(it) }
+        if (dropped > 0) toast("Reversed — $dropped reworded turn${if (dropped > 1) "s" else ""} dropped (they faced the other way)", 5000)
+        startCompare(startFix(), destination!!)
+    }
+
+    /** STOPS: the ride's points in order; move or remove a stop, add one by search, close the loop, reverse. */
+    private fun showStops() {
+        val ctx = this
+        val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(8), dp(4), dp(8), 0) }
+        val list = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(android.widget.ScrollView(ctx).apply { addView(list) }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        var changed = false
+        lateinit var dlg: androidx.appcompat.app.AlertDialog
+        fun rebuild() {
+            list.removeAllViews()
+            val pts = planPoints()
+            for ((i, p) in pts.withIndex()) {
+                val isStart = i == 0; val isEnd = i == pts.size - 1; val viaIdx = i - 1
+                val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL; setPadding(dp(8), dp(4), dp(0), dp(4)) }
+                val tag = TextView(ctx).apply { text = if (isStart) "START" else if (isEnd) "END" else ('A' + viaIdx).toString(); textSize = 12f; setTypeface(null, android.graphics.Typeface.BOLD); setTextColor(ContextCompat.getColor(ctx, R.color.ink_soft)); minWidth = dp(52) }
+                val name = TextView(ctx).apply { text = p.second.ifEmpty { if (isStart && planStart == null) "Where you are" else "%.4f, %.4f".format(p.first.latitude, p.first.longitude) }; textSize = 16f; setTextColor(ContextCompat.getColor(ctx, R.color.ink)); maxLines = 2 }
+                row.addView(tag); row.addView(name, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                fun small(label: String, enabled: Boolean, act: () -> Unit) = Button(ctx).apply { text = label; textSize = 16f; minWidth = dp(44); minimumWidth = dp(44); isEnabled = enabled; alpha = if (enabled) 1f else 0.25f; setOnClickListener { act(); changed = true; rebuild() } }
+                row.addView(small("▲", viaIdx in 1 until vias.size) { java.util.Collections.swap(vias, viaIdx, viaIdx - 1); java.util.Collections.swap(viaNames, viaIdx, viaIdx - 1) })
+                row.addView(small("▼", viaIdx in 0 until vias.size - 1) { java.util.Collections.swap(vias, viaIdx, viaIdx + 1); java.util.Collections.swap(viaNames, viaIdx, viaIdx + 1) })
+                row.addView(small("✕", viaIdx in vias.indices) { vias.removeAt(viaIdx); viaNames.removeAt(viaIdx) })
+                list.addView(row)
+            }
+            dlg.setTitle(planTitle())
+        }
+        dlg = androidx.appcompat.app.AlertDialog.Builder(ctx).setTitle(planTitle()).setView(root)
+            .setPositiveButton("DONE") { _, _ -> if (changed) { drawVias(); startCompare(startFix(), destination ?: return@setPositiveButton) } }
+            .setNeutralButton("ADD STOP") { _, _ ->
+                SearchDialog.show(ctx, packs, marks, { hit -> addVia(LatLng(hit.lat, hit.lon), hit.label) }, { m -> addVia(LatLng(m.lat, m.lon), m.name) }, title = "Add a stop")
+            }
+            .setNegativeButton(if (isLoop()) "OPEN LOOP" else "LOOP") { _, _ -> toggleLoop() }
+            .create()
+        // a fourth action: reverse, as a row at the foot of the list
+        root.addView(Button(ctx).apply { text = "REVERSE THE RIDE"; setOnClickListener { dlg.dismiss(); reversePlan() } })
+        rebuild()
+        dlg.show()
+    }
+
+    // ---- cues on a planned route
+
+    /** The chosen route's point nearest a map point, if it is within 150 m: lat, lon, distance. */
+    private fun snapToPlan(lat: Double, lon: Double): DoubleArray? {
+        val r = candidates[profile] ?: return null
+        val out = DoubleArray(4); var best = Double.MAX_VALUE; var bLat = lat; var bLon = lon
+        for (i in 0 until r.size - 1) {
+            if (Math.abs(r.lats[i] - lat) > 0.02 || Math.abs(r.lons[i] - lon) > 0.02) continue
+            Geo.projectOnSegment(lat, lon, r.lats[i], r.lons[i], r.lats[i + 1], r.lons[i + 1], out)
+            if (out[1] < best) { best = out[1]; bLat = out[2]; bLon = out[3] }
+        }
+        return if (best <= 150.0) doubleArrayOf(bLat, bLon, best) else null
+    }
+
+    /** Long press on the chosen route in plan mode: a note or a danger there (an arrow is allowed too). */
+    private fun addPlanCueAt(lat: Double, lon: Double) {
+        val s = snapToPlan(lat, lon) ?: return
+        CueDialog.show(this, s[0], s[1], Cue(s[0], s[1], Turn.NOTE, ""), { c -> editCues.add(c); drawCues(); drawTurns(); haptic(1); toast(c.turn.spoken + if (c.note.isNotEmpty()) ": " + c.note else "") })
+    }
+
+    private fun editPlanCue(c: Cue) {
+        CueDialog.show(this, c.lat, c.lon, c, { n -> val i = editCues.indexOf(c); if (i >= 0) editCues[i] = n; drawCues(); drawTurns() },
+            onDelete = { editCues.remove(c); drawCues(); drawTurns(); toast("Cue deleted") })
+    }
+
+    /** Tap on one of the router's turns: say it in your own words (the arrow can change too). */
+    private fun rewordTurn(idx: Int) {
+        val r = candidates[profile] ?: return
+        val m = r.maneuvers.getOrNull(idx) ?: return
+        val lat = r.lats[m.vertex]; val lon = r.lons[m.vertex]
+        CueDialog.show(this, lat, lon, Cue(lat, lon, m.turn, ""), { c ->
+            if (c.turn == m.turn && c.note.isBlank()) return@show
+            editCues.add(c); drawCues(); drawTurns(); toast(c.turn.spoken + if (c.note.isNotEmpty()) ": " + c.note else "")
+        })
     }
 
     // ---- saved routes: GPX with the points as a route and the line as a track; anyone can open it
 
-    private fun routeGpx(r: Route): String {
+    private fun routeGpx(r0: Route): String {
+        val r = planned(r0)
         val from = compareFrom?.let { LatLng(it.lat, it.lon) } ?: LatLng(r.lats[0], r.lons[0])
         val pts = ArrayList<LatLng>(); pts.add(from); pts.addAll(vias); destination?.let { pts.add(it) }
-        val names = ArrayList<String>(); names.add("Start"); for (i in vias.indices) names.add("Via ${i + 1}"); names.add(destName.ifEmpty { "End" })
+        val names = ArrayList<String>(); names.add(startName.ifEmpty { "Start" }); for (i in vias.indices) names.add(viaNames.getOrElse(i) { "" }.ifEmpty { "Stop ${'A' + i}" }); names.add(destName.ifEmpty { "End" })
         val title = (destName.ifEmpty { "Route" }) + " (" + profile.label + ")"
         val text = Gpx.writeRoute(title, profile.name, pts.map { it.latitude }.toDoubleArray(), pts.map { it.longitude }.toDoubleArray(), names, r.lats, r.lons)
-                // Roadbook: the router's turns go in as cues, so the file is a roadbook you can annotate and follow as a track
-        val cues = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, if (m.turn == Turn.ROUNDABOUT) "exit ${m.exit}" else m.name) } +
-            (if (editCues.isEmpty()) emptyList() else try { Route.authoredCues(editCues, r) } catch (_: Throwable) { emptyList() })
+        // Roadbook: the router's turns go in as cues (reworded ones with the rider's words, notes and dangers as they are),
+        // so the file is a roadbook you can annotate and follow as a track, and EDIT ROUTE brings it back as this plan
+        val cues = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m ->
+            Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, m.note.ifEmpty { if (m.turn == Turn.ROUNDABOUT) "exit ${m.exit}" else m.name }, m.level) }
         return text.replace("  <rte>", cues.joinToString("") { Gpx.cueXml(it) } + "  <rte>")
     }
 
@@ -1115,7 +1337,7 @@ class MainActivity : AppCompatActivity() {
         dim(false); try { brightLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) {}
         NavService.stop(this)
         routeGeneration++
-        route = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart(); editCues.clear(); compareModes = null
+        route = null; destination = null; pin = null; isTrack = false; vias.clear(); viaNames.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; startName = ""; drawStart(); editCues.clear(); compareModes = null
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); drawVias()
         clearPinMarker()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1141,7 +1363,11 @@ class MainActivity : AppCompatActivity() {
         val r = route; val f = follower
         if (r != null && f != null && vias.isNotEmpty()) {
             val here = f.view(android.os.SystemClock.elapsedRealtime()).along
-            vias.removeAll { v -> var best = Double.MAX_VALUE; var at = 0.0; for (i in 0 until r.size) { val d = Geo.fastDistance(v.latitude, v.longitude, r.lats[i], r.lons[i]); if (d < best) { best = d; at = r.cum[i] } }; at < here - 500.0 }
+            for (k in vias.indices.reversed()) {
+                val v = vias[k]; var best = Double.MAX_VALUE; var at = 0.0
+                for (i in 0 until r.size) { val d = Geo.fastDistance(v.latitude, v.longitude, r.lats[i], r.lons[i]); if (d < best) { best = d; at = r.cum[i] } }
+                if (at < here - 500.0) { vias.removeAt(k); if (k in viaNames.indices) viaNames.removeAt(k) }
+            }
         }
         computeRoute(fix, dest, initial = true)
     }
@@ -1322,7 +1548,10 @@ class MainActivity : AppCompatActivity() {
         }
         tr.mode?.let { m -> try { val p = Profile.valueOf(m); profile = p; prefs.profile = p } catch (_: Throwable) {} }
         compareModes = listOf(profile)
-        destination = dest; destName = tr.name; vias.clear(); for (i in 1 until pts.size - 1) vias.add(LatLng(pts[i][0], pts[i][1])); drawVias()
+        destination = dest; destName = if (tr.hasRoute) tr.rteName(pts.size - 1).ifEmpty { tr.name } else tr.name
+        vias.clear(); viaNames.clear(); for (i in 1 until pts.size - 1) { vias.add(LatLng(pts[i][0], pts[i][1])); viaNames.add(if (tr.hasRoute) tr.rteName(i).let { if (it.startsWith("Via ") || it.startsWith("Stop ")) "" else it } else "") }
+        startName = if (tr.hasRoute) tr.rteName(0).let { if (it == "Start") "" else it } else ""
+        drawVias()
         editCues.clear(); editCues.addAll(tr.cues)
         if (mode == Mode.NAV) endNavigationKeepingPlan()
         // start from the GPS fix if you are near the route's start, otherwise plan from the route's own start
@@ -1371,7 +1600,7 @@ class MainActivity : AppCompatActivity() {
         updateRecStrip()
         if (m != Mode.NAV) { hud.visibility = View.GONE; offPanel.visibility = View.GONE; turnChip.visibility = View.GONE; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
         map?.uiSettings?.isCompassEnabled = m != Mode.NAV
-        if (m != Mode.COMPARE) { srcCompare?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
+        if (m != Mode.COMPARE) { srcCompare?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); srcTurns?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
     }
 
     private fun updateSoundButton() { findViewById<ImageButton>(R.id.btnSound).setImageResource(if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off) }
@@ -1739,6 +1968,7 @@ class MainActivity : AppCompatActivity() {
             items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
         } else {
             items.add(MenuItem("GO TO", R.drawable.ic_search) { findViewById<ImageButton>(R.id.btnGo).performClick() })
+            items.add(MenuItem(if (destination != null && candidates.isNotEmpty()) "PLAN…" else "PLAN", R.drawable.ic_list, on = destination != null && candidates.isNotEmpty()) { startPlan() })
             items.add(MenuItem("TRACK", R.drawable.ic_track) { findViewById<ImageButton>(R.id.btnTrack).performClick() })
             items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
             items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })

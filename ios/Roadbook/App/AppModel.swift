@@ -42,8 +42,19 @@ struct Dialog: Identifiable {
 }
 
 /// The sheets the glove menu and the panels open.
+/// What a search is for: a destination (the pin panel), or one of plan mode's questions, answered straight into the plan.
+struct SearchAsk {
+    var title = "Go to"
+    /// one more way out: a button with its own action ("FROM WHERE I AM", "BACK TO THE START")
+    var extra: (String, () -> Void)? = nil
+    /// what a pick does; nil = the pin panel
+    var onPick: ((CLLocationCoordinate2D, String) -> Void)? = nil
+    static let goTo = SearchAsk()
+}
+
 enum Sheet: Identifiable {
-    case search, maps, catalog, trackPicker, fetchCode, turnList, cueList, modes
+    case search(SearchAsk = .goTo)
+    case maps, catalog, trackPicker, fetchCode, turnList, cueList, modes, stops
     case cue(lat: Double, lon: Double, existing: Cue?)
     case markEdit(existing: Mark?, suggested: String, lat: Double, lon: Double)
     case markCard(Mark)
@@ -53,7 +64,7 @@ enum Sheet: Identifiable {
     case trackLoaded(GpxTrack, URL?)
     var id: String {
         switch self {
-        case .search: return "search"; case .maps: return "maps"; case .catalog: return "catalog"; case .trackPicker: return "track"; case .fetchCode: return "fetch"
+        case .search: return "search"; case .maps: return "maps"; case .catalog: return "catalog"; case .trackPicker: return "track"; case .fetchCode: return "fetch"; case .stops: return "stops"
         case .turnList: return "turns"; case .cueList: return "cues"; case .modes: return "modes"; case .cue: return "cue"; case .markEdit: return "markEdit"; case .markCard: return "markCard"
         case .publish: return "publish"; case .libraryItem: return "lib"; case .fileName: return "fileName"; case .trackLoaded: return "trackLoaded"
         }
@@ -80,8 +91,14 @@ final class AppModel: ObservableObject, MapEvents {
     @Published var destName = ""
     /// points the route must pass through, in order; "go by Spokane"
     @Published var vias: [CLLocationCoordinate2D] = []
+    /// the vias' names ("Lolo Pass", or "" for a point on the map), one per via
+    @Published var viaNames: [String] = []
     /// a start chosen on the map for planning, instead of the GPS position
     @Published var planStart: CLLocationCoordinate2D?
+    /// the chosen start's name, "" for a point on the map or the GPS position
+    @Published var startName = ""
+    /// a plan is being set up on the map: the first GPS fix must not yank the camera away from it
+    var planningCamera: Bool { planStart != nil || mode == .compare || mode == .edit || mode == .pin }
     @Published var route: Route?
     @Published var isTrack = false
     @Published var profile: Profile
@@ -106,6 +123,8 @@ final class AppModel: ObservableObject, MapEvents {
     @Published var trackCues: [Cue] = []
     /// a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned
     var editCues: [Cue] = []
+    /// the cue sheet is open on a plan-mode template (a new note on the line, or one of the router's turns to reword), not an existing cue
+    var planCueTemplate = false
     /// the modes the compare screen is limited to (a file is re-planned in its own mode); nil = the rider's chosen set
     @Published var compareModes: [Profile]?
     var compareModeList: [Profile] { compareModes ?? prefs.modeSet }
@@ -245,18 +264,19 @@ final class AppModel: ObservableObject, MapEvents {
     func offerRemoveVia(_ idx: Int) {
         guard vias.indices.contains(idx) else { return }
         let letter = String(UnicodeScalar(UInt8(65 + min(idx, 25))))
-        ask("Via \(letter)", fmt(vias[idx]), [Dialog.Btn(label: "REMOVE VIA", role: .destructive) { [self] in removeVia(idx) }, Dialog.Btn(label: "Cancel", role: .cancel) {}])
+        let nm = viaNames.indices.contains(idx) && !viaNames[idx].isEmpty ? " · " + viaNames[idx] : ""
+        ask("Stop \(letter)" + nm, fmt(vias[idx]), [Dialog.Btn(label: "REMOVE VIA", role: .destructive) { [self] in removeVia(idx) }, Dialog.Btn(label: "Cancel", role: .cancel) {}])
     }
     func removeVia(_ idx: Int) {
         guard vias.indices.contains(idx) else { return }
-        vias.remove(at: idx); drawVias()
+        vias.remove(at: idx); if viaNames.indices.contains(idx) { viaNames.remove(at: idx) }; drawVias()
         guard let dest = destination else { return }
         showToast("Via removed — routing…")
         if mode == .nav { computeRoute(lastFix ?? startFix(), dest, initial: true) } else { startCompare(compareFrom ?? startFix(), dest) }
     }
     func drawStart() { map.set("start-src", planStart.map { MapController.collection([MapController.point($0)]) }) }
     func drawCues() {
-        let shown = (mode == .compare && !editCues.isEmpty) ? editCues : trackCues
+        let shown = mode == .compare ? editCues : trackCues
         map.set("cues-src", MapController.collection(shown.enumerated().map { i, c in
             MapController.point(CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon), ["icon": c.turn == .danger ? "cue-danger" : "cue", "idx": NSNumber(value: i), "label": c.note.isEmpty ? c.turn.spoken : String(c.note.prefix(24))])
         }))
@@ -276,7 +296,7 @@ final class AppModel: ObservableObject, MapEvents {
             if mode == .nav { map.updatePuck(v.lat, v.lon, heading: (v.onRoute && v.speed > 1.5) ? f.route.segmentBearing(i: v.segment) : heading); handleOffRoute(v, fix) }
             else { map.updatePuck(fix.lat, fix.lon, heading: heading) }
         } else { map.updatePuck(fix.lat, fix.lon, heading: heading) }
-        if (follow || first) && uiVisible { moveCamera(fix.lat, fix.lon, animate: !first) }
+        if (follow || (first && !planningCamera)) && uiVisible { moveCamera(fix.lat, fix.lon, animate: !first) }
     }
 
     func haptic(_ times: Int, long: Bool = false) {
@@ -363,6 +383,7 @@ final class AppModel: ObservableObject, MapEvents {
 
     func mapLongPressed(_ c: CLLocationCoordinate2D) {
         if mode == .edit { addCue(at: c.latitude, c.longitude, snap: true); return }
+        if mode == .compare, snapToPlan(c.latitude, c.longitude) != nil { addPlanCue(at: c.latitude, c.longitude); return }
         if route != nil { follow = false }
         pin = c; pinName = fmt(c)
         showPinMarker(c)
@@ -373,15 +394,20 @@ final class AppModel: ObservableObject, MapEvents {
         if menuOpen { menuOpen = false; return }
         let markHit = map.features(at: p, layer: "marks-layer", radius: 22).first
         let mark = (markHit?.attribute(forKey: "id") as? NSNumber).flatMap { id in marks.marks.first { $0.id == id.int64Value } }
-        let cueHit = (mode == .edit || (mode == .nav && isTrack)) ? map.features(at: p, layer: "cues-layer", radius: 22).first : nil
-        let cue = (cueHit?.attribute(forKey: "idx") as? NSNumber).flatMap { i in trackCues.indices.contains(i.intValue) ? trackCues[i.intValue] : nil }
+        let cueHit = (mode == .edit || mode == .compare || (mode == .nav && isTrack)) ? map.features(at: p, layer: "cues-layer", radius: 22).first : nil
+        let cueList = mode == .compare ? editCues : trackCues
+        let cue = (cueHit?.attribute(forKey: "idx") as? NSNumber).flatMap { i in cueList.indices.contains(i.intValue) ? cueList[i.intValue] : nil }
+        // plan mode: the router's own turns on the selected route can be reworded
+        let turnHit = (mode == .compare && cue == nil) ? map.features(at: p, layer: "turns-layer", radius: 18).first : nil
+        let turnIdx = (turnHit?.attribute(forKey: "idx") as? NSNumber).map { $0.intValue }
         let lineHit = mode == .compare ? (map.features(at: p, layer: "cmp-line", radius: 14).first ?? map.features(at: p, layer: "cmp-line-sel", radius: 14).first) : nil
         let picked = (lineHit?.attribute(forKey: "mode") as? String).flatMap { Profiles.byName($0) }
         let viaHit = (!vias.isEmpty && (mode == .compare || mode == .nav || mode == .pin)) ? map.features(at: p, layer: "via-layer", radius: 20).first : nil
         let viaIdx = (viaHit?.attribute(forKey: "idx") as? NSNumber).map { $0.intValue }
         let libHit = (libraryOn && mode == .idle) ? map.features(at: p, layer: "lib-line", radius: 16).first : nil
         let libItem = (libHit?.attribute(forKey: "id") as? String).flatMap { id in libraryItems.first { $0.id == id } }
-        if let c = cue { editCue(c) }
+        if let c = cue { if mode == .compare { editPlanCue(c) } else { editCue(c) } }
+        else if let ti = turnIdx { rewordTurn(ti) }
         else if let vi = viaIdx { offerRemoveVia(vi) }
         else if let it = libItem { sheet = .libraryItem(it) }
         else if let m = mark { sheet = .markCard(m) }
@@ -448,7 +474,7 @@ final class AppModel: ObservableObject, MapEvents {
         updateRecStrip()
         if m != .nav { hud.visible = false; hud.offVisible = false; map.clear("lead-src") }
         map.mapView.compassView.isHidden = (m == .nav)
-        if m != .compare { map.clear("cmp-src") }
+        if m != .compare { map.clear("cmp-src"); map.clear("turns-src") }
     }
 
     // ---------------------------------------------------------------- terms, once

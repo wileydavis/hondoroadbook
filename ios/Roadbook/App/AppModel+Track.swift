@@ -85,8 +85,11 @@ extension AppModel {
         }
         if let m = tr.mode, let p = Profiles.byName(m) { profile = p; prefs.profile = p }
         compareModes = [profile]
-        destination = dest; destName = tr.name
+        let endName = tr.hasRoute ? tr.rteName(i: Int32(pts.count - 1)) : ""
+        destination = dest; destName = endName.isEmpty ? tr.name : endName
         vias = pts.count > 2 ? pts[1..<(pts.count - 1)].map { CLLocationCoordinate2D(latitude: $0[0], longitude: $0[1]) } : []
+        viaNames = vias.indices.map { i in let n = tr.hasRoute ? tr.rteName(i: Int32(i + 1)) : ""; return (n.hasPrefix("Via ") || n.hasPrefix("Stop ")) ? "" : n }
+        startName = tr.hasRoute ? (tr.rteName(i: 0) == "Start" ? "" : tr.rteName(i: 0)) : ""
         drawVias()
         editCues = tr.cueList
         if mode == .nav { endNavigationKeepingPlan() }
@@ -120,6 +123,7 @@ extension AppModel {
 
     /// The cue sheet saved a new cue.
     func cueSaved(_ c: Cue, replacing old: Cue?) {
+        if mode == .compare { planCueSaved(c, replacing: old); return }
         if let o = old {
             if let i = trackCues.firstIndex(where: { $0 === o }) { trackCues[i] = c }
             drawCues(); if mode == .nav { rebuildTrackRoute() }
@@ -131,6 +135,7 @@ extension AppModel {
     }
 
     func cueDeleted(_ c: Cue) {
+        if mode == .compare { planCueDeleted(c); return }
         trackCues.removeAll { $0 === c }; drawCues(); if mode == .nav { rebuildTrackRoute() }; showToast("Cue deleted")
     }
 
@@ -188,7 +193,7 @@ extension AppModel {
 
     func followEditedTrack() {
         guard let la = trackLats, let lo = trackLons else { return }
-        let tr = GpxTrack(name: trackName, lats: KotlinDoubleArray.of(la), lons: KotlinDoubleArray.of(lo), rteLats: KotlinDoubleArray(size: 0), rteLons: KotlinDoubleArray(size: 0), mode: nil, cues: trackCues)
+        let tr = GpxTrack(name: trackName, lats: KotlinDoubleArray.of(la), lons: KotlinDoubleArray.of(lo), rteLats: KotlinDoubleArray(size: 0), rteLons: KotlinDoubleArray(size: 0), mode: nil, cues: trackCues, rteNames: [])
         let url = trackURL
         switchMode(.idle)
         followTrack(tr, url)

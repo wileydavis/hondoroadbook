@@ -133,6 +133,10 @@ struct ComparePanel: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         VStack(spacing: 6) {
+            if model.hasPlanTitle {
+                Text(model.planTitle).font(.system(size: 13)).foregroundStyle(Theme.sInkSoft).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.top, 2)
+                    .contentShape(Rectangle()).onTapGesture { model.sheet = .stops }
+            }
             ForEach(model.compareModeList, id: \.name) { p in
                 let r = model.candidate(p)
                 HStack(spacing: 12) {
@@ -150,6 +154,7 @@ struct ComparePanel: View {
             }
             HStack(spacing: 8) {
                 Button("GO") { model.goWithSelected() }.buttonStyle(BigButton(accent: true))
+                Button("STOPS") { model.sheet = .stops }.buttonStyle(BigButton(compact: true))
                 Button("MODES") { model.sheet = .modes }.buttonStyle(BigButton(compact: true))
                 Button("SAVE") { if let r = model.candidate(model.profile) { model.saveOrShareRoute(r) } else { model.showToast("Pick a route first") } }.buttonStyle(BigButton(compact: true))
                 Button("✕") { model.cancelCompare() }.buttonStyle(BigButton(compact: true))

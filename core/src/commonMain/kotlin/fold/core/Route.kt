@@ -309,7 +309,17 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
             if (placed.isEmpty()) return r
             val man = ArrayList<Maneuver>(r.maneuvers.size + placed.size)
             val depart = r.maneuvers.firstOrNull { it.turn == Turn.DEPART }; val arrive = r.maneuvers.lastOrNull { it.turn == Turn.ARRIVE }
-            man.addAll(r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }); man.addAll(placed)
+            val own = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.toMutableList()
+            // an authored turn cue that lands on the router's turn of the same kind rewords it: the router's
+            // place, street and angle, the rider's words
+            val merged = ArrayList<Maneuver>(placed.size)
+            for (c in placed) {
+                if (c.turn == Turn.NOTE || c.turn == Turn.DANGER) { merged.add(c); continue }
+                val i = own.indexOfFirst { it.turn == c.turn && kotlin.math.abs(it.at - c.at) < 40.0 }
+                if (i < 0) merged.add(c)
+                else { val m = own.removeAt(i); merged.add(Maneuver(m.turn, m.at, m.vertex, m.name, m.angle, m.exit, note = c.note, level = c.level)) }
+            }
+            man.addAll(own); man.addAll(merged)
             man.sortBy { it.at }
             depart?.let { man.add(0, it) }; arrive?.let { man.add(it) }
             return Route(r.lats, r.lons, man, r.timeSeconds, r.isTrack)
@@ -335,7 +345,17 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
          */
         fun authoredCues(fileCues: List<Cue>, planned: Route): List<Cue> = fileCues.filter { c ->
             if (c.turn == Turn.NOTE || c.turn == Turn.DANGER) return@filter true
-            planned.maneuvers.none { m -> m.turn == c.turn && Geo.fastDistance(m.let { planned.lats[it.vertex] }, planned.lons[m.vertex], c.lat, c.lon) < 40.0 }
+            val own = planned.maneuvers.firstOrNull { m -> m.turn == c.turn && Geo.fastDistance(planned.lats[m.vertex], planned.lons[m.vertex], c.lat, c.lon) < 40.0 } ?: return@filter true
+            // the same turn is there again: the file's cue is the router's own unless its words are the rider's
+            !isRoutersWords(c, own)
+        }
+
+        /** A saved turn cue carries the router's street name (or a roundabout's exit) as its words; anything else was written by the rider. */
+        fun isRoutersWords(c: Cue, m: Maneuver): Boolean {
+            val w = c.note.trim()
+            if (w.isEmpty() || w == m.name.trim()) return true
+            if (m.turn == Turn.ROUNDABOUT && w.startsWith("exit ")) return true
+            return false
         }
     }
 }

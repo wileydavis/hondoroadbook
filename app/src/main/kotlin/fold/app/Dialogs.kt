@@ -25,9 +25,11 @@ internal fun Context.dp(v: Int) = (v * resources.displayMetrics.density + 0.5f).
 object SearchDialog {
     private val worker = Executors.newSingleThreadExecutor()
 
-    fun show(act: Activity, packs: PackStore, marks: MarkStore, onPick: (Hit) -> Unit, onMark: (Mark) -> Unit) {
+    /** [title] heads the search (plan mode asks "where does it start?"); [extra] is one more way out, a button with its own action. */
+    fun show(act: Activity, packs: PackStore, marks: MarkStore, onPick: (Hit) -> Unit, onMark: (Mark) -> Unit, title: String? = null, extra: Pair<String, () -> Unit>? = null) {
         val ctx = act
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(16), ctx.dp(12), ctx.dp(16), 0) }
+        if (title != null) root.addView(TextView(ctx).apply { text = title; textSize = 17f; setTypeface(null, android.graphics.Typeface.BOLD); setPadding(ctx.dp(8), 0, ctx.dp(8), ctx.dp(8)) })
         val input = EditText(ctx).apply {
             hint = ctx.getString(R.string.search_hint); textSize = 20f; isSingleLine = true
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_FLAG_CAP_WORDS
@@ -38,7 +40,9 @@ object SearchDialog {
         root.addView(input); root.addView(status)
         root.addView(list, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (ctx.resources.displayMetrics.heightPixels * 0.5).toInt()))
 
-        val dlg = AlertDialog.Builder(ctx).setView(root).setNegativeButton(R.string.cancel, null).create()
+        val b = AlertDialog.Builder(ctx).setView(root).setNegativeButton(R.string.cancel, null)
+        if (extra != null) b.setNeutralButton(extra.first) { _, _ -> extra.second() }
+        val dlg = b.create()
         var hits: List<Hit> = emptyList()
         var shownMarks: List<Mark> = emptyList()
         var generation = 0

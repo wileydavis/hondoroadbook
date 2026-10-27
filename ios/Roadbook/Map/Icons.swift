@@ -57,6 +57,14 @@ enum Icons {
     static func via(night: Bool) -> UIImage { dot(22, radius: 22 * 0.32, color: Theme.route.resolved(night), stroke: 3) }
     /// cue marker: a small round sign, orange for a danger, ink for everything else
     static func cue(danger: Bool, night: Bool) -> UIImage { dot(22, radius: 22 * 0.4, color: danger ? Theme.accent.resolved(night) : Theme.ink.resolved(night), stroke: 2) }
+    /// one of the router's turns in plan mode: a small hollow ring, tap to reword
+    static func turn(night: Bool) -> UIImage {
+        image(16, 16) { c, w, h in
+            let r = CGRect(x: w / 2 - 4.8, y: h / 2 - 4.8, width: 9.6, height: 9.6)
+            c.setFillColor(UIColor.white.cgColor); c.fillEllipse(in: r)
+            c.setStrokeColor(Theme.ink.resolved(night).cgColor); c.setLineWidth(2); c.strokeEllipse(in: r)
+        }
+    }
 }
 
 extension UIColor {

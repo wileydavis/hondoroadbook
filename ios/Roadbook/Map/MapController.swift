@@ -89,7 +89,8 @@ final class MapController: NSObject, MLNMapViewDelegate {
         st.setImage(Icons.via(night: night), forName: "via")
         st.setImage(Icons.cue(danger: false, night: night), forName: "cue")
         st.setImage(Icons.cue(danger: true, night: night), forName: "cue-danger")
-        for id in ["marks-src", "via-src", "cmp-src", "start-src", "lead-src", "route-src", "cues-src", "pin-src", "puck-src", "lib-src", "fog-src", "cover-src", "cover-label-src"] { _ = source(id, st) }
+        st.setImage(Icons.turn(night: night), forName: "turn")
+        for id in ["marks-src", "via-src", "cmp-src", "start-src", "lead-src", "route-src", "cues-src", "turns-src", "pin-src", "puck-src", "lib-src", "fog-src", "cover-src", "cover-label-src"] { _ = source(id, st) }
         let ink = Theme.ink.resolved(night), paper = Theme.paper.resolved(night), accent = Theme.accent.resolved(night), casing = Theme.routeCasing.resolved(night), track = Theme.track.resolved(night)
         // route lines go under the map's labels (road names, shields, towns), so a route never hides the name of the road it follows
         let firstLabel = st.layers.first { $0 is MLNSymbolStyleLayer }
@@ -134,6 +135,8 @@ final class MapController: NSObject, MLNMapViewDelegate {
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
         let lead = line("lead-line", "lead-src", color: ink, width: 2.5, opacity: 0.45, dash: [2, 2]); addUnderLabels(lead)
+        // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
+        let turns = MLNSymbolStyleLayer(identifier: "turns-layer", source: sources["turns-src"]!); turns.iconImageName = Self.c("turn"); turns.iconAllowsOverlap = Self.c(true); turns.iconIgnoresPlacement = Self.c(true); turns.minimumZoomLevel = 10; st.addLayer(turns)
         let start = MLNSymbolStyleLayer(identifier: "start-layer", source: sources["start-src"]!); start.iconImageName = Self.c("start"); start.iconAllowsOverlap = Self.c(true); start.iconIgnoresPlacement = Self.c(true); st.addLayer(start)
         let via = MLNSymbolStyleLayer(identifier: "via-layer", source: sources["via-src"]!); via.iconImageName = Self.c("via"); via.iconAllowsOverlap = Self.c(true); via.iconIgnoresPlacement = Self.c(true); st.addLayer(via)
         let pin = MLNSymbolStyleLayer(identifier: "pin-layer", source: sources["pin-src"]!); pin.iconImageName = Self.c("pin"); pin.iconAnchor = Self.c("bottom"); pin.iconAllowsOverlap = Self.c(true); pin.iconIgnoresPlacement = Self.c(true); st.addLayer(pin)

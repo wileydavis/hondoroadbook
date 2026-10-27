@@ -8,9 +8,13 @@ package fold.core
  * Writing: a Fold route goes out as both, so any GPX viewer shows the line and Fold can rebuild it.
  */
 object Gpx {
-    class Track(val name: String, val lats: DoubleArray, val lons: DoubleArray, val rteLats: DoubleArray, val rteLons: DoubleArray, val mode: String?, val cues: List<Cue> = emptyList()) {
+    class Track(val name: String, val lats: DoubleArray, val lons: DoubleArray, val rteLats: DoubleArray, val rteLons: DoubleArray, val mode: String?, val cues: List<Cue> = emptyList(),
+                /** the route points' names (a waypoint at the same spot: "Start", "Lolo Pass", "End"), "" where there is none; as long as [rteLats] or empty */
+                val rteNames: List<String> = emptyList()) {
         val hasTrack get() = lats.size >= 2
         val hasRoute get() = rteLats.size >= 2
+        /** the name of route point [i], or "" */
+        fun rteName(i: Int): String = rteNames.getOrNull(i) ?: ""
     }
 
     @Throws(Throwable::class) fun parse(text: String): Track? {
@@ -18,6 +22,8 @@ object Gpx {
         val rl = ArrayList<Double>(); val ro = ArrayList<Double>()
         var name = ""; var mode: String? = null
         val cues = ArrayList<Cue>()
+        // plain named waypoints (no cue type): a stop's name when one sits on a route point
+        val wpLat = ArrayList<Double>(); val wpLon = ArrayList<Double>(); val wpName = ArrayList<String>()
         var i = 0
         val n = text.length
         var lastLat = Double.NaN; var lastLon = Double.NaN
@@ -39,7 +45,8 @@ object Gpx {
                 if (lat != null && lon != null && close > 0) {
                     val body = text.substring(i, close)
                     fun inner(t: String): String { val a = body.indexOf("<$t>"); if (a < 0) return ""; val b = body.indexOf("</$t>", a); return if (b < 0) "" else unesc(body.substring(a + t.length + 2, b).trim()) }
-                    Cue.fromWaypoint(lat, lon, inner("type"), inner("name"), inner("desc"))?.let { cues.add(it) }
+                    val cue = Cue.fromWaypoint(lat, lon, inner("type"), inner("name"), inner("desc"))
+                    if (cue != null) cues.add(cue) else inner("name").let { nm -> if (nm.isNotEmpty()) { wpLat.add(lat); wpLon.add(lon); wpName.add(nm) } }
                     i = close + 6
                 }
             } else if (tag.startsWith("rtept")) {
@@ -54,7 +61,12 @@ object Gpx {
             }
         }
         if (lats.size < 2 && rl.size < 2) return null
-        return Track(name.ifEmpty { "Track" }, lats.toDoubleArray(), lons.toDoubleArray(), rl.toDoubleArray(), ro.toDoubleArray(), mode, cues)
+        val names = if (wpName.isEmpty()) emptyList() else rl.indices.map { k ->
+            var best = -1; var bd = 5.0
+            for (w in wpLat.indices) { val d = Geo.fastDistance(rl[k], ro[k], wpLat[w], wpLon[w]); if (d < bd) { bd = d; best = w } }
+            if (best >= 0) wpName[best] else ""
+        }
+        return Track(name.ifEmpty { "Track" }, lats.toDoubleArray(), lons.toDoubleArray(), rl.toDoubleArray(), ro.toDoubleArray(), mode, cues, names)
     }
 
     /**

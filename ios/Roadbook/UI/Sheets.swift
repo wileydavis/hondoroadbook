@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 import UIKit
 import FoldCore
@@ -9,7 +10,8 @@ struct SheetHost: View {
     let sheet: Sheet
     var body: some View {
         switch sheet {
-        case .search: SearchSheet()
+        case .search(let ask): SearchSheet(ask: ask)
+        case .stops: StopsSheet()
         case .maps: MapsSheet()
         case .catalog: CatalogSheet()
         case .trackPicker: TrackPickerSheet()
@@ -47,6 +49,7 @@ struct SheetFrame<Content: View>: View {
 
 struct SearchSheet: View {
     @EnvironmentObject var model: AppModel
+    var ask: SearchAsk = .goTo
     @State private var q = ""
     @State private var hits: [Hit] = []
     @State private var shownMarks: [Mark] = []
@@ -55,16 +58,17 @@ struct SearchSheet: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        SheetFrame(title: "Go to") {
+        SheetFrame(title: ask.title) {
             VStack(spacing: 0) {
                 TextField("Address, street or place", text: $q).font(.system(size: 20)).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.words).padding().focused($focused)
                 if !status.isEmpty { Text(status).font(.system(size: 14)).foregroundStyle(Theme.sInkSoft).padding(.horizontal) }
+                if let extra = ask.extra { Button(extra.0) { model.sheet = nil; extra.1() }.buttonStyle(BigButton(compact: true)).padding(.horizontal).padding(.bottom, 8) }
                 List {
                     ForEach(shownMarks) { m in
-                        Button { model.sheet = nil; model.goToMark(m) } label: { Text("★ " + m.name + (m.note.isEmpty ? "" : " — " + m.note)).foregroundStyle(Theme.sInk) }
+                        Button { pick(CLLocationCoordinate2D(latitude: m.lat, longitude: m.lon), m.name) { model.goToMark(m) } } label: { Text("★ " + m.name + (m.note.isEmpty ? "" : " — " + m.note)).foregroundStyle(Theme.sInk) }
                     }
                     ForEach(Array(hits.enumerated()), id: \.offset) { _, h in
-                        Button { model.sheet = nil; model.onSearchPick(h) } label: { Text(h.label).foregroundStyle(Theme.sInk) }
+                        Button { pick(CLLocationCoordinate2D(latitude: h.lat, longitude: h.lon), h.label) { model.onSearchPick(h) } } label: { Text(h.label).foregroundStyle(Theme.sInk) }
                     }
                 }
                 .listStyle(.plain)
@@ -72,6 +76,12 @@ struct SearchSheet: View {
         }
         .onAppear { focused = true; if model.packs.packs.isEmpty { status = "No maps on this phone yet. Download one under MAPS." }; run("") }
         .onChange(of: q) { _, v in run(v) }
+    }
+
+    /// a pick answers the plan's question, or goes to the pin panel
+    private func pick(_ c: CLLocationCoordinate2D, _ label: String, orElse: () -> Void) {
+        model.sheet = nil
+        if let f = ask.onPick { f(c, label) } else { orElse() }
     }
 
     private func run(_ q: String) {
@@ -406,6 +416,47 @@ struct ModesSheet: View {
     }
 }
 
+// ---- STOPS: the plan's points in order; move or remove a stop, add one by search, close the loop, reverse ----------
+
+struct StopsSheet: View {
+    @EnvironmentObject var model: AppModel
+    @State private var changed = false
+    var body: some View {
+        SheetFrame(title: "Stops") {
+            VStack(spacing: 0) {
+                Text(model.planTitle).font(.system(size: 14)).foregroundStyle(Theme.sInkSoft).lineLimit(3).padding(.horizontal).padding(.top, 8)
+                List {
+                    let pts = model.planPoints()
+                    ForEach(Array(pts.enumerated()), id: \.offset) { i, p in
+                        let isStart = i == 0, isEnd = i == pts.count - 1, vi = i - 1
+                        HStack(spacing: 10) {
+                            Text(isStart ? "START" : isEnd ? "END" : model.stopLetter(vi)).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sInkSoft).frame(width: 48, alignment: .leading)
+                            Text(p.1.isEmpty ? (isStart && model.planStart == nil ? "Where you are" : fmt(p.0)) : p.1).font(.system(size: 16)).foregroundStyle(Theme.sInk).lineLimit(2)
+                            Spacer()
+                            if !isStart && !isEnd {
+                                Button { model.moveStop(vi, by: -1); changed = true } label: { Image(systemName: "chevron.up") }.buttonStyle(.borderless).disabled(vi == 0)
+                                Button { model.moveStop(vi, by: 1); changed = true } label: { Image(systemName: "chevron.down") }.buttonStyle(.borderless).disabled(vi >= model.vias.count - 1)
+                                Button { model.removeStop(vi); changed = true } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                            }
+                        }
+                        .font(.system(size: 18, weight: .semibold))
+                    }
+                }
+                .listStyle(.plain)
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button("ADD STOP") { model.sheet = nil; model.addStopBySearch() }.buttonStyle(BigButton(compact: true))
+                        Button(model.isLoop ? "OPEN LOOP" : "LOOP") { model.sheet = nil; model.toggleLoop() }.buttonStyle(BigButton(compact: true))
+                        Button("REVERSE") { model.sheet = nil; model.reversePlan() }.buttonStyle(BigButton(compact: true))
+                    }
+                    Button("DONE") { model.sheet = nil; if changed { model.stopsChanged() } }.buttonStyle(BigButton(accent: true))
+                }
+                .padding()
+            }
+        }
+    }
+}
+
 // ---- cues ----------------------------------------------------------------------------------------------------
 
 /// Pick a cue: the same arrows the HUD draws, plus NOTE and DANGER, and words to say. Built for a gloved thumb at a
@@ -421,7 +472,7 @@ struct CueSheet: View {
     private static let turns: [Turn] = [.sharpLeft, .left, .slightLeft, .straight, .slightRight, .right, .sharpRight, .keepLeft, .uturn, .keepRight, .note, .danger]
 
     var body: some View {
-        SheetFrame(title: existing == nil ? "Add cue" : "Edit cue") {
+        SheetFrame(title: existing == nil || (model.planCueTemplate && existing?.turn == .note) ? "Add cue" : model.planCueTemplate ? "Reword this turn" : "Edit cue") {
             ScrollView {
                 VStack(spacing: 12) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
@@ -442,7 +493,7 @@ struct CueSheet: View {
                     if needWords { Text("A note needs words").foregroundStyle(Theme.sAccent).font(.system(size: 13)) }
                     HStack(spacing: 8) {
                         Button("SAVE") { save() }.buttonStyle(BigButton(accent: true))
-                        if let e = existing { Button("DELETE") { model.sheet = nil; model.cueDeleted(e) }.buttonStyle(BigButton(compact: true)) }
+                        if let e = existing, !model.planCueTemplate { Button("DELETE") { model.sheet = nil; model.cueDeleted(e) }.buttonStyle(BigButton(compact: true)) }
                     }
                 }
                 .padding()

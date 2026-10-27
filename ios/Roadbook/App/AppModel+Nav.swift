@@ -64,7 +64,7 @@ extension AppModel {
         dim(false)
         ride.stop()
         routeGeneration += 1
-        route = nil; destination = nil; pin = nil; isTrack = false; vias = []; destName = ""; candidates = []; compareGeneration += 1; planStart = nil; drawStart(); editCues = []; compareModes = nil
+        route = nil; destination = nil; pin = nil; isTrack = false; vias = []; viaNames = []; destName = ""; candidates = []; compareGeneration += 1; planStart = nil; startName = ""; drawStart(); editCues = []; compareModes = nil
         map.clear("route-src"); drawVias()
         clearPinMarker()
         UIApplication.shared.isIdleTimerDisabled = false
