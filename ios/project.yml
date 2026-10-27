@@ -30,6 +30,17 @@ packages:
   ZIPFoundation:
     url: https://github.com/weichsel/ZIPFoundation
     from: "0.9.19"
+schemes:
+  Roadbook:
+    build:
+      targets:
+        Roadbook: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
 targets:
   Roadbook:
     type: application
