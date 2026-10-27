@@ -32,7 +32,6 @@ struct ContentView: View {
                         bottomArea(geo)
                     }
                     .padding(.horizontal, 12)
-                    sideButtons
                     if let t = model.toast {
                         VStack { Spacer(); Text(t).font(.system(size: 15, weight: .medium)).multilineTextAlignment(.center).foregroundStyle(Theme.sInk).padding(.horizontal, 16).padding(.vertical, 10).glass().padding(.bottom, bottomInset).padding(.horizontal, 24) }
                             .transition(.opacity).allowsHitTesting(false)
@@ -105,21 +104,6 @@ struct ContentView: View {
             .padding(.bottom, 12)
         }
 
-        /// locate / night / lock / sound, stacked at the right edge
-        private var sideButtons: some View {
-            VStack(spacing: 10) {
-                Spacer()
-                if model.mode == .nav { RoundButton(system: prefs.sound ? "speaker.wave.2.fill" : "speaker.slash.fill", on: prefs.sound) { model.toggleSound() } }
-                RoundButton(system: "location.fill") { model.locate() }
-                RoundButton(system: prefs.night ? "sun.max.fill" : "moon.fill", on: prefs.night) { model.toggleNight() }
-                RoundButton(system: model.orientationLocked ? "lock.fill" : "lock.open", on: model.orientationLocked) { model.toggleOrientationLock() }
-                if model.mode == .idle { RoundButton(system: "record.circle", on: recorder.running) { recorder.running ? model.stopRecording() : model.startRecording() } }
-                Spacer().frame(height: bottomInset + 60)
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.trailing, 12)
-            .opacity(model.menuOpen || model.dimmed ? 0 : 1)
-        }
     }
 }
 
