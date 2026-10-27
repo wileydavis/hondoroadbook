@@ -261,6 +261,7 @@ struct RegionSheet: View {
     private func download(_ want: [CatalogPack]) {
         guard let p = want.first else { onDone(); return }
         let dl = Downloader(); downloader = dl
+        model.sheet = nil
         model.progress = AppModel.ProgressState(title: "Downloading \(p.region) · \(p.kindLabel)", message: "Starting…", cancel: { dl.cancel() })
         Task {
             do {

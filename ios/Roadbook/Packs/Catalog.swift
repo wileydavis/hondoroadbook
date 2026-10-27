@@ -75,9 +75,25 @@ final class Downloader: NSObject, URLSessionDataDelegate {
             guard let u = URL(string: p.url) else { throw Fail("Bad pack URL") }
             var req = URLRequest(url: u)
             if have > 0 { req.setValue("bytes=\(have)-", forHTTPHeaderField: "Range") }
-            try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
-                cont = c
-                session.dataTask(with: req).resume()
+            var attempt = 0
+            while true {
+                attempt += 1
+                do {
+                    try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
+                        cont = c
+                        session.dataTask(with: req).resume()
+                    }
+                    break
+                } catch let d as Dropped {
+                    // could not connect / network lost / reset: wait a moment and ask for the rest of the file
+                    if attempt >= 3 || cancelled { throw d }
+                    DispatchQueue.main.async { progress("Retrying (\(d.text))…") }
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    failed = nil
+                    session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
+                    req = URLRequest(url: u)
+                    if have > 0 { req.setValue("bytes=\(have)-", forHTTPHeaderField: "Range") }
+                }
             }
             try? handle?.close(); handle = nil
             if total > 0 && have < total { throw Fail("Connection dropped — download again to resume") }
@@ -116,7 +132,9 @@ final class Downloader: NSObject, URLSessionDataDelegate {
         session.finishTasksAndInvalidate()
         if cancelled { c?.resume(throwing: CancellationError()); return }
         if let f = failed { c?.resume(throwing: f); return }
-        if let e = error { c?.resume(throwing: Fail("Connection dropped (\(e.localizedDescription)) — download again to resume")); return }
+        if let e = error as NSError? { c?.resume(throwing: Dropped(code: e.code, text: e.localizedDescription)); return }
         c?.resume()
     }
+    /// a connection that failed or was cut: the partial file is kept, and the caller may try again
+    struct Dropped: LocalizedError { let code: Int; let text: String; var errorDescription: String? { "\(text) (\(code)) — download again to resume" } }
 }
