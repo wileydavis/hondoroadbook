@@ -416,6 +416,7 @@ final class AppModel: ObservableObject, MapEvents {
         menuOpen = false
         updateRecStrip()
         if m != .nav { hud.visible = false; hud.offVisible = false; map.clear("lead-src") }
+        map.mapView.compassView.isHidden = (m == .nav)
         if m != .compare { map.clear("cmp-src") }
     }
 

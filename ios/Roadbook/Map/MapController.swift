@@ -32,7 +32,9 @@ final class MapController: NSObject, MLNMapViewDelegate {
         mapView.delegate = self
         mapView.logoView.isHidden = true
         mapView.attributionButton.isHidden = true
-        mapView.compassView.isHidden = true          // the HUD draws its own compass
+        // the map's compass shows when the map is turned (outside navigation; the HUD has its own while navigating)
+        mapView.compassViewPosition = .topRight
+        mapView.compassViewMargins = CGPoint(x: 16, y: 170)
         mapView.allowsTilting = false
         mapView.allowsRotating = true
         mapView.showsUserLocation = false            // the puck is ours: it follows the route, not the raw fix

@@ -778,7 +778,7 @@ class MainActivity : AppCompatActivity() {
         rerouting = true
         val viasCopy = ArrayList(vias)
         worker.execute {
-            val result = try { routeOne(from, dest, viasCopy, p) } catch (e: Throwable) { e }
+            val result = try { routeOne(from, dest, viasCopy, p) } catch (e: Throwable) { e } finally { try { packs.multiRouter().releaseMemory() } catch (_: Throwable) {} }
             ui.post {
                 rerouting = false
                 if (gen != routeGeneration) return@post
@@ -801,7 +801,9 @@ class MainActivity : AppCompatActivity() {
         pts.add(doubleArrayOf(from.lat, from.lon))
         for (v in viasCopy) { if (router.snap(v.latitude, v.longitude, p, 6000.0) == null) throw IllegalStateException("No road within 6 km of a via point"); pts.add(doubleArrayOf(v.latitude, v.longitude)) }
         pts.add(doubleArrayOf(dest.latitude, dest.longitude))
+        val t0 = android.os.SystemClock.elapsedRealtime()
         val rr = router.routeVia(pts, p) ?: throw IllegalStateException(getString(R.string.no_route))
+        android.util.Log.i("Fold", "route ${p.name}: ${android.os.SystemClock.elapsedRealtime() - t0} ms")
         return Route.fromGraphRoute(rr, router, p)
     }
 
@@ -822,6 +824,7 @@ class MainActivity : AppCompatActivity() {
         follow = false
         worker.execute {
             var firstError: String? = null
+            try {
             for (p in modes) {
                 if (gen != compareGeneration) return@execute
                 val r = try { routeOne(from, dest, viasCopy, p) } catch (e: Throwable) { if (firstError == null) firstError = e.message; null }
@@ -832,6 +835,10 @@ class MainActivity : AppCompatActivity() {
                     drawCandidates()
                     if (candidates.size == 1 || p == modes.last()) fitCandidates()
                 }
+            }
+            } finally {
+                // the search arrays stayed allocated across the modes; the compare is over (or cancelled), so let them go
+                try { packs.multiRouter().releaseMemory() } catch (_: Throwable) {}
             }
             ui.post {
                 if (gen != compareGeneration) return@post

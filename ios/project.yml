@@ -76,8 +76,12 @@ targets:
           export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17+ 2>/dev/null || true)}"
           # the engine is always built optimised: Kotlin/Native's debug build is many times slower on the router,
           # and only the Swift side is ever debugged from Xcode
-          export KOTLIN_FRAMEWORK_BUILD_TYPE=release
-          ./gradlew --no-daemon -q :core:embedAndSignAppleFrameworkForXcode
+          case "$SDK_NAME" in iphonesimulator*) T=IosSimulatorArm64; D=iosSimulatorArm64;; *) T=IosArm64; D=iosArm64;; esac
+          ./gradlew --no-daemon -q ":core:linkReleaseFramework$T"
+          # copied into place by hand, so a stale framework from an earlier build can never be the one linked
+          DEST="$SRCROOT/../core/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME"
+          rm -rf "$DEST"; mkdir -p "$DEST"
+          cp -R "core/build/bin/$D/releaseFramework/FoldCore.framework" "$DEST/"
         outputFiles:
           - "$(SRCROOT)/../core/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)/FoldCore.framework"
   RoadbookWidget:

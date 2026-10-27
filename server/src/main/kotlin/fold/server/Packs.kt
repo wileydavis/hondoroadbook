@@ -46,6 +46,8 @@ open class PackSet(private val catalogUrl: String, private val dir: File, privat
     }
 
     fun loadedIds(): List<String> = synchronized(lock) { loaded.keys.toList() }
+    /** every loaded pack's router, for freeing search memory after a request */
+    fun loadedRouters(): List<Router> = synchronized(lock) { loaded.values.map { it.router } }
     fun isLoaded(id: String): Boolean = synchronized(lock) { loaded.containsKey(id) }
     fun loadingIds(): List<String> = synchronized(lock) { inflight.keys.toList() }
 

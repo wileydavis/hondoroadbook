@@ -66,6 +66,7 @@ extension AppModel {
         let viasCopy = vias
         worker.async { [self] in
             let result: Result<Route, Error> = Result { try routeOne(from, dest, viasCopy, p) }
+            packs.multiRouter().releaseMemory()
             DispatchQueue.main.async {
                 self.rerouting = false
                 if gen != self.routeGeneration { return }
@@ -90,7 +91,9 @@ extension AppModel {
             pts.append(KotlinDoubleArray.of([v.latitude, v.longitude]))
         }
         pts.append(KotlinDoubleArray.of([dest.latitude, dest.longitude]))
+        let t0 = Date()
         guard let rr = try router.routeVia(points: pts, profile: p) else { throw Fail("No route found inside the loaded maps.") }
+        NSLog("Roadbook: route %@ took %.1f s", p.name, Date().timeIntervalSince(t0))
         return try Route.companion.fromGraphRoute(r: rr, mr: router, profile: p)
     }
 
@@ -109,6 +112,8 @@ extension AppModel {
         follow = false
         worker.async { [self] in
             var firstError: String?
+            // the search arrays stay allocated across the modes; when the compare is over (or cancelled) they go
+            defer { packs.multiRouter().releaseMemory() }
             for p in modes {
                 if gen != compareGeneration { return }
                 let r: Route?

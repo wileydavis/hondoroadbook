@@ -23,7 +23,8 @@ class Api(private val packs: PackSet) {
 
     private fun <T> routing(f: () -> T): T {
         if (!lock.tryLock(30, TimeUnit.SECONDS)) throw ApiError(503, "The router is busy; try again in a moment")
-        try { return f() } finally { lock.unlock() }
+        // the search arrays are kept between the legs of one request and freed after it: fifty packs' worth must not stay resident
+        try { return f() } finally { try { packs.loadedRouters().forEach { it.releaseMemory() } } catch (_: Throwable) {}; lock.unlock() }
     }
 
     private fun profile(q: Map<String, String>): Profile {

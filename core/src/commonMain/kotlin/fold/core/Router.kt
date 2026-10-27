@@ -137,6 +137,8 @@ class Router(private val g: Graph) {
         stamp = IntArray(g.nodeCount); gCost = DoubleArray(g.nodeCount); parent = IntArray(g.nodeCount); closed = IntArray(g.nodeCount)
         allocated = true
     }
+    /** Frees this pack's search arrays; see [MultiRouter.releaseMemory]. */
+    fun releaseMemory() = releaseState()
     internal fun releaseState() {
         if (!allocated) return
         allocated = false
@@ -281,12 +283,14 @@ class Router(private val g: Graph) {
  * road is bridged too.
  */
 class MultiRouter(val routers: List<Router>) {
+    /** the search generation stamped on visited nodes: unique across every MultiRouter, since the arrays outlive a search */
     private var gen = 0
     /** the public-first pass: posted-private roads are impassable; only when nothing public connects does a second pass allow them, penalised */
     private var noPrivate = false
     private val hopFrom = HashMap<Int, Int>()   // key(dest) -> key(source) for pack hops
 
     companion object {
+        private var genCounter = 0
         const val NODE_BITS = 25
         const val NODE_MASK = (1 shl NODE_BITS) - 1
         private const val HOP = -3
@@ -354,9 +358,15 @@ class MultiRouter(val routers: List<Router>) {
             return null
         } finally {
             noPrivate = false
-            for (r in routers) r.releaseState()
         }
     }
+
+    /**
+     * Frees the per-pack search arrays (a few hundred megabytes over three states). They are kept between the
+     * routes of one compare, where re-allocating and zeroing them for every mode costs more than the search on
+     * a phone; the app calls this when the compare is over.
+     */
+    fun releaseMemory() { for (r in routers) r.releaseState() }
 
     /** Routes through a list of points in order (start, vias…, destination) and joins the legs. */
     @Throws(Throwable::class) fun routeVia(points: List<DoubleArray>, profile: Profile): RouteResult? {
@@ -382,7 +392,7 @@ class MultiRouter(val routers: List<Router>) {
             val f = graph(from.pack).edgeFlags(from.edge)
             if (to.t >= from.t || (f and F.ONEWAY) == 0) return buildSameEdge(from, to, profile)
         }
-        gen++
+        gen = ++genCounter
         hopFrom.clear()
         val heap = MinHeap()
         val gTo = graph(to.pack); val rTo = routers[to.pack]
