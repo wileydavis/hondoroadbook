@@ -34,7 +34,6 @@ object Speeds {
         14.0, 14.0, 12.0, 15.0, 18.0, 11.0, 9.0, 8.0, 8.0, 0.0
     ).map { it * KMH }.toDoubleArray()
 
-    fun maxSpeed(p: Profile) = if (p.bike) ride.max() else drive.max()
 
     /** Travel speed on an edge for the profile, or 0 if not usable. Includes an unpaved penalty. */
     fun speed(p: Profile, flags: Int): Double {
@@ -49,6 +48,8 @@ object Speeds {
 
     /** Smallest weight a profile can apply; keeps the A* heuristic admissible when some roads are "cheaper than time". */
     fun minWeight(p: Profile) = when (p) { Profile.FAST, Profile.TOWING, Profile.BACKROADS -> 1.0; Profile.DIRT -> 0.6; Profile.RIDE -> 0.8; Profile.QUIET -> 0.5; Profile.GRAVEL -> 0.5 }
+    /** the fastest a profile's cost can fall per metre, for the A* bound: Dirt's clock is the nominal 50 km/h, not a motorway's */
+    fun maxSpeed(p: Profile) = if (p == Profile.DIRT) DIRT_REF else if (p.bike) ride.max() else drive.max()
 
     /** Extra weight multiplier used only for route choice (not ETA). Tables are per road class (see GraphFormat.CLASSES). */
     /** A posted-private road costs eight times its length in every mode: never chosen when any public way exists, still there to be dragged onto on purpose. */
@@ -56,7 +57,17 @@ object Speeds {
     /** posted private for this profile's vehicle: a bicycle is not kept off a road that is private only to motor vehicles */
     fun isPrivate(p: Profile, flags: Int) = flags and F.privateFor(p.bike) != 0
 
-    fun weight(p: Profile, flags: Int): Double = base(p, flags) * (if (isPrivate(p, flags)) PRIVATE_PENALTY else 1.0)
+    fun weight(p: Profile, flags: Int): Double = base(p, flags) * (if (isPrivate(p, flags)) PRIVATE_PENALTY else 1.0) * (if (p == Profile.DIRT) dirtNorm(p, flags) else 1.0)
+
+    /**
+     * Dirt chooses by preference, not by the clock. Cost is time × weight, and a car's clock makes a track
+     * (20 km/h) five times dearer than a paved primary (80 km/h) before any preference applies — so Dirt kept
+     * finding less dirt than Gravel ride, whose bicycle speeds are nearly flat across classes. This factor
+     * cancels the speed difference for Dirt: every road costs its length at a nominal 50 km/h times its
+     * weight, so a track at 0.6 beats a paved primary at 1.9 by three to one. ETA still uses real speeds.
+     */
+    private const val DIRT_REF = 50.0 * KMH
+    private fun dirtNorm(p: Profile, flags: Int): Double { val v = speed(p, flags); return if (v > 0.0) v / DIRT_REF else 1.0 }
 
     private fun base(p: Profile, flags: Int): Double {
         val cls = flags and F.CLASS_MASK

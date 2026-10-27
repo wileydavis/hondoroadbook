@@ -144,7 +144,7 @@ Updating later: install the new `roadbook.apk` over the old one; packs and setti
   MODES is routed and drawn in its own color over the whole trip, with distance and time per row. Tap a row
   or a line to choose, **VIA** (long-press, then VIA) to pull all of them through a point, **GO** to start.
   Modes: Fast (interstates), Towing (big roads only, no dirt, no tight streets), Backroads (paved two-lanes,
-  avoids the interstate), Dirt (gravel and tracks wherever they go), Ride, Quiet ride, Gravel ride.
+  avoids the interstate), Dirt (gravel and tracks wherever they go — chosen by preference, not by the clock: an unpaved way up to about three times longer beats the pavement), Ride, Quiet ride, Gravel ride.
 * **GO TO** → type an address, street or town. Results come from the pack's offline index.
 * **TRACK** → pick a GPX file from your folder (the first time, Roadbook asks which folder on the phone
   holds your files — Downloads is fine — and remembers it). Roadbook follows the track and synthesizes turn cues from its geometry.
