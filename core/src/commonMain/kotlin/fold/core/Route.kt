@@ -229,41 +229,7 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                 val cum = DoubleArray(lats.size); for (i in 1 until lats.size) cum[i] = cum[i - 1] + Geo.fastDistance(lats[i - 1], lons[i - 1], lats[i], lons[i])
                 val man = ArrayList<Maneuver>()
                 man.add(Maneuver(Turn.DEPART, 0.0, 0, name, 0.0))
-                val proj = DoubleArray(4)
-                // segments bucketed by 0.01° cell so a thousand cues on a hundred-thousand-point track stay cheap
-                val cell = 0.01
-                val grid = HashMap<Long, IntArrayList>()
-                // a segment spanning many cells (a long straight desert road in a sparse file) is not bucketed:
-                // it goes on a short list that every cue checks, so a hazard halfway along it is never lost
-                val longs = IntArrayList()
-                for (i in 0 until lats.size - 1) {
-                    val la0 = kotlin.math.floor(kotlin.math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = kotlin.math.floor(kotlin.math.max(lats[i], lats[i + 1]) / cell).toLong()
-                    val lo0 = kotlin.math.floor(kotlin.math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = kotlin.math.floor(kotlin.math.max(lons[i], lons[i + 1]) / cell).toLong()
-                    if ((la1 - la0 + 1) * (lo1 - lo0 + 1) > 400) { longs.add(i); continue }
-                    for (a in la0..la1) for (b in lo0..lo1) grid.getOrPut((a shl 32) xor (b and 0xFFFFFFFFL)) { IntArrayList() }.add(i)
-                }
-                for (c in cues) {
-                    // nearest point on the line, as a vertex index (cues further than 150 m from the line are dropped)
-                    var best = Double.MAX_VALUE; var bi = -1; var bt = 0.0
-                    val ca = kotlin.math.floor(c.lat / cell).toLong(); val co = kotlin.math.floor(c.lon / cell).toLong()
-                    for (a in ca - 1..ca + 1) for (b in co - 1..co + 1) {
-                        val segs = grid[(a shl 32) xor (b and 0xFFFFFFFFL)] ?: continue
-                        for (k in 0 until segs.size) {
-                            val i = segs[k]
-                            Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
-                            if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
-                        }
-                    }
-                    for (k in 0 until longs.size) {
-                        val i = longs[k]
-                        Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
-                        if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
-                    }
-                    if (bi < 0 || best > 150.0) continue
-                    val vertex = if (bt < 0.5) bi else bi + 1
-                    val at = cum[bi] + bt * (cum[bi + 1] - cum[bi])
-                    man.add(Maneuver(c.turn, at, vertex, name, 0.0, note = c.note, level = c.level))
-                }
+                man.addAll(placeCues(lats, lons, cum, cues, name))
                 man.sortBy { it.at }
                 man.add(Maneuver(Turn.ARRIVE, cum[lats.size - 1], lats.size - 1, "", 0.0))
                 return Route(lats, lons, man, 0.0, true)
@@ -290,6 +256,86 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
             }
             man.add(Maneuver(Turn.ARRIVE, cum[lats.size - 1], lats.size - 1, "", 0.0))
             return Route(lats, lons, man, 0.0, true)
+        }
+
+        /** Each cue as a maneuver on the line, at its nearest point; cues further than 150 m from the line are dropped. */
+        private fun placeCues(lats: DoubleArray, lons: DoubleArray, cum: DoubleArray, cues: List<Cue>, name: String): List<Maneuver> {
+            val out = ArrayList<Maneuver>()
+            val proj = DoubleArray(4)
+            // segments bucketed by 0.01° cell so a thousand cues on a hundred-thousand-point track stay cheap
+            val cell = 0.01
+            val grid = HashMap<Long, IntArrayList>()
+            // a segment spanning many cells (a long straight desert road in a sparse file) is not bucketed:
+            // it goes on a short list that every cue checks, so a hazard halfway along it is never lost
+            val longs = IntArrayList()
+            for (i in 0 until lats.size - 1) {
+                val la0 = kotlin.math.floor(kotlin.math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = kotlin.math.floor(kotlin.math.max(lats[i], lats[i + 1]) / cell).toLong()
+                val lo0 = kotlin.math.floor(kotlin.math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = kotlin.math.floor(kotlin.math.max(lons[i], lons[i + 1]) / cell).toLong()
+                if ((la1 - la0 + 1) * (lo1 - lo0 + 1) > 400) { longs.add(i); continue }
+                for (a in la0..la1) for (b in lo0..lo1) grid.getOrPut((a shl 32) xor (b and 0xFFFFFFFFL)) { IntArrayList() }.add(i)
+            }
+            for (c in cues) {
+                var best = Double.MAX_VALUE; var bi = -1; var bt = 0.0
+                val ca = kotlin.math.floor(c.lat / cell).toLong(); val co = kotlin.math.floor(c.lon / cell).toLong()
+                for (a in ca - 1..ca + 1) for (b in co - 1..co + 1) {
+                    val segs = grid[(a shl 32) xor (b and 0xFFFFFFFFL)] ?: continue
+                    for (k in 0 until segs.size) {
+                        val i = segs[k]
+                        Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
+                        if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
+                    }
+                }
+                for (k in 0 until longs.size) {
+                    val i = longs[k]
+                    Geo.projectOnSegment(c.lat, c.lon, lats[i], lons[i], lats[i + 1], lons[i + 1], proj)
+                    if (proj[1] < best) { best = proj[1]; bi = i; bt = proj[0] }
+                }
+                if (bi < 0 || best > 150.0) continue
+                val vertex = if (bt < 0.5) bi else bi + 1
+                val at = cum[bi] + bt * (cum[bi + 1] - cum[bi])
+                out.add(Maneuver(c.turn, at, vertex, name, 0.0, note = c.note, level = c.level))
+            }
+            return out
+        }
+
+        /**
+         * A planned route with authored cues laid onto it: the router's turns stay, the cues are snapped to the
+         * line (those more than 150 m off it are dropped) and everything is in order. The route stays a planned
+         * one — reroutes, ETA and the written directions keep working.
+         */
+        @Throws(Throwable::class) fun withCues(r: Route, cues: List<Cue>): Route {
+            if (cues.isEmpty()) return r
+            val placed = placeCues(r.lats, r.lons, r.cum, cues, "")
+            if (placed.isEmpty()) return r
+            val man = ArrayList<Maneuver>(r.maneuvers.size + placed.size)
+            val depart = r.maneuvers.firstOrNull { it.turn == Turn.DEPART }; val arrive = r.maneuvers.lastOrNull { it.turn == Turn.ARRIVE }
+            man.addAll(r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }); man.addAll(placed)
+            man.sortBy { it.at }
+            depart?.let { man.add(0, it) }; arrive?.let { man.add(it) }
+            return Route(r.lats, r.lons, man, r.timeSeconds, r.isTrack)
+        }
+
+        /**
+         * Route points for a bare track, so it can be planned again on the rider's own maps and then edited: the
+         * line's ends plus the points where it bends away from a straight run, a few hundred metres' tolerance,
+         * loosened until there are at most [maxVias] in between. Each pair of neighbours is a short leg to route.
+         */
+        fun viasForTrack(lats: DoubleArray, lons: DoubleArray, maxVias: Int = 40): List<DoubleArray> {
+            if (lats.size < 2) return emptyList()
+            var tol = 250.0
+            var keep = Simplify.douglasPeucker(lats, lons, tol)
+            while (keep.size - 2 > maxVias && tol < 50_000.0) { tol *= 1.6; keep = Simplify.douglasPeucker(lats, lons, tol) }
+            return keep.map { doubleArrayOf(lats[it], lons[it]) }
+        }
+
+        /**
+         * The cues of a saved route file that a rider wrote, as opposed to the turns the router put there when the
+         * file was saved: notes and dangers always; a turn cue only when the fresh plan has no turn of the same kind
+         * within 40 m of it (those are the router's own, and come back regenerated).
+         */
+        fun authoredCues(fileCues: List<Cue>, planned: Route): List<Cue> = fileCues.filter { c ->
+            if (c.turn == Turn.NOTE || c.turn == Turn.DANGER) return@filter true
+            planned.maneuvers.none { m -> m.turn == c.turn && Geo.fastDistance(m.let { planned.lats[it.vertex] }, planned.lons[m.vertex], c.lat, c.lon) < 40.0 }
         }
     }
 }

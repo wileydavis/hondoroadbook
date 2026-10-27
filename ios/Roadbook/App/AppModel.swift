@@ -104,6 +104,16 @@ final class AppModel: ObservableObject, MapEvents {
     /// the track being followed or edited, with its authored cues (Roadbook)
     var trackLats: [Double]?; var trackLons: [Double]?; var trackName = "Track"; var trackURL: URL?
     @Published var trackCues: [Cue] = []
+    /// a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned
+    var editCues: [Cue] = []
+    /// the modes the compare screen is limited to (a file is re-planned in its own mode); nil = the rider's chosen set
+    @Published var compareModes: [Profile]?
+    var compareModeList: [Profile] { compareModes ?? prefs.modeSet }
+    /// A planned route with the file's authored cues on it (when a file is being edited).
+    func planned(_ r: Route) -> Route {
+        if editCues.isEmpty { return r }
+        return (try? Route.companion.withCues(r: r, cues: Route.companion.authoredCues(fileCues: editCues, planned: r))) ?? r
+    }
 
     var follow = true
     var zoomMode: ZoomMode = .turn
@@ -243,7 +253,8 @@ final class AppModel: ObservableObject, MapEvents {
     }
     func drawStart() { map.set("start-src", planStart.map { MapController.collection([MapController.point($0)]) }) }
     func drawCues() {
-        map.set("cues-src", MapController.collection(trackCues.enumerated().map { i, c in
+        let shown = (mode == .compare && !editCues.isEmpty) ? editCues : trackCues
+        map.set("cues-src", MapController.collection(shown.enumerated().map { i, c in
             MapController.point(CLLocationCoordinate2D(latitude: c.lat, longitude: c.lon), ["icon": c.turn == .danger ? "cue-danger" : "cue", "idx": NSNumber(value: i), "label": c.note.isEmpty ? c.turn.spoken : String(c.note.prefix(24))])
         }))
     }

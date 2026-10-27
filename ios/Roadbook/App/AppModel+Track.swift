@@ -69,24 +69,32 @@ extension AppModel {
         } catch { showToast("Track failed: \(error.text)") }
     }
 
+    /// EDIT ROUTE: a file planned again on this phone's maps so its vias can be changed. A saved route brings its
+    /// own start, vias and end; a bare track (a library roadbook, anyone's GPX) gets vias placed where its line
+    /// bends, so the plan follows the same roads. The file's authored cues are laid back onto the plan. The compare
+    /// is limited to the file's own mode, so the line comes back the same; MODES opens it up again.
     func rerouteGpx(_ tr: GpxTrack) {
-        guard tr.hasRoute else { followTrack(tr, nil); return }
-        let n = tr.rteLats.size
-        let start = CLLocationCoordinate2D(latitude: tr.rteLats.get(index: 0), longitude: tr.rteLons.get(index: 0))
-        let dest = CLLocationCoordinate2D(latitude: tr.rteLats.get(index: n - 1), longitude: tr.rteLons.get(index: n - 1))
+        let pts: [[Double]]
+        if tr.hasRoute { pts = (0..<tr.rteLats.size).map { [tr.rteLats.get(index: $0), tr.rteLons.get(index: $0)] } }
+        else { pts = Route.companion.viasForTrack(lats: tr.lats, lons: tr.lons, maxVias: 40).map { $0.swift } }
+        guard pts.count >= 2 else { followTrack(tr, nil); return }
+        let start = CLLocationCoordinate2D(latitude: pts[0][0], longitude: pts[0][1]), dest = CLLocationCoordinate2D(latitude: pts[pts.count - 1][0], longitude: pts[pts.count - 1][1])
         if packs.packFor(start.latitude, start.longitude) == nil || packs.packFor(dest.latitude, dest.longitude) == nil {
             if tr.hasTrack { showToast("Route is outside your maps — following its line instead", 5); followTrack(tr, nil) } else { showToast("Route is outside your maps", 6) }
             return
         }
-        if let m = tr.mode, let p = Profiles.byName(m) { profile = p; prefs.profile = p; if !prefs.modeSet.contains(p) { prefs.modeSet = prefs.modeSet + [p] } }
-        destination = dest; destName = tr.name; vias = []
-        if n > 2 { for i in 1..<(n - 1) { vias.append(CLLocationCoordinate2D(latitude: tr.rteLats.get(index: i), longitude: tr.rteLons.get(index: i))) } }
+        if let m = tr.mode, let p = Profiles.byName(m) { profile = p; prefs.profile = p }
+        compareModes = [profile]
+        destination = dest; destName = tr.name
+        vias = pts.count > 2 ? pts[1..<(pts.count - 1)].map { CLLocationCoordinate2D(latitude: $0[0], longitude: $0[1]) } : []
         drawVias()
+        editCues = tr.cueList
+        if mode == .nav { endNavigationKeepingPlan() }
         // start from the GPS fix if you are near the route's start, otherwise plan from the route's own start
         let nearStart = lastFix.map { Geo.shared.fastDistance(lat1: $0.lat, lon1: $0.lon, lat2: start.latitude, lon2: start.longitude) < 2000 } ?? false
         if !nearStart { planStart = start; drawStart() } else { planStart = nil }
         showPinMarker(dest)
-        showToast("Routing \"\(tr.name)\" on your maps…", 4)
+        showToast("Planning \"\(tr.name)\" on your maps (\(profile.label))… add a via with a long press, tap a via to remove it", 6)
         startCompare(startFix(), dest)
     }
 

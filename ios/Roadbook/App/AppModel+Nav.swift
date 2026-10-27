@@ -33,6 +33,14 @@ extension AppModel {
         startHudTimer()
     }
 
+    /// Leaves a ride without clearing the plan being set up (EDIT ROUTE from a track that was being followed).
+    func endNavigationKeepingPlan() {
+        Speech.shared.stop(); dim(false); ride.stop(); routeGeneration += 1
+        route = nil; isTrack = false; map.clear("route-src")
+        UIApplication.shared.isIdleTimerDisabled = false; stopHudTimer(); hud.offVisible = false
+        trackLats = nil; trackLons = nil; trackURL = nil; trackCues = []
+    }
+
     /// A ride a dead process left behind: offer to pick it up where it was.
     func offerResume() {
         guard let text = ride.leftover() else { return }
@@ -56,7 +64,7 @@ extension AppModel {
         dim(false)
         ride.stop()
         routeGeneration += 1
-        route = nil; destination = nil; pin = nil; isTrack = false; vias = []; destName = ""; candidates = []; compareGeneration += 1; planStart = nil; drawStart()
+        route = nil; destination = nil; pin = nil; isTrack = false; vias = []; destName = ""; candidates = []; compareGeneration += 1; planStart = nil; drawStart(); editCues = []; compareModes = nil
         map.clear("route-src"); drawVias()
         clearPinMarker()
         UIApplication.shared.isIdleTimerDisabled = false

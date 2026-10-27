@@ -133,7 +133,7 @@ struct ComparePanel: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
         VStack(spacing: 6) {
-            ForEach(model.prefs.modeSet, id: \.name) { p in
+            ForEach(model.compareModeList, id: \.name) { p in
                 let r = model.candidate(p)
                 HStack(spacing: 12) {
                     Rectangle().fill(Color(Profiles.color(p))).frame(width: 18, height: 6)

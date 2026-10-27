@@ -71,7 +71,7 @@ extension AppModel {
                 self.rerouting = false
                 if gen != self.routeGeneration { return }
                 switch result {
-                case .success(let r): self.startNavigation(r, track: false)
+                case .success(let r): self.startNavigation(self.planned(r), track: false)
                 case .failure(let e): if initial { self.showToast(e.text, 6) }
                 }
             }
@@ -100,7 +100,7 @@ extension AppModel {
     /// The compare screen: every enabled mode is routed in turn and drawn as it finishes, whole-route view,
     /// with a row per mode. Tap a row (or a line) to select; GO starts; VIA pulls all of them.
     func startCompare(_ from: Fix, _ dest: CLLocationCoordinate2D) {
-        let modes = prefs.modeSet
+        let modes = compareModeList
         candidates = []
         compareFrom = from
         if !modes.contains(profile) { profile = modes[0] }
@@ -122,7 +122,7 @@ extension AppModel {
                     if gen != self.compareGeneration { return }
                     if let r = r { self.candidates.append((p, r)) }
                     self.compareInProgress = p != modes.last
-                    self.drawCandidates()
+                    self.drawCandidates(); self.drawCues()
                     if self.candidates.count == 1 || p == modes.last { self.fitCandidates() }
                 }
             }
@@ -146,7 +146,7 @@ extension AppModel {
         if let f = compareFrom { pts.append(CLLocationCoordinate2D(latitude: f.lat, longitude: f.lon)) }
         if pts.count < 2 { return }
         let h = map.size.height
-        map.fit(pts, insets: UIEdgeInsets(top: 40, left: 24, bottom: max(h / 3, 120 + CGFloat(prefs.modeSet.count) * 44), right: 24), animated: true)
+        map.fit(pts, insets: UIEdgeInsets(top: 40, left: 24, bottom: max(h / 3, 120 + CGFloat(compareModeList.count) * 44), right: 24), animated: true)
     }
 
     func selectCandidate(_ p: Profile) { profile = p; prefs.profile = p; drawCandidates() }
@@ -154,18 +154,18 @@ extension AppModel {
     func goWithSelected() {
         guard let r = candidate(profile) else { showToast("Pick a route first"); return }
         compareGeneration += 1
-        startNavigation(r, track: false)
+        startNavigation(planned(r), track: false)
     }
 
     func cancelCompare() {
         compareGeneration += 1
         candidates = []; compareInProgress = false
         map.clear("cmp-src")
-        if route != nil { switchMode(.nav) } else { destination = nil; vias = []; drawVias(); clearPinMarker(); planStart = nil; drawStart(); switchMode(.idle) }
+        if route != nil { switchMode(.nav) } else { destination = nil; vias = []; drawVias(); clearPinMarker(); planStart = nil; drawStart(); editCues = []; compareModes = nil; drawCues(); switchMode(.idle) }
     }
 
     func setModes(_ sel: [Profile]) {
-        prefs.modeSet = sel.isEmpty ? [.fast] : sel
+        prefs.modeSet = sel.isEmpty ? [.fast] : sel; compareModes = nil
         if let from = compareFrom, let dest = destination { startCompare(from, dest) }
     }
 
@@ -179,6 +179,7 @@ extension AppModel {
         let text = Gpx.shared.writeRoute(name: title, mode: profile.name, ptLats: KotlinDoubleArray.of(pts.map { $0.latitude }), ptLons: KotlinDoubleArray.of(pts.map { $0.longitude }), ptNames: names, lineLats: r.lats, lineLons: r.lons, maxPoints: 4000)
         // Roadbook: the router's turns go in as cues, so the file is a roadbook you can annotate and follow as a track
         let cues = r.maneuverList.filter { $0.turn != .depart && $0.turn != .arrive }.map { m in Cue(lat: r.lats.get(index: m.vertex), lon: r.lons.get(index: m.vertex), turn: m.turn, note: m.turn == .roundabout ? "exit \(m.exit)" : m.name, level: 0) }
+            + (editCues.isEmpty ? [] : Route.companion.authoredCues(fileCues: editCues, planned: r))
         return text.replacingOccurrences(of: "  <rte>", with: cues.map { Gpx.shared.cueXml(c: $0) }.joined() + "  <rte>")
     }
 

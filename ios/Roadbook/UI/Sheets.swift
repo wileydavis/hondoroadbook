@@ -560,7 +560,7 @@ struct LibraryItemSheet: View {
         SheetFrame(title: item.name) {
             VStack(spacing: 12) {
                 Text(Units.distance(item.lengthM) + " · \(item.cues) cues" + modeLabel + surf + (item.created.isEmpty ? "" : "\nPublished \(item.created)")).multilineTextAlignment(.center)
-                Button("FOLLOW") { model.sheet = nil; model.withLibraryGpx(item) { tr, _ in model.followTrack(tr, nil) } }.buttonStyle(BigButton(accent: true))
+                Button("OPEN") { model.sheet = nil; model.withLibraryGpx(item) { tr, _ in model.onGpxLoaded(tr, nil) } }.buttonStyle(BigButton(accent: true))
                 Button("SAVE") { model.sheet = nil; model.withLibraryGpx(item) { _, text in model.writeToFolder((item.name.fileSafe.isEmpty ? "Roadbook" : item.name.fileSafe) + ".gpx", text) } }.buttonStyle(BigButton())
                 Spacer()
             }

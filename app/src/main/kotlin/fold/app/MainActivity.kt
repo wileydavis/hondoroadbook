@@ -77,6 +77,11 @@ class MainActivity : AppCompatActivity() {
     private var trackUri: Uri?
         get() = NavSession.trackUri; set(v) { NavSession.trackUri = v }
     private val trackCues: ArrayList<Cue> get() = NavSession.trackCues
+    private val editCues: ArrayList<Cue> get() = NavSession.editCues
+    private var compareModes: List<Profile>?
+        get() = NavSession.compareModes; set(v) { NavSession.compareModes = v }
+    /** A planned route with the file's authored cues on it (when a file is being edited). */
+    private fun planned(r: Route): Route = if (editCues.isEmpty()) r else try { Route.withCues(r, Route.authoredCues(editCues, r)) } catch (_: Throwable) { r }
     private var srcCues: GeoJsonSource? = null
     private lateinit var panelEdit: View
     private lateinit var recStrip: View
@@ -94,6 +99,10 @@ class MainActivity : AppCompatActivity() {
         /** the track being followed or edited, with its authored cues */
         var trackLats: DoubleArray? = null; var trackLons: DoubleArray? = null; var trackName = "Track"; var trackUri: Uri? = null
         val trackCues = ArrayList<Cue>()
+        /** a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned */
+        val editCues = ArrayList<Cue>()
+        /** the modes the compare screen is limited to (a file is re-planned in its own mode); null = the rider's chosen set */
+        var compareModes: List<Profile>? = null
     }
 
     private lateinit var mapView: MapView
@@ -526,7 +535,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun drawCues() {
-        val feats = trackCues.mapIndexed { i, c -> Feature.fromGeometry(Point.fromLngLat(c.lon, c.lat)).also { f ->
+        val shown = if (mode == Mode.COMPARE && editCues.isNotEmpty()) editCues else trackCues
+        val feats = shown.mapIndexed { i, c -> Feature.fromGeometry(Point.fromLngLat(c.lon, c.lat)).also { f ->
             f.addStringProperty("icon", if (c.turn == Turn.DANGER) "cue-danger" else "cue"); f.addNumberProperty("idx", i)
             f.addStringProperty("label", if (c.note.isNotEmpty()) c.note.take(24) else c.turn.spoken) } }
         srcCues?.setGeoJson(FeatureCollection.fromFeatures(feats))
@@ -803,7 +813,7 @@ class MainActivity : AppCompatActivity() {
                 rerouting = false
                 if (gen != routeGeneration) return@post
                 when (result) {
-                    is Route -> startNavigation(result, false)
+                    is Route -> startNavigation(planned(result), false)
                     is Throwable -> { if (initial) toast(result.message ?: "Routing failed", 6000) }
                 }
             }
@@ -832,7 +842,7 @@ class MainActivity : AppCompatActivity() {
      * view, with a row per mode. Tap a row (or a line) to select; GO starts; VIA pulls all of them.
      */
     private fun startCompare(from: Fix, dest: LatLng) {
-        val modes = prefs.modes.toList().sortedBy { it.ordinal }
+        val modes = (compareModes ?: prefs.modes.toList()).sortedBy { it.ordinal }
         candidates.clear()
         compareFrom = from
         if (!modes.contains(profile)) profile = modes.first()
@@ -852,7 +862,7 @@ class MainActivity : AppCompatActivity() {
                     if (gen != compareGeneration) return@post
                     if (r != null) candidates[p] = r
                     rebuildCompareRows(modes, inProgress = p != modes.last())
-                    drawCandidates()
+                    drawCandidates(); drawCues()
                     if (candidates.size == 1 || p == modes.last()) fitCandidates()
                 }
             }
@@ -905,14 +915,14 @@ class MainActivity : AppCompatActivity() {
     private fun goWithSelected() {
         val r = candidates[profile] ?: run { toast("Pick a route first"); return }
         compareGeneration++
-        startNavigation(r, false)
+        startNavigation(planned(r), false)
     }
 
     private fun cancelCompare() {
         compareGeneration++
         candidates.clear()
         srcCompare?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
-        if (route != null) { switchMode(Mode.NAV) } else { destination = null; vias.clear(); drawVias(); clearPinMarker(); planStart = null; drawStart(); switchMode(Mode.IDLE) }
+        if (route != null) { switchMode(Mode.NAV) } else { destination = null; vias.clear(); drawVias(); clearPinMarker(); planStart = null; drawStart(); editCues.clear(); compareModes = null; drawCues(); switchMode(Mode.IDLE) }
     }
 
     // ---- saved routes: GPX with the points as a route and the line as a track; anyone can open it
@@ -924,7 +934,8 @@ class MainActivity : AppCompatActivity() {
         val title = (destName.ifEmpty { "Route" }) + " (" + profile.label + ")"
         val text = Gpx.writeRoute(title, profile.name, pts.map { it.latitude }.toDoubleArray(), pts.map { it.longitude }.toDoubleArray(), names, r.lats, r.lons)
                 // Roadbook: the router's turns go in as cues, so the file is a roadbook you can annotate and follow as a track
-        val cues = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, if (m.turn == Turn.ROUNDABOUT) "exit ${m.exit}" else m.name) }
+        val cues = r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, if (m.turn == Turn.ROUNDABOUT) "exit ${m.exit}" else m.name) } +
+            (if (editCues.isEmpty()) emptyList() else try { Route.authoredCues(editCues, r) } catch (_: Throwable) { emptyList() })
         return text.replace("  <rte>", cues.joinToString("") { Gpx.cueXml(it) } + "  <rte>")
     }
 
@@ -980,7 +991,7 @@ class MainActivity : AppCompatActivity() {
             .setMultiChoiceItems(all.map { it.label + " — " + it.blurb }.toTypedArray(), checked) { _, i, v -> checked[i] = v }
             .setPositiveButton("OK") { _, _ ->
                 val sel = all.filterIndexed { i, _ -> checked[i] }.toSet().ifEmpty { setOf(Profile.FAST) }
-                prefs.modes = sel
+                prefs.modes = sel; compareModes = null
                 val from = compareFrom; val dest = destination
                 if (from != null && dest != null) startCompare(from, dest)
             }
@@ -1100,7 +1111,7 @@ class MainActivity : AppCompatActivity() {
         dim(false); try { brightLock?.let { if (it.isHeld) it.release() } } catch (_: Throwable) {}
         NavService.stop(this)
         routeGeneration++
-        route = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart()
+        route = null; destination = null; pin = null; isTrack = false; vias.clear(); destName = ""; candidates.clear(); compareGeneration++; planStart = null; drawStart(); editCues.clear(); compareModes = null
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); drawVias()
         clearPinMarker()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -1290,25 +1301,41 @@ class MainActivity : AppCompatActivity() {
         toast("Following track (${Units.distance(r.length)})" + if (tr.cues.isNotEmpty()) " · ${tr.cues.size} cues" else "")
     }
 
+    /**
+     * EDIT ROUTE: a file planned again on this phone's maps so its vias can be changed. A saved route brings its
+     * own start, vias and end; a bare track (a library roadbook, anyone's GPX) gets vias placed where its line
+     * bends, so the plan follows the same roads. The file's authored cues are laid back onto the plan. The compare
+     * is limited to the file's own mode, so the line comes back the same; MODES opens it up again.
+     */
     private fun rerouteGpx(tr: Gpx.Track) {
-        if (tr.hasRoute) {
-            val n = tr.rteLats.size
-            val start = LatLng(tr.rteLats[0], tr.rteLons[0]); val dest = LatLng(tr.rteLats[n - 1], tr.rteLons[n - 1])
-            if (packs.packFor(start.latitude, start.longitude) == null || packs.packFor(dest.latitude, dest.longitude) == null) {
-                if (tr.hasTrack) { toast("Route is outside your maps — following its line instead", 5000); followTrack(tr, null) }
-                else toast("Route is outside your maps", 6000)
-                return
-            }
-            tr.mode?.let { m -> try { val p = Profile.valueOf(m); profile = p; prefs.profile = p; if (!prefs.modes.contains(p)) prefs.modes = prefs.modes + p } catch (_: Throwable) {} }
-            destination = dest; destName = tr.name; vias.clear(); for (i in 1 until n - 1) vias.add(LatLng(tr.rteLats[i], tr.rteLons[i])); drawVias()
-            // start from the GPS fix if you are near the route's start, otherwise plan from the route's own start
-            val fix = lastFix
-            val nearStart = fix != null && Geo.fastDistance(fix.lat, fix.lon, start.latitude, start.longitude) < 2000.0
-            if (!nearStart) { planStart = start; drawStart() } else planStart = null
-            showPinMarker(dest)
-            toast("Routing \"${tr.name}\" on your maps…", 4000)
-            startCompare(startFix(), dest)
-        } else followTrack(tr, null)
+        val pts: List<DoubleArray> = if (tr.hasRoute) (0 until tr.rteLats.size).map { doubleArrayOf(tr.rteLats[it], tr.rteLons[it]) } else Route.viasForTrack(tr.lats, tr.lons)
+        if (pts.size < 2) { followTrack(tr, null); return }
+        val start = LatLng(pts.first()[0], pts.first()[1]); val dest = LatLng(pts.last()[0], pts.last()[1])
+        if (packs.packFor(start.latitude, start.longitude) == null || packs.packFor(dest.latitude, dest.longitude) == null) {
+            if (tr.hasTrack) { toast("Route is outside your maps — following its line instead", 5000); followTrack(tr, null) }
+            else toast("Route is outside your maps", 6000)
+            return
+        }
+        tr.mode?.let { m -> try { val p = Profile.valueOf(m); profile = p; prefs.profile = p } catch (_: Throwable) {} }
+        compareModes = listOf(profile)
+        destination = dest; destName = tr.name; vias.clear(); for (i in 1 until pts.size - 1) vias.add(LatLng(pts[i][0], pts[i][1])); drawVias()
+        editCues.clear(); editCues.addAll(tr.cues)
+        if (mode == Mode.NAV) endNavigationKeepingPlan()
+        // start from the GPS fix if you are near the route's start, otherwise plan from the route's own start
+        val fix = lastFix
+        val nearStart = fix != null && Geo.fastDistance(fix.lat, fix.lon, start.latitude, start.longitude) < 2000.0
+        if (!nearStart) { planStart = start; drawStart() } else planStart = null
+        showPinMarker(dest)
+        toast("Planning \"${tr.name}\" on your maps (${profile.label})… add a via with a long press, tap a via to remove it", 6000)
+        startCompare(startFix(), dest)
+    }
+
+    /** Leaves a ride without clearing the plan being set up (EDIT ROUTE from a track that was being followed). */
+    private fun endNavigationKeepingPlan() {
+        Speech.stop(); dim(false); NavService.stop(this); routeGeneration++
+        route = null; isTrack = false; srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); ui.removeCallbacks(hudTick); offPanel.visibility = View.GONE
+        trackLats = null; trackLons = null; trackUri = null; trackCues.clear()
     }
 
     // ---------------------------------------------------------------- misc
@@ -1664,7 +1691,7 @@ class MainActivity : AppCompatActivity() {
         val modeLabel = try { if (item.mode.isNotEmpty()) " · " + Profile.valueOf(item.mode).label else "" } catch (_: Throwable) { "" }
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle(item.name)
             .setMessage(Units.distance(item.lengthM) + " · ${item.cues} cues" + modeLabel + surf + (if (item.created.isNotEmpty()) "\nPublished ${item.created}" else ""))
-            .setPositiveButton("FOLLOW") { _, _ -> withLibraryGpx(item) { tr, _ -> followTrack(tr, null) } }
+            .setPositiveButton("OPEN") { _, _ -> withLibraryGpx(item) { tr, _ -> onGpxLoaded(tr, null) } }
             .setNeutralButton("SAVE") { _, _ -> withLibraryGpx(item) { _, text -> val file = item.name.replace(Regex("[^\\w .-]+"), "_").trim().ifEmpty { "Roadbook" } + ".gpx"; val go = { writeToFolder(file, text); Unit }; if (FilePicker.writableFolder(this) == null) chooseFolder(go) else go() } }
             .setNegativeButton("CLOSE", null).show()
     }
