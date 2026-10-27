@@ -13,7 +13,7 @@ import java.io.File
  *   java -cp fold-packer.jar fold.packer.SceneKt graph.bin lat,lon lat,lon[;lat,lon…] FAST,BACKROADS out.json
  */
 fun main(args: Array<String>) {
-    val g = Graph.open(File(args[0]))
+    val g = Graph.open(args[0])
     val mr = MultiRouter(listOf(Router(g)))
     val pts = args[1].split(';').map { it.split(',').map(String::toDouble).toDoubleArray() }
     val profiles = args[2].split(',').map { Profile.valueOf(it) }

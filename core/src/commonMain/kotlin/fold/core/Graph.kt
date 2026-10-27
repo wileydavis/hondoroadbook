@@ -1,11 +1,5 @@
 package fold.core
 
-import java.io.DataOutputStream
-import java.io.File
-import java.io.OutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.channels.FileChannel
 import kotlin.math.floor
 
 /**
@@ -55,40 +49,31 @@ object GraphFormat {
     fun classIndex(highway: String): Int = CLASSES.indexOf(highway)
 }
 
-/** Random-access little-endian bytes; backs the graph with chunked memory maps so files above 2 GB work. */
-class Bytes private constructor(private val chunks: Array<ByteBuffer>, val size: Long) {
-    companion object {
-        const val CHUNK_BITS = 30
-        const val CHUNK = 1L shl CHUNK_BITS
-        fun map(file: File): Bytes {
-            FileChannel.open(file.toPath()).use { ch ->
-                val size = ch.size()
-                val n = ((size + CHUNK - 1) / CHUNK).toInt().coerceAtLeast(1)
-                val chunks = Array(n) { i ->
-                    val off = i * CHUNK; val len = minOf(CHUNK, size - off)
-                    ch.map(FileChannel.MapMode.READ_ONLY, off, len).order(ByteOrder.LITTLE_ENDIAN)
-                }
-                return Bytes(chunks, size)
-            }
-        }
-        fun wrap(b: ByteArray): Bytes = Bytes(arrayOf(ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN)), b.size.toLong())
-    }
-    /** All graph sections are 4-byte aligned and chunks are 1 GB, so a value never straddles two chunks. */
-    fun i32(off: Long): Int = chunks[(off ushr CHUNK_BITS).toInt()].getInt((off and (CHUNK - 1)).toInt())
-    fun u16(off: Long): Int = chunks[(off ushr CHUNK_BITS).toInt()].getShort((off and (CHUNK - 1)).toInt()).toInt() and 0xFFFF
-    fun u8(off: Long): Int = chunks[(off ushr CHUNK_BITS).toInt()].get((off and (CHUNK - 1)).toInt()).toInt() and 0xFF
-    fun i64(off: Long): Long = chunks[(off ushr CHUNK_BITS).toInt()].getLong((off and (CHUNK - 1)).toInt())
-    fun get(off: Long, dst: ByteArray) {
-        require(off >= 0 && off + dst.size <= size) { "read past end of file (${off + dst.size} > $size)" }
-        var o = off; var i = 0
-        while (i < dst.size) {
-            val c = chunks[(o ushr CHUNK_BITS).toInt()]; val within = (o and (CHUNK - 1)).toInt()
-            val n = minOf(dst.size - i, c.limit() - within)
-            require(n > 0) { "read past end of file" }
-            synchronized(c) { c.position(within); c.get(dst, i, n) }
-            i += n; o += n
-        }
-    }
+/**
+ * Random-access little-endian bytes behind the graph and the search index. A pack's graph is hundreds of
+ * megabytes, so the platforms map the file rather than read it: chunked ByteBuffers on the JVM and Android
+ * ([mapFile] in jvmCommon), mmap on iOS. All graph sections are 4-byte aligned, so a value never straddles
+ * a chunk. [ArrayBytes] wraps a ByteArray for tests and small indexes.
+ */
+interface Bytes {
+    val size: Long
+    fun i32(off: Long): Int
+    fun u16(off: Long): Int
+    fun u8(off: Long): Int
+    fun i64(off: Long): Long
+    fun get(off: Long, dst: ByteArray)
+}
+
+/** Opens a file as [Bytes] without reading it whole: memory-mapped on every platform. */
+expect fun mapFile(path: String): Bytes
+
+class ArrayBytes(private val a: ByteArray) : Bytes {
+    override val size: Long get() = a.size.toLong()
+    override fun u8(off: Long): Int = a[off.toInt()].toInt() and 0xFF
+    override fun u16(off: Long): Int { val i = off.toInt(); return (a[i].toInt() and 0xFF) or ((a[i + 1].toInt() and 0xFF) shl 8) }
+    override fun i32(off: Long): Int { val i = off.toInt(); return (a[i].toInt() and 0xFF) or ((a[i + 1].toInt() and 0xFF) shl 8) or ((a[i + 2].toInt() and 0xFF) shl 16) or ((a[i + 3].toInt() and 0xFF) shl 24) }
+    override fun i64(off: Long): Long = (i32(off).toLong() and 0xFFFFFFFFL) or (i32(off + 4).toLong() shl 32)
+    override fun get(off: Long, dst: ByteArray) { require(off >= 0 && off + dst.size <= size) { "read past end of file (${off + dst.size} > $size)" }; a.copyInto(dst, 0, off.toInt(), off.toInt() + dst.size) }
 }
 
 class Graph private constructor(private val buf: Bytes) {
@@ -116,7 +101,7 @@ class Graph private constructor(private val buf: Bytes) {
     init {
         require(buf.size >= GraphFormat.HEADER) { "graph truncated (${buf.size} bytes)" }
         val magic = ByteArray(8); buf.get(0, magic)
-        require(String(magic, Charsets.US_ASCII) == GraphFormat.MAGIC) { "not a Fold graph" }
+        require(magic.decodeToString() == GraphFormat.MAGIC) { "not a Fold graph" }
         // 2 is read as well: it carries no PRIVATE_BIKE bit, and its private ways were never bicycle-routable, so the meaning is unchanged
         require(buf.i32(8) in GraphFormat.MIN_VERSION..GraphFormat.VERSION) { "unsupported graph version" }
         nodeCount = buf.i32(12L); edgeCount = buf.i32(16L); geomPointCount = buf.i32(20L); nameCount = buf.i32(24L)
@@ -215,7 +200,7 @@ class Graph private constructor(private val buf: Bytes) {
         val s = i32(offNameOff + idx.toLong() * 4); val e = i32(offNameOff + (idx + 1).toLong() * 4)
         val arr = ByteArray(e - s)
         buf.get(offNameBytes + s, arr)
-        return String(arr, Charsets.UTF_8)
+        return arr.decodeToString()
     }
     fun edgeName(e: Int): String = name(edgeNameIdx(e))
 
@@ -228,8 +213,8 @@ class Graph private constructor(private val buf: Bytes) {
     fun contains(lat: Double, lon: Double) = lat in minLat..maxLat && lon in minLon..maxLon
 
     companion object {
-        fun open(file: File): Graph = Graph(Bytes.map(file))
-        fun fromBytes(bytes: ByteArray): Graph = Graph(Bytes.wrap(bytes))
+        fun open(path: String): Graph = Graph(mapFile(path))
+        fun fromBytes(bytes: ByteArray): Graph = Graph(ArrayBytes(bytes))
     }
 }
 
@@ -251,7 +236,8 @@ class GraphWriter {
         return edgeFrom.size - 1
     }
 
-    fun write(out: OutputStream) {
+    /** Serialises the graph to any [Sink] — a file stream on the JVM (the packer), a ByteArray in tests. */
+    fun write(d: Sink) {
         val n = nodeLat.size; val m = edgeFrom.size
         require(m > 0 && n > 0) { "empty graph" }
         var minLat = Int.MAX_VALUE; var minLon = Int.MAX_VALUE; var maxLat = Int.MIN_VALUE; var maxLon = Int.MIN_VALUE
@@ -300,16 +286,15 @@ class GraphWriter {
         val gfill = gridStart.copyOf(); val gridEntries = IntArray(gridStart[cellCount.toInt()])
         for (e in 0 until m) edgeCells(e) { gridEntries[gfill[it]++] = e }
 
-        val nameBytes = names.map { it.toByteArray(Charsets.UTF_8) }
+        val nameBytes = names.map { it.encodeToByteArray() }
         val nameRaw = nameBytes.sumOf { it.size }
         val namePad = (4 - nameRaw % 4) % 4
         val nameTotal = nameRaw + namePad
 
-        val d = DataOutputStream(out.buffered(1 shl 20))
-        fun i32(v: Int) { d.writeInt(Integer.reverseBytes(v)) }
-        fun i64(v: Long) { d.writeLong(java.lang.Long.reverseBytes(v)) }
-        fun u16(v: Int) { d.writeShort(java.lang.Short.reverseBytes(v.toShort()).toInt()) }
-        d.writeBytes(GraphFormat.MAGIC)
+        fun i32(v: Int) = d.i32(v)
+        fun i64(v: Long) = d.i64(v)
+        fun u16(v: Int) = d.u16(v)
+        d.bytes(GraphFormat.MAGIC.encodeToByteArray())
         i32(GraphFormat.VERSION); i32(n); i32(m); i32(geomLat.size); i32(names.size)
         i32(minLat); i32(minLon); i32(maxLat); i32(maxLon)
         i32(cols); i32(rows); i32(gridEntries.size); i32(nameTotal); i32(0)
@@ -319,19 +304,19 @@ class GraphWriter {
         for (e in 0 until m) { i32(edgeFrom[e]); i32(edgeTo[e]); i32(edgeLenCm[e]); u16(edgeFlags[e]); u16(edgeGeomCount[e]); i32(edgeName[e]); i32(edgeGeomStart[e]) }
         for (i in 0 until geomLat.size) { i32(geomLat[i]); i32(geomLon[i]) }
         var off = 0; i32(0); for (b in nameBytes) { off += b.size; i32(off) }
-        for (b in nameBytes) d.write(b)
-        repeat(namePad) { d.write(0) }
+        for (b in nameBytes) d.bytes(b)
+        repeat(namePad) { d.u8(0) }
         for (v in gridStart) i32(v)
         for (v in gridEntries) i32(v)
         // OSM id index: sorted (id, node) pairs, 8-byte aligned, then the reverse table node -> id
         val gridEnd = GraphFormat.HEADER.toLong() + n.toLong() * 8 + (n + 1).toLong() * 4 + 2L * m * 4 + m.toLong() * GraphFormat.EDGE_REC + geomLat.size.toLong() * 8 + (names.size + 1).toLong() * 4 + nameTotal + (cellCount + 1) * 4 + gridEntries.size.toLong() * 4
-        repeat(((8 - gridEnd % 8) % 8).toInt()) { d.write(0) }
+        repeat(((8 - gridEnd % 8) % 8).toInt()) { d.u8(0) }
         require(n < (1 shl 25)) { "too many nodes for one pack (${n}); split the region" }
         val packed = LongArray(n) { (nodeOsm[it] shl 25) or it.toLong() }
         packed.sort()
         for (v in packed) i64(v ushr 25)
         for (v in packed) i32((v and 0x1FFFFFF).toInt())
-        repeat((((n.toLong() * 4) % 8).let { if (it == 0L) 0L else 8 - it }).toInt()) { d.write(0) }
+        repeat((((n.toLong() * 4) % 8).let { if (it == 0L) 0L else 8 - it }).toInt()) { d.u8(0) }
         for (i in 0 until n) i64(nodeOsm[i])
         d.flush()
     }
@@ -356,4 +341,22 @@ class IntList(cap: Int = 1024) {
     fun toArray(): IntArray = a.copyOf(size)
     fun removeLast(): Int = a[--size]
     fun clear() { size = 0 }
+}
+
+/** Where a graph is written: little-endian, in order. */
+interface Sink {
+    fun i32(v: Int); fun i64(v: Long); fun u16(v: Int); fun u8(v: Int); fun bytes(b: ByteArray)
+    fun flush() {}
+}
+
+/** A growing ByteArray sink, for tests and small graphs. */
+class ByteArraySink : Sink {
+    private var a = ByteArray(1 shl 16); private var n = 0
+    private fun room(k: Int) { if (n + k > a.size) a = a.copyOf(maxOf(a.size * 2, n + k)) }
+    override fun u8(v: Int) { room(1); a[n++] = v.toByte() }
+    override fun u16(v: Int) { room(2); a[n++] = v.toByte(); a[n++] = (v shr 8).toByte() }
+    override fun i32(v: Int) { room(4); a[n++] = v.toByte(); a[n++] = (v shr 8).toByte(); a[n++] = (v shr 16).toByte(); a[n++] = (v shr 24).toByte() }
+    override fun i64(v: Long) { i32(v.toInt()); i32((v shr 32).toInt()) }
+    override fun bytes(b: ByteArray) { room(b.size); b.copyInto(a, n); n += b.size }
+    fun toByteArray(): ByteArray = a.copyOf(n)
 }

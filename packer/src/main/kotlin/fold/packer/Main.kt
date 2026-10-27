@@ -80,7 +80,7 @@ fun main(args: Array<String>) {
 
     // overview tiles for the small roads and trails at zooms the basemap leaves them out of
     val overview = File(work, PackManifest.OVERVIEW)
-    run { val g = fold.core.Graph.open(graph); Overview.build(g, overview, log) }
+    run { val g = fold.core.Graph.open(graph.path); Overview.build(g, overview, log) }
 
     val manifest = PackManifest(name, PackManifest.FORMAT, packer.minLat, packer.minLon, packer.maxLat, packer.maxLon, LocalDate.now().toString(), "source=${pbf.name}")
     val manifestFile = File(work, PackManifest.FILE).apply { writeText(manifest.serialize()) }

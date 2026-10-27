@@ -1,6 +1,5 @@
 package fold.core
 
-import java.io.ByteArrayOutputStream
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
@@ -11,7 +10,7 @@ class GraphIntegrityTest {
         val w = GraphWriter()
         val a = w.addNode(458000000, -1113000000, 1); val b = w.addNode(458100000, -1113000000, 2)
         w.addEdge(a, b, 1_111_00, 10 or GraphFormat.CAR, w.nameId("Road"), IntArray(0), IntArray(0), 0)
-        val o = ByteArrayOutputStream(); w.write(o); return o.toByteArray()
+        val o = ByteArraySink(); w.write(o); return o.toByteArray()
     }
 
     private fun rejectsQuickly(bytes: ByteArray, label: String) {

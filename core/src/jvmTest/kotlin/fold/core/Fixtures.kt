@@ -1,6 +1,5 @@
 package fold.core
 
-import java.io.ByteArrayOutputStream
 
 /**
  * Synthetic data for the core tests, so the safety-relevant behaviour is exercised on every build
@@ -28,7 +27,7 @@ object Fixtures {
             val go = IntArray(inner.size) { (ll(inner[it][0], inner[it][1])[1] * 1e7).toInt() }
             w.addEdge(a, b, (len * 100).toInt(), cls or wayFlags(wi), w.nameId("Way $wi"), gl, go, inner.size)
         }
-        val out = ByteArrayOutputStream(); w.write(out)
+        val out = ByteArraySink(); w.write(out)
         return Graph.fromBytes(out.toByteArray())
     }
 

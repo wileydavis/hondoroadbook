@@ -3,6 +3,7 @@ package fold.packer
 import fold.core.Geo
 import fold.core.GraphFormat
 import fold.core.GraphWriter
+import fold.core.write
 import fold.core.IntList
 import fold.core.TextNorm
 import java.io.File

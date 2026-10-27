@@ -10,7 +10,7 @@ class RealDataTest {
     private fun graph(): Graph? {
         val p = System.getenv("FOLD_GRAPH") ?: throw org.opentest4j.TestAbortedException("FOLD_GRAPH not set: real-data test skipped")
         val f = File(p); if (!f.exists()) throw org.opentest4j.TestAbortedException("FOLD_GRAPH missing: real-data test skipped")
-        return Graph.open(f)
+        return Graph.open(f.path)
     }
 
     private fun describe(r: Route): String = buildString {
@@ -124,7 +124,7 @@ class RealDataTest {
     @Test
     fun search() {
         val p = System.getenv("FOLD_SEARCH") ?: throw org.opentest4j.TestAbortedException("FOLD_SEARCH not set: real-data test skipped")
-        val idx = SearchFile.open(File(p))
+        val idx = SearchFile.open(p)
         for (q in listOf("pearl st", "1770 13th street", "boulder", "eldorado springs", "baseline rd", "flagstaff")) {
             val t0 = System.nanoTime()
             val hits = idx.query(q, 5)

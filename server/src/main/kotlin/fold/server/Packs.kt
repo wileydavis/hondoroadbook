@@ -116,8 +116,8 @@ open class PackSet(private val catalogUrl: String, private val dir: File, privat
             stamp.writeText("${p.built}/${p.bytes}")
             System.err.println("loaded ${p.id}: ${graphFile.length() / 1_000_000} MB in ${(System.currentTimeMillis() - t0) / 1000} s")
         }
-        val g = Graph.open(graphFile)
-        val s = if (searchFile.exists()) try { SearchFile.open(searchFile) } catch (_: Throwable) { null } else null
+        val g = Graph.open(graphFile.path)
+        val s = if (searchFile.exists()) try { SearchFile.open(searchFile.path) } catch (_: Throwable) { null } else null
         val pois = if (poisFile.exists()) try { poisFile.useLines { lines -> lines.mapNotNull { ln -> val t = ln.split('\t'); if (t.size < 6) null else PoiEntry(t[0].toInt() / 1e7, t[1].toInt() / 1e7, t[2].toIntOrNull() ?: 1, t[3], t[4], t[5], t.getOrElse(6) { "" }) }.toList() } } catch (_: Throwable) { null } else null
         return Loaded(p, g, Router(g), s, pois)
     }

@@ -237,15 +237,15 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                 // it goes on a short list that every cue checks, so a hazard halfway along it is never lost
                 val longs = IntArrayList()
                 for (i in 0 until lats.size - 1) {
-                    val la0 = Math.floor(Math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = Math.floor(Math.max(lats[i], lats[i + 1]) / cell).toLong()
-                    val lo0 = Math.floor(Math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = Math.floor(Math.max(lons[i], lons[i + 1]) / cell).toLong()
+                    val la0 = kotlin.math.floor(kotlin.math.min(lats[i], lats[i + 1]) / cell).toLong(); val la1 = kotlin.math.floor(kotlin.math.max(lats[i], lats[i + 1]) / cell).toLong()
+                    val lo0 = kotlin.math.floor(kotlin.math.min(lons[i], lons[i + 1]) / cell).toLong(); val lo1 = kotlin.math.floor(kotlin.math.max(lons[i], lons[i + 1]) / cell).toLong()
                     if ((la1 - la0 + 1) * (lo1 - lo0 + 1) > 400) { longs.add(i); continue }
                     for (a in la0..la1) for (b in lo0..lo1) grid.getOrPut((a shl 32) xor (b and 0xFFFFFFFFL)) { IntArrayList() }.add(i)
                 }
                 for (c in cues) {
                     // nearest point on the line, as a vertex index (cues further than 150 m from the line are dropped)
                     var best = Double.MAX_VALUE; var bi = -1; var bt = 0.0
-                    val ca = Math.floor(c.lat / cell).toLong(); val co = Math.floor(c.lon / cell).toLong()
+                    val ca = kotlin.math.floor(c.lat / cell).toLong(); val co = kotlin.math.floor(c.lon / cell).toLong()
                     for (a in ca - 1..ca + 1) for (b in co - 1..co + 1) {
                         val segs = grid[(a shl 32) xor (b and 0xFFFFFFFFL)] ?: continue
                         for (k in 0 until segs.size) {

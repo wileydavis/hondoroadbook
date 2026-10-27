@@ -25,12 +25,12 @@ class Pack(val dir: File, val manifest: PackManifest) {
     @Synchronized fun loadRouter(): Router? {
         if (isTerrain) return null
         router?.let { return it }
-        return try { Router(Graph.open(File(dir, PackManifest.GRAPH))).also { router = it } } catch (e: Throwable) { android.util.Log.w("Fold", "graph open failed for $name", e); null }
+        return try { Router(Graph.open(File(dir, PackManifest.GRAPH).path)).also { router = it } } catch (e: Throwable) { android.util.Log.w("Fold", "graph open failed for $name", e); null }
     }
     @Synchronized fun loadSearch(): SearchFile? {
         if (isTerrain) return null
         search?.let { return it }
-        return try { SearchFile.open(File(dir, PackManifest.SEARCH)) } catch (e: Throwable) { null }?.also { search = it }
+        return try { SearchFile.open(File(dir, PackManifest.SEARCH).path) } catch (e: Throwable) { null }?.also { search = it }
     }
     fun contains(lat: Double, lon: Double) = manifest.contains(lat, lon)
 }
@@ -92,7 +92,7 @@ class PackStore(private val ctx: Context) {
     }
 
     /** Opens the routing graph once to prove the file is sound (header, sizes, sample edges); cheap, mmap only. */
-    fun validate(p: Pack): String? = if (p.isTerrain) null else try { Graph.open(File(p.dir, PackManifest.GRAPH)); null } catch (e: Throwable) { e.message ?: "unreadable graph" }
+    fun validate(p: Pack): String? = if (p.isTerrain) null else try { Graph.open(File(p.dir, PackManifest.GRAPH).path); null } catch (e: Throwable) { e.message ?: "unreadable graph" }
 
     /** Copies and unpacks a .mappack picked by the user. Returns the new pack or throws with a readable message. */
     fun import(uri: Uri, progress: (String) -> Unit): Pack {
@@ -140,7 +140,7 @@ class PackStore(private val ctx: Context) {
                     } }
                 }
                 // the new pack must open before it is allowed to replace anything
-                if (!manifest.isTerrain) { try { Graph.open(File(staging, PackManifest.GRAPH)) } catch (e: Throwable) { throw IllegalStateException("This pack's routing data is damaged (${e.message}) — it was not installed") } }
+                if (!manifest.isTerrain) { try { Graph.open(File(staging, PackManifest.GRAPH).path) } catch (e: Throwable) { throw IllegalStateException("This pack's routing data is damaged (${e.message}) — it was not installed") } }
                 if (replacing) {
                     // drop any open handles on the old files, then swap: the old pack is kept until the new one is in place
                     packs.firstOrNull { it.dir == dir }?.let { it.router = null }

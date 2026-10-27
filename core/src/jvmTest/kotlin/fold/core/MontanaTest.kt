@@ -28,10 +28,10 @@ class MontanaTest {
 
     @Test fun montanaRoutes() {
         val p = System.getenv("FOLD_MT") ?: throw org.opentest4j.TestAbortedException("FOLD_MT not set: real-data test skipped")
-        val mr = MultiRouter(listOf(Router(Graph.open(File(p, "graph.bin")))))
+        val mr = MultiRouter(listOf(Router(Graph.open(File(p, "graph.bin").path))))
         for ((a, b) in listOf("Manhattan" to "Bozeman", "Manhattan" to "Missoula", "Manhattan" to "BigSky", "Bozeman" to "RedLodge", "Missoula" to "Glendive", "Manhattan" to "WestYellowstone")) run(mr, Profile.FAST, a, b)
         for ((a, b) in listOf("Manhattan" to "Bozeman", "Bozeman" to "BigSky")) run(mr, Profile.RIDE, a, b)
-        val idx = SearchFile.open(File(p, "search.tsv"))
+        val idx = SearchFile.open(File(p, "search.tsv").path)
         for (q in listOf("manhattan", "bozeman", "main st manhattan", "106 e main st manhattan", "manhattan main", "hondo", "big sky", "frontage rd belgrade", "ennis")) {
             val t0 = System.nanoTime(); val hits = idx.query(q, 4)
             println("'$q' (${(System.nanoTime() - t0) / 1_000_000} ms): " + hits.joinToString(" | ") { "${it.kind}:${it.label}" })
@@ -42,7 +42,7 @@ class MontanaTest {
     @Test fun crossBorder() {
         val p = System.getenv("FOLD_MT") ?: throw org.opentest4j.TestAbortedException("FOLD_MT not set: real-data test skipped")
         val w = System.getenv("FOLD_WY") ?: throw org.opentest4j.TestAbortedException("FOLD_WY not set: real-data test skipped")
-        val gm = Graph.open(File(p, "graph.bin")); val gw = Graph.open(File(w, "graph.bin"))
+        val gm = Graph.open(File(p, "graph.bin").path); val gw = Graph.open(File(w, "graph.bin").path)
         // sanity: shared junctions exist
         var shared = 0
         for (n in 0 until gw.nodeCount step 97) if (gm.nodeByOsmId(gw.osmId(n)) >= 0) shared++

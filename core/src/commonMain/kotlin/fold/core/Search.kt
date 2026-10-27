@@ -1,7 +1,5 @@
 package fold.core
 
-import java.io.File
-import java.text.Normalizer
 
 /** One line of the search index. kind: 'P' place, 'S' street, 'A' address. */
 class Hit(val kind: Char, val name: String, val context: String, val lat: Double, val lon: Double) {
@@ -16,12 +14,12 @@ object TextNorm {
         "northeast" to "ne", "northwest" to "nw", "southeast" to "se", "southwest" to "sw", "saint" to "st", "mount" to "mt",
         "fort" to "ft", "route" to "rte", "county" to "co", "square" to "sq", "heights" to "hts"
     )
-    private val strip = Regex("\\p{M}+")
     private val junk = Regex("[^a-z0-9 ]+")
     private val ws = Regex("\\s+")
 
     fun normalize(s: String): String {
-        val d = Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(strip, "")
+        // decompose (é → e + ´) on the platform, then drop the combining marks: "Québec" and "quebec" are one key
+        val d = decomposeNfd(s.lowercase()).filterNot { it.category == CharCategory.NON_SPACING_MARK || it.category == CharCategory.COMBINING_SPACING_MARK || it.category == CharCategory.ENCLOSING_MARK }
         val cleaned = d.replace('-', ' ').replace('.', ' ').replace(junk, " ").replace(ws, " ").trim()
         if (cleaned.isEmpty()) return ""
         return cleaned.split(' ').joinToString(" ") { abbrev[it] ?: it }
@@ -48,7 +46,7 @@ class SearchFile private constructor(private val b: Bytes) {
         return sb.toString()
     }
     private fun lineAt(ls: Long): String {
-        val le = lineEnd(ls); val arr = ByteArray((le - ls).toInt()); b.get(ls, arr); return String(arr, Charsets.UTF_8)
+        val le = lineEnd(ls); val arr = ByteArray((le - ls).toInt()); b.get(ls, arr); return arr.decodeToString()
     }
 
     /** First line whose key >= prefix. */
@@ -106,7 +104,7 @@ class SearchFile private constructor(private val b: Bytes) {
                 val num = h.name.takeWhile(Char::isDigit).toLongOrNull()
                 out[i] = when {
                     h.kind == 'S' -> (sc + 30) to h
-                    h.kind == 'A' && num != null -> (sc + 25 - minOf(25L, Math.abs(num - want) / 2).toInt()) to h
+                    h.kind == 'A' && num != null -> (sc + 25 - minOf(25L, kotlin.math.abs(num - want) / 2).toInt()) to h
                     else -> out[i]
                 }
             }
@@ -130,7 +128,7 @@ class SearchFile private constructor(private val b: Bytes) {
         val nq = tokens.joinToString(" ")
         while (p < size && n < maxLines) {
             val line = lineAt(p)
-            p += line.toByteArray(Charsets.UTF_8).size + 1
+            p += line.encodeToByteArray().size + 1
             n++
             val tab = line.indexOf('\t'); if (tab < 0) continue
             val key = line.substring(0, tab)
@@ -162,8 +160,8 @@ class SearchFile private constructor(private val b: Bytes) {
         private val STATES = setOf("al","ak","az","ar","ca","co","ct","de","dc","fl","ga","hi","id","il","in","ia","ks","ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny","nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt","va","wa","wv","wi","wy",
             "alabama","alaska","arizona","arkansas","california","colorado","connecticut","delaware","florida","georgia","hawaii","idaho","illinois","indiana","iowa","kansas","kentucky","louisiana","maine","maryland","massachusetts","michigan","minnesota","mississippi","missouri","montana","nebraska","nevada","ohio","oklahoma","oregon","pennsylvania","tennessee","texas","utah","vermont","virginia","washington","wisconsin","wyoming","mexico","canada")
         private val STATE_NAMES_2 = setOf("new hampshire","new jersey","new mexico","new york","north carolina","north dakota","rhode island","south carolina","south dakota","west virginia","baja california","british columbia")
-        fun open(file: File): SearchFile = SearchFile(Bytes.map(file))
-        fun fromBytes(bytes: ByteArray): SearchFile = SearchFile(Bytes.wrap(bytes))
+        fun open(path: String): SearchFile = SearchFile(mapFile(path))
+        fun fromBytes(bytes: ByteArray): SearchFile = SearchFile(ArrayBytes(bytes))
         /** Formats one index line; the packer sorts these before writing. */
         fun line(kind: Char, name: String, ctx: String, latE7: Int, lonE7: Int, key: String? = null): String {
             val n = name.replace('\t', ' ').replace('\n', ' ').trim(); val c = ctx.replace('\t', ' ').replace('\n', ' ').trim()
@@ -180,3 +178,6 @@ class SearchFile private constructor(private val b: Bytes) {
         }
     }
 }
+
+/** Unicode canonical decomposition (NFD): java.text.Normalizer on the JVM, Foundation on iOS. */
+expect fun decomposeNfd(s: String): String
