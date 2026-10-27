@@ -426,7 +426,8 @@
     "pbf": "north-america/canada/northwest-territories-latest.osm.pbf",
     "geofabrik": "canada/northwest-territories",
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: 1.3 million km\u00b2"
+    "notes": "terrain at zoom 10: 1.3 million km\u00b2",
+    "max_zoom": 13
   },
   "nova-scotia": {
     "name": "Nova Scotia",
@@ -442,7 +443,8 @@
     "pbf": "north-america/canada/nunavut-latest.osm.pbf",
     "geofabrik": "canada/nunavut",
     "terrain_zoom": 9,
-    "notes": "terrain at zoom 9: two million km\u00b2 and almost no roads"
+    "notes": "terrain at zoom 9: two million km\u00b2 and almost no roads",
+    "max_zoom": 12
   },
   "ontario": {
     "name": "Ontario",
