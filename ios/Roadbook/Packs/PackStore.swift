@@ -18,7 +18,7 @@ final class Pack: Identifiable, Equatable {
     private let lock = NSLock()
 
     init(dir: URL, manifest: PackManifest) { self.dir = dir; self.manifest = manifest }
-    static func == (a: Pack, b: Pack) -> Bool { a.dir == b.dir }
+    static func == (a: Pack, b: Pack) -> Bool { a.dir.standardizedFileURL.path == b.dir.standardizedFileURL.path }
 
     var sizeBytes: Int64 {
         (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey]))?.reduce(0) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) } ?? 0
@@ -157,7 +157,7 @@ final class PackStore {
             catch { throw Fail("This pack's routing data is damaged (\(error.text)) — it was not installed") }
         }
         if replacing {
-            lock.lock(); packs.first { $0.dir == dir }?.router = nil; multi = nil; multiFor = []; lock.unlock()
+            lock.lock(); packs.first { $0.dir.standardizedFileURL.path == dir.standardizedFileURL.path }?.router = nil; multi = nil; multiFor = []; lock.unlock()
             let old = root.appendingPathComponent(".old-\(safe)"); try? fm.removeItem(at: old)
             do { try fm.moveItem(at: dir, to: old) } catch { throw Fail("Could not replace the old pack") }
             do { try fm.moveItem(at: staging, to: dir) } catch { try? fm.moveItem(at: old, to: dir); throw Fail("Could not move pack into place; the previous version was kept") }
@@ -166,7 +166,8 @@ final class PackStore {
             do { try fm.moveItem(at: staging, to: dir) } catch { throw Fail("Could not move pack into place") }
         }
         scan()
-        guard let p = packs.first(where: { $0.dir == dir }) else { throw Fail("Pack installed but not found") }
+        // (directory URLs from a listing carry a trailing slash and may be under /private; compare paths, not URLs)
+        guard let p = packs.first(where: { $0.dir.standardizedFileURL.path == dir.standardizedFileURL.path }) else { throw Fail("Pack installed but not found") }
         return p
     }
 
