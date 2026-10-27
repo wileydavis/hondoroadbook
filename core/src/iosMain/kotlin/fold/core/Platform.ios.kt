@@ -10,6 +10,7 @@ import kotlinx.cinterop.plus
 import kotlinx.cinterop.pointed
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import kotlinx.cinterop.addressOf
 import platform.Foundation.NSString
 import platform.Foundation.create
