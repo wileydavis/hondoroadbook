@@ -213,7 +213,7 @@ class Graph private constructor(private val buf: Bytes) {
     fun contains(lat: Double, lon: Double) = lat in minLat..maxLat && lon in minLon..maxLon
 
     companion object {
-        fun open(path: String): Graph = Graph(mapFile(path))
+        @Throws(Throwable::class) fun open(path: String): Graph = Graph(mapFile(path))
         fun fromBytes(bytes: ByteArray): Graph = Graph(ArrayBytes(bytes))
     }
 }

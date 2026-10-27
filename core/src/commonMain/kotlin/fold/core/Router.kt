@@ -298,7 +298,7 @@ class MultiRouter(val routers: List<Router>) {
     fun graph(p: Int) = routers[p].graph()
 
     /** Nearest road across all packs that cover the point. */
-    fun snap(lat: Double, lon: Double, profile: Profile, maxMeters: Double = 1500.0, roadsOnly: Boolean = false): Snap? {
+    @Throws(Throwable::class) fun snap(lat: Double, lon: Double, profile: Profile, maxMeters: Double = 1500.0, roadsOnly: Boolean = false): Snap? {
         var best: Snap? = null
         for (p in routers.indices) {
             val s = routers[p].snap(p, lat, lon, profile, maxMeters, roadsOnly) ?: continue
@@ -359,7 +359,7 @@ class MultiRouter(val routers: List<Router>) {
     }
 
     /** Routes through a list of points in order (start, vias…, destination) and joins the legs. */
-    fun routeVia(points: List<DoubleArray>, profile: Profile): RouteResult? {
+    @Throws(Throwable::class) fun routeVia(points: List<DoubleArray>, profile: Profile): RouteResult? {
         require(points.size >= 2)
         val legs = ArrayList<RouteResult>()
         for (i in 0 until points.size - 1) {

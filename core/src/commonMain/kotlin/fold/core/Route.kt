@@ -76,7 +76,7 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
     }
 
     companion object {
-        fun fromGraphRoute(r: RouteResult, mr: MultiRouter, profile: Profile): Route {
+        @Throws(Throwable::class) fun fromGraphRoute(r: RouteResult, mr: MultiRouter, profile: Profile): Route {
             val lats = r.lats; val lons = r.lons
             val cum = DoubleArray(lats.size); for (i in 1 until lats.size) cum[i] = cum[i - 1] + Geo.fastDistance(lats[i - 1], lons[i - 1], lats[i], lons[i])
             val man = ArrayList<Maneuver>()
@@ -223,7 +223,7 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
          * A GPX track. With authored cues the roadbook is the author's: cues are snapped to the line and used as
          * given (plus arrival). Without any, cues are synthesised from the geometry.
          */
-        fun fromTrack(lats: DoubleArray, lons: DoubleArray, name: String = "Track", cues: List<Cue> = emptyList()): Route {
+        @Throws(Throwable::class) fun fromTrack(lats: DoubleArray, lons: DoubleArray, name: String = "Track", cues: List<Cue> = emptyList()): Route {
             require(lats.size >= 2)
             if (cues.isNotEmpty()) {
                 val cum = DoubleArray(lats.size); for (i in 1 until lats.size) cum[i] = cum[i - 1] + Geo.fastDistance(lats[i - 1], lons[i - 1], lats[i], lons[i])

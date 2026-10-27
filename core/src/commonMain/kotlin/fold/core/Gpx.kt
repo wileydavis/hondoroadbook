@@ -13,7 +13,7 @@ object Gpx {
         val hasRoute get() = rteLats.size >= 2
     }
 
-    fun parse(text: String): Track? {
+    @Throws(Throwable::class) fun parse(text: String): Track? {
         val lats = ArrayList<Double>(); val lons = ArrayList<Double>()
         val rl = ArrayList<Double>(); val ro = ArrayList<Double>()
         var name = ""; var mode: String? = null
@@ -70,7 +70,7 @@ object Gpx {
         sb.append("  <metadata><name>").append(esc(name)).append("</name></metadata>\n")
         for (c in cues) sb.append(cueXml(c))
         sb.append("  <trk><name>").append(esc(name)).append("</name><trkseg>\n")
-        for (i in lats.indices) { sb.append("    <trkpt lat=\"").append(lats[i]).append("\" lon=\"").append(lons[i]).append("\">"); if (times != null) sb.append("<time>").append(java.time.Instant.ofEpochMilli(times[i])).append("</time>"); sb.append("</trkpt>\n") }
+        for (i in lats.indices) { sb.append("    <trkpt lat=\"").append(lats[i]).append("\" lon=\"").append(lons[i]).append("\">"); if (times != null) sb.append("<time>").append(isoTime(times[i])).append("</time>"); sb.append("</trkpt>\n") }
         sb.append("  </trkseg></trk>\n</gpx>\n")
         return sb.toString()
     }
@@ -106,4 +106,24 @@ object Gpx {
         if (end < 0) return null
         return tag.substring(start, end).trim().toDoubleOrNull()
     }
+}
+
+/** Epoch milliseconds as "2026-10-27T14:03:05Z": pure arithmetic, so every platform writes the same text. */
+fun isoTime(ms: Long): String {
+    val secs = ms.floorDiv(1000L)
+    val days = secs.floorDiv(86400L)
+    val sod = secs.mod(86400L)
+    // civil-from-days (Howard Hinnant)
+    val z = days + 719468
+    val era = z.floorDiv(146097L)
+    val doe = z - era * 146097
+    val yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+    val y = yoe + era * 400
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = if (mp < 10) mp + 3 else mp - 9
+    val year = if (m <= 2) y + 1 else y
+    fun two(v: Long) = if (v < 10) "0$v" else "$v"
+    return "$year-${two(m)}-${two(d)}T${two(sod / 3600)}:${two(sod / 60 % 60)}:${two(sod % 60)}Z"
 }

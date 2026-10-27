@@ -69,7 +69,7 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
     fun view(nowMs: Long): NavView = follower.view(nowMs)
 
     /** The periodic tick: computes the view, delivers any sound that is due, returns the view for the screen. */
-    fun tick(nowMs: Long): NavView {
+    @Throws(Throwable::class) fun tick(nowMs: Long): NavView {
         val v = follower.view(nowMs)
         if (!ended) soundTick(v, nowMs)
         return v
@@ -163,7 +163,7 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
 
     companion object {
         /** Builds a session back from [checkpoint] text, or null when the text is not one. */
-        fun restore(text: String, sink: NavSink): NavController? {
+        @Throws(Throwable::class) fun restore(text: String, sink: NavSink): NavController? {
             if (!text.startsWith("roadbook-nav 1\n")) return null
             val cut = text.indexOf("\n\n"); if (cut < 0) return null
             val head = HashMap<String, String>()

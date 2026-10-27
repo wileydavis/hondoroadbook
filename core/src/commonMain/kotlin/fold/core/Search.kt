@@ -64,7 +64,7 @@ class SearchFile private constructor(private val b: Bytes) {
     fun query(q: String, limit: Int = 25): List<Hit> = queryScored(q, limit).map { it.second }
 
     /** Scored results so several packs' results can be merged and ranked together. */
-    fun queryScored(q: String, limit: Int = 25): List<Pair<Int, Hit>> {
+    @Throws(Throwable::class) fun queryScored(q: String, limit: Int = 25): List<Pair<Int, Hit>> {
         val nq0 = TextNorm.normalize(q)
         if (nq0.isEmpty() || size == 0L) return emptyList()
         // a pasted postal address carries things the index never has: ZIP code, state, country. Drop them.
@@ -160,7 +160,7 @@ class SearchFile private constructor(private val b: Bytes) {
         private val STATES = setOf("al","ak","az","ar","ca","co","ct","de","dc","fl","ga","hi","id","il","in","ia","ks","ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj","nm","ny","nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt","va","wa","wv","wi","wy",
             "alabama","alaska","arizona","arkansas","california","colorado","connecticut","delaware","florida","georgia","hawaii","idaho","illinois","indiana","iowa","kansas","kentucky","louisiana","maine","maryland","massachusetts","michigan","minnesota","mississippi","missouri","montana","nebraska","nevada","ohio","oklahoma","oregon","pennsylvania","tennessee","texas","utah","vermont","virginia","washington","wisconsin","wyoming","mexico","canada")
         private val STATE_NAMES_2 = setOf("new hampshire","new jersey","new mexico","new york","north carolina","north dakota","rhode island","south carolina","south dakota","west virginia","baja california","british columbia")
-        fun open(path: String): SearchFile = SearchFile(mapFile(path))
+        @Throws(Throwable::class) fun open(path: String): SearchFile = SearchFile(mapFile(path))
         fun fromBytes(bytes: ByteArray): SearchFile = SearchFile(ArrayBytes(bytes))
         /** Formats one index line; the packer sorts these before writing. */
         fun line(kind: Char, name: String, ctx: String, latE7: Int, lonE7: Int, key: String? = null): String {
