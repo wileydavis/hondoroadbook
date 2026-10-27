@@ -226,7 +226,21 @@ final class AppModel: ObservableObject, MapEvents {
     func drawMarks() {
         map.set("marks-src", MapController.collection(marks.marks.map { MapController.point(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon), ["name": $0.name, "id": NSNumber(value: $0.id)]) }))
     }
-    func drawVias() { map.set("via-src", MapController.collection(vias.map { MapController.point($0) })) }
+    func drawVias() { map.set("via-src", MapController.collection(vias.enumerated().map { i, v in MapController.point(v, ["idx": NSNumber(value: i)]) })) }
+
+    /// Tap on a via: take it out of the route (and route again without it).
+    func offerRemoveVia(_ idx: Int) {
+        guard vias.indices.contains(idx) else { return }
+        let letter = String(UnicodeScalar(UInt8(65 + min(idx, 25))))
+        ask("Via \(letter)", fmt(vias[idx]), [Dialog.Btn(label: "REMOVE VIA", role: .destructive) { [self] in removeVia(idx) }, Dialog.Btn(label: "Cancel", role: .cancel) {}])
+    }
+    func removeVia(_ idx: Int) {
+        guard vias.indices.contains(idx) else { return }
+        vias.remove(at: idx); drawVias()
+        guard let dest = destination else { return }
+        showToast("Via removed — routing…")
+        if mode == .nav { computeRoute(lastFix ?? startFix(), dest, initial: true) } else { startCompare(compareFrom ?? startFix(), dest) }
+    }
     func drawStart() { map.set("start-src", planStart.map { MapController.collection([MapController.point($0)]) }) }
     func drawCues() {
         map.set("cues-src", MapController.collection(trackCues.enumerated().map { i, c in
@@ -349,9 +363,12 @@ final class AppModel: ObservableObject, MapEvents {
         let cue = (cueHit?.attribute(forKey: "idx") as? NSNumber).flatMap { i in trackCues.indices.contains(i.intValue) ? trackCues[i.intValue] : nil }
         let lineHit = mode == .compare ? (map.features(at: p, layer: "cmp-line", radius: 14).first ?? map.features(at: p, layer: "cmp-line-sel", radius: 14).first) : nil
         let picked = (lineHit?.attribute(forKey: "mode") as? String).flatMap { Profiles.byName($0) }
+        let viaHit = (!vias.isEmpty && (mode == .compare || mode == .nav || mode == .pin)) ? map.features(at: p, layer: "via-layer", radius: 20).first : nil
+        let viaIdx = (viaHit?.attribute(forKey: "idx") as? NSNumber).map { $0.intValue }
         let libHit = (libraryOn && mode == .idle) ? map.features(at: p, layer: "lib-line", radius: 16).first : nil
         let libItem = (libHit?.attribute(forKey: "id") as? String).flatMap { id in libraryItems.first { $0.id == id } }
         if let c = cue { editCue(c) }
+        else if let vi = viaIdx { offerRemoveVia(vi) }
         else if let it = libItem { sheet = .libraryItem(it) }
         else if let m = mark { sheet = .markCard(m) }
         else if let pm = picked, candidates.contains(where: { $0.0 == pm }) { profile = pm; prefs.profile = pm; drawCandidates() }

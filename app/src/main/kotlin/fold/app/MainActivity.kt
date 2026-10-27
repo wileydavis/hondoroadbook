@@ -307,10 +307,13 @@ class MainActivity : AppCompatActivity() {
                 val cue = cueHit?.getNumberProperty("idx")?.toInt()?.let { trackCues.getOrNull(it) }
                 val line = if (mode == Mode.COMPARE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(14), pt.y - dp(14), pt.x + dp(14), pt.y + dp(14)), "cmp-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val pickedMode = line?.getStringProperty("mode")?.let { try { Profile.valueOf(it) } catch (_: Throwable) { null } }
+                val viaHit = if (vias.isNotEmpty() && (mode == Mode.COMPARE || mode == Mode.NAV || mode == Mode.PIN)) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(20), pt.y - dp(20), pt.x + dp(20), pt.y + dp(20)), "via-layer").firstOrNull() } catch (_: Throwable) { null } else null
+                val viaIdx = viaHit?.getNumberProperty("idx")?.toInt()?.takeIf { it in vias.indices }
                 val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val libItem = libHit?.getStringProperty("id")?.let { id -> libraryItems.firstOrNull { it.id == id } }
                 when {
                     cue != null -> { editCue(cue); true }
+                    viaIdx != null -> { offerRemoveVia(viaIdx); true }
                     libItem != null -> { openLibraryItem(libItem); true }
                     mark != null -> { openMark(mark); true }
                     pickedMode != null && candidates.containsKey(pickedMode) -> { profile = pickedMode; prefs.profile = pickedMode; rebuildCompareRows(prefs.modes.toList().sortedBy { it.ordinal }, false); drawCandidates(); true }
@@ -767,7 +770,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun drawVias() {
-        srcVia?.setGeoJson(FeatureCollection.fromFeatures(vias.map { Feature.fromGeometry(Point.fromLngLat(it.longitude, it.latitude)) }))
+        srcVia?.setGeoJson(FeatureCollection.fromFeatures(vias.mapIndexed { i, v -> Feature.fromGeometry(Point.fromLngLat(v.longitude, v.latitude)).also { it.addNumberProperty("idx", i) } }))
+    }
+
+    /** Tap on a via: take it out of the route (and route again without it). */
+    private fun offerRemoveVia(idx: Int) {
+        val v = vias[idx]
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Via ${'A' + idx}")
+            .setMessage("%.5f, %.5f".format(v.latitude, v.longitude))
+            .setPositiveButton("REMOVE VIA") { _, _ -> removeVia(idx) }
+            .setNegativeButton(R.string.cancel, null).show()
+    }
+
+    private fun removeVia(idx: Int) {
+        if (idx !in vias.indices) return
+        vias.removeAt(idx); drawVias()
+        val dest = destination ?: return
+        toast("Via removed — routing…")
+        if (mode == Mode.NAV) computeRoute(lastFix ?: startFix(), dest, initial = true) else startCompare(compareFrom ?: startFix(), dest)
     }
 
     /** Reroute (or single-mode routing): one mode, straight into navigation. */
@@ -1249,13 +1269,13 @@ class MainActivity : AppCompatActivity() {
             // Roadbook: a track is something you author as well as follow
             val n = tr.cues.size
             val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
-            body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute && n == 0) "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." else "") })
+            body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute) "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." else "") })
             var dlgRef: androidx.appcompat.app.AlertDialog? = null
             body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrack(tr.name, tr.lats, tr.lons, null, tr.cues), recorded = true) } })
             dlgRef = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name).setView(body)
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
                 .setNeutralButton("EDIT CUES") { _, _ -> openEditor(tr, uri) }
-                .apply { if (tr.hasRoute && n == 0) setNegativeButton("RE-ROUTE") { _, _ -> rerouteGpx(tr) } else setNegativeButton(R.string.cancel, null) }
+                .apply { if (tr.hasRoute) setNegativeButton("EDIT ROUTE") { _, _ -> rerouteGpx(tr) } else setNegativeButton(R.string.cancel, null) }
                 .show()
             return
         }

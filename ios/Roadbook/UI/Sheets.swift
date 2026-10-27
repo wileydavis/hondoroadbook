@@ -348,16 +348,16 @@ struct TrackLoadedSheet: View {
         let n = track.cues.count
         SheetFrame(title: track.name) {
             VStack(spacing: 12) {
-                Text(Units.distance(track.length) + (n > 0 ? " · \(n) cues" : " · no cues yet") + (track.hasRoute && n == 0 ? "\n\nThis file also carries route points; RE-ROUTE plans it on your maps." : "")).multilineTextAlignment(.center)
+                Text(Units.distance(track.length) + (n > 0 ? " · \(n) cues" : " · no cues yet") + (track.hasRoute ? "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." : "")).multilineTextAlignment(.center)
                 Button("FOLLOW") { model.sheet = nil; model.followTrack(track, url) }.buttonStyle(BigButton(accent: true))
                 Button("EDIT CUES") { model.sheet = nil; model.openEditor(track, url) }.buttonStyle(BigButton())
-                if track.hasRoute && n == 0 { Button("RE-ROUTE") { model.sheet = nil; model.rerouteGpx(track) }.buttonStyle(BigButton()) }
+                if track.hasRoute { Button("EDIT ROUTE") { model.sheet = nil; model.rerouteGpx(track) }.buttonStyle(BigButton()) }
                 Button("PUBLISH TO THE LIBRARY") { model.sheet = .publish(name: track.name, gpx: Gpx.shared.writeTrack(name: track.name, lats: track.lats, lons: track.lons, times: nil, cues: track.cues), recorded: true) }.buttonStyle(BigButton(compact: true))
                 Spacer()
             }
             .padding()
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.medium, .large])
     }
 }
 
