@@ -52,7 +52,8 @@ const S = {
   cues: [],            // {lon,lat,turn,level,text,auto:boolean,at}
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
   elastic: null, lastGood: null, places: false, pendingNotes: [], cueSeq: 0, routeReq: 0,
-  night: matchMedia("(prefers-color-scheme: dark)").matches, terrain: true, land: false, imagery: false, library: false,
+  // day map by default; the choice is kept in this browser once changed (the apps do the same)
+  night: (() => { try { return localStorage.getItem("rb.night") === "1"; } catch { return false; } })(), terrain: true, land: false, imagery: false, library: false,
   catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
 };
@@ -260,7 +261,7 @@ function buildModes() {
 }
 $("#lyTerrain").checked = S.terrain; $("#lyNight").checked = S.night; document.body.classList.toggle("night", S.night);
 $("#lyTerrain").onchange = e => { S.terrain = e.target.checked; applyStyle(); };
-$("#lyNight").onchange = e => { S.night = e.target.checked; document.body.classList.toggle("night", S.night); applyStyle(); };
+$("#lyNight").onchange = e => { S.night = e.target.checked; try { localStorage.setItem("rb.night", S.night ? "1" : "0"); } catch {} document.body.classList.toggle("night", S.night); applyStyle(); };
 $("#lyImagery").onchange = e => { S.imagery = e.target.checked; applyStyle(); };
 $("#lyLand").onchange = e => { S.land = e.target.checked; applyStyle(); $("#landKey").hidden = !S.land; if (S.land) landLegend(); };
 $("#lyPlaces").onchange = e => { S.places = e.target.checked; applyStyle(); };
