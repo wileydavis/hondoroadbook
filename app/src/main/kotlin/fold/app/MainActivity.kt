@@ -279,8 +279,12 @@ class MainActivity : AppCompatActivity() {
             findViewById<Button>(R.id.btnEditFollow).setOnClickListener { followEditedTrack() }
             findViewById<Button>(R.id.btnEditCancel).setOnClickListener { leaveEdit() }
             Recorder.onChange = { ui.post { updateRecStrip(); Recorder.lastFailure?.let { why -> Recorder.lastFailure = null; toast("Not recording: $why", 7000) } } }
-            if (Recorder.recover(this)) ui.postDelayed({ offerRecovery() }, 1500)
-            else if (NavService.leftover(this) != null) ui.postDelayed({ offerResume() }, 1500)
+            val afterTerms: () -> Unit = {
+                if (Recorder.recover(this)) ui.postDelayed({ offerRecovery() }, 1500)
+                else if (NavService.leftover(this) != null) ui.postDelayed({ offerResume() }, 1500)
+                Unit
+            }
+            if (prefs.accepted) afterTerms() else showTerms(afterTerms)
             updateRecStrip()
         }
         val locate = View.OnClickListener { follow = true; lastFix?.let { moveCamera(it.lat, it.lon, animate = true) } ?: toast("Waiting for GPS…") }
@@ -1339,6 +1343,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ---------------------------------------------------------------- misc
+
+    /** Once, on first launch: what Roadbook is and is not. The full terms are on the site. */
+    private fun showTerms(then: () -> Unit) {
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Before you ride")
+            .setMessage(TERMS_SHORT)
+            .setPositiveButton("I UNDERSTAND") { _, _ -> prefs.accepted = true; then() }
+            .setNeutralButton("READ THE TERMS") { _, _ -> openUrl("https://hondoroadbook.com/terms.html"); ui.postDelayed({ showTerms(then) }, 500) }
+            .setCancelable(false).show()
+    }
+    fun openUrl(url: String) { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Throwable) { toast(url) } }
+
+    companion object {
+        const val TERMS_SHORT = "Roadbook is a riding aid, not a substitute for your eyes, your judgment or the law.\n\nThe map is made by volunteers and can be wrong: roads close, gates lock, a track that is public on the map may be private on the ground, and a legal road may be unsafe for you today. A route is a suggestion; a cue is a reminder of what the data says. If a cue and the road disagree, the road wins.\n\nYou are responsible for riding safely and legally, for watching the road rather than the screen, and for carrying what you need where there is no help. Roadbook is free and provided as is, with no warranty, and Hondo Garage is not liable for what happens on the road.\n\nFull terms: hondoroadbook.com/terms.html"
+    }
 
     private fun switchMode(m: Mode) {
         mode = m

@@ -18,6 +18,8 @@ final class Prefs: ObservableObject {
     @Published var profileName: String { didSet { d.set(profileName, forKey: "profile") } }
     /// modes shown on the compare screen (Profile names)
     @Published var modes: [String] { didSet { d.set(modes, forKey: "modes") } }
+    /// the rider has seen the terms once (first launch)
+    var accepted: Bool { get { d.bool(forKey: "accepted") } set { d.set(newValue, forKey: "accepted") } }
 
     var profile: Profile {
         get { Profile.companion.parse(name: profileName) }

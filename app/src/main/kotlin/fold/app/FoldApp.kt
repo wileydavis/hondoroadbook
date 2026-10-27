@@ -72,6 +72,10 @@ class Prefs(ctx: Context) {
         get() = p.getInt("orientation", -1)
         set(v) { p.edit().putInt("orientation", v).apply() }
     /** The one folder Fold may read files from (a tree URI the person granted). */
+    /** the rider has seen the terms once (first launch) */
+    var accepted: Boolean
+        get() = p.getBoolean("accepted", false)
+        set(v) { p.edit().putBoolean("accepted", v).apply() }
     var folder: String?
         get() = p.getString("folder", null)
         set(v) { p.edit().putString("folder", v).apply() }

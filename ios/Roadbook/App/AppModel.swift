@@ -165,8 +165,11 @@ final class AppModel: ObservableObject, MapEvents {
         prefs.$night.dropFirst().sink { [weak self] night in self?.loadStyle(night: night) }.store(in: &cancellables)
         locSub = Location.shared.subscribe { [weak self] l in self?.onFix(l) }
         Location.shared.start()
-        if recorder.recover() { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.offerRecovery() } }
-        else if ride.leftover() != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.offerResume() } }
+        let afterTerms = { [self] in
+            if recorder.recover() { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.offerRecovery() } }
+            else if ride.leftover() != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.offerResume() } }
+        }
+        if prefs.accepted { afterTerms() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showTerms(then: afterTerms) } }
         updateRecStrip()
         worker.async { [self] in
             packs.scan()
@@ -447,6 +450,19 @@ final class AppModel: ObservableObject, MapEvents {
         map.mapView.compassView.isHidden = (m == .nav)
         if m != .compare { map.clear("cmp-src") }
     }
+
+    // ---------------------------------------------------------------- terms, once
+
+    static let termsShort = "Roadbook is a riding aid, not a substitute for your eyes, your judgment or the law.\n\nThe map is made by volunteers and can be wrong: roads close, gates lock, a track that is public on the map may be private on the ground, and a legal road may be unsafe for you today. A route is a suggestion; a cue is a reminder of what the data says. If a cue and the road disagree, the road wins.\n\nYou are responsible for riding safely and legally, for watching the road rather than the screen, and for carrying what you need where there is no help. Roadbook is free and provided as is, with no warranty, and Hondo Garage is not liable for what happens on the road.\n\nFull terms: hondoroadbook.com/terms.html"
+
+    /// Once, on first launch: what Roadbook is and is not. The full terms are on the site.
+    func showTerms(then: @escaping () -> Void) {
+        ask("Before you ride", AppModel.termsShort,
+            [Dialog.Btn(label: "I understand") { [self] in prefs.accepted = true; then() },
+             Dialog.Btn(label: "Read the terms") { [self] in openURL("https://hondoroadbook.com/terms.html"); DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showTerms(then: then) } }],
+            cancelable: false)
+    }
+    func openURL(_ s: String) { if let u = URL(string: s) { UIApplication.shared.open(u) } }
 
     // ---------------------------------------------------------------- toasts, dialogs
 

@@ -152,6 +152,10 @@ struct MapsSheet: View {
                         Text("Map data © OpenStreetMap contributors · Basemap © Protomaps").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
                         Text("Roadbook \(Device.version) · hondoroadbook.com").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
                         Button("SEND FEEDBACK") { Files.feedback(extra: "Maps: " + model.packs.packs.map { $0.name }.joined(separator: ", ")) }.buttonStyle(BigButton())
+                        HStack(spacing: 8) {
+                            Button("TERMS") { model.openURL("https://hondoroadbook.com/terms.html") }.buttonStyle(BigButton())
+                            Button("PRIVACY") { model.openURL("https://hondoroadbook.com/privacy.html") }.buttonStyle(BigButton())
+                        }
                         Text("Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. Nothing about where you go leaves the phone.").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
                     }
                 }
