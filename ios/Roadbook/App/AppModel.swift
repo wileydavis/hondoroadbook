@@ -490,7 +490,7 @@ final class AppModel: ObservableObject, MapEvents {
 
     func toggleSound() {
         let on = !prefs.sound; prefs.sound = on; Tone.shared.enabled = on; Speech.shared.enabled = on
-        if on { Tone.configureSession(); Tone.shared.turn(); Speech.shared.say("Sound on") } else { Speech.shared.stop() }
+        if on { Tone.configureSession(); Tone.shared.turn(); Speech.shared.say("Sound on"); showToast("Sound on · " + Tone.outputName, 4) } else { Speech.shared.stop() }
     }
 
     func toggleNight() { prefs.night.toggle() }

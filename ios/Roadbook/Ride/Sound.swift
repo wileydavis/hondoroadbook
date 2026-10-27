@@ -78,6 +78,18 @@ final class Tone {
         if !player.play() { NSLog("Roadbook: tone %@ did not play", key) }
     }
 
+    /// Where sound is going right now ("iPhone speaker", a helmet comm's name…), so a silent phone explains itself.
+    static var outputName: String {
+        let outs = AVAudioSession.sharedInstance().currentRoute.outputs
+        guard let o = outs.first else { return "no output" }
+        switch o.portType {
+        case .builtInSpeaker: return "iPhone speaker"
+        case .builtInReceiver: return "iPhone earpiece"
+        case .headphones: return "wired headphones"
+        default: return o.portName
+        }
+    }
+
     /// Approach pip: progress 0..1 → pitch 520..1040 Hz. Quantized to 16 steps so the cache stays small.
     func pip(_ progress: Double) {
         let step = Int(min(1, max(0, progress)) * 16)
