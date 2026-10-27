@@ -283,11 +283,17 @@
             android:elevation="12dp"
             android:paddingStart="14dp" android:paddingEnd="14dp" android:paddingTop="16dp" android:paddingBottom="18dp">
             <TextView android:id="@+id/menuTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="13sp" android:letterSpacing="0.12" android:text="ROADBOOK" android:gravity="center" android:paddingBottom="10dp" />
-            <GridLayout
-                android:id="@+id/menuGrid"
+            <ScrollView
+                android:id="@+id/menuScroll"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:columnCount="2" />
+                android:scrollbars="none">
+                <GridLayout
+                    android:id="@+id/menuGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:columnCount="2" />
+            </ScrollView>
             <Button
                 android:id="@+id/btnMenuClose"
                 android:layout_width="match_parent"

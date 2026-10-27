@@ -38,12 +38,17 @@ struct GloveMenu: View {
             ZStack(alignment: .bottom) {
                 Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { model.menuOpen = false }
                 let list = items
-                let rows = (list.count + 1) / 2
-                let avail = geo.size.height - hudBottom - 150
-                let itemH = min(132, max(84, avail / CGFloat(rows) - 10))
+                // two columns upright, four on a phone held sideways; the grid scrolls if a short screen still cannot fit it
+                let landscape = geo.size.width > geo.size.height
+                let cols = landscape ? 4 : 2
+                let rows = (list.count + cols - 1) / cols
+                let avail = geo.size.height - hudBottom - (landscape ? 110 : 150)
+                let itemH = min(132, max(landscape ? 64 : 84, avail / CGFloat(rows) - 10))
+                let gridH = CGFloat(rows) * (itemH + 10)
                 VStack(spacing: 10) {
                     Text(model.mode == .nav ? (model.isTrack ? "FOLLOWING " + model.trackName.uppercased() : "NAVIGATING") : "ROADBOOK").font(.system(size: 13, weight: .bold)).tracking(2).foregroundStyle(Theme.sInkSoft)
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                    ScrollView(.vertical, showsIndicators: false) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: cols), spacing: 10) {
                         ForEach(list) { it in
                             Button { model.haptic(1); model.menuOpen = false; it.action() } label: {
                                 VStack(spacing: 6) {
@@ -56,7 +61,10 @@ struct GloveMenu: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    Button("CLOSE") { model.menuOpen = false }.buttonStyle(BigButton())
+                    }
+                    .frame(maxHeight: min(gridH, max(120, avail)))
+                    .scrollDisabled(gridH <= avail)
+                    Button("CLOSE") { model.menuOpen = false }.buttonStyle(BigButton(compact: landscape))
                 }
                 .padding(16)
                 .background(Theme.sCard, in: RoundedRectangle(cornerRadius: 24, style: .continuous))

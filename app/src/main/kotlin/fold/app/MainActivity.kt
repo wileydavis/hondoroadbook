@@ -1693,11 +1693,15 @@ class MainActivity : AppCompatActivity() {
         grid.removeAllViews()
         findViewById<TextView>(R.id.menuTitle).text = if (mode == Mode.NAV) (if (isTrack) "FOLLOWING " + trackName.uppercase() else "NAVIGATING") else getString(R.string.app_name).uppercase()
         val items = menuItems()
-        // the sheet reaches up to the HUD; giant buttons share the room in two columns
+        // the sheet reaches up to the HUD; giant buttons share the room: two columns upright, four on a phone held sideways
+        val root = findViewById<View>(R.id.root)
+        val landscape = root.width > root.height
+        val cols = if (landscape) 4 else 2
+        grid.columnCount = cols
         val top = (if (hud.visibility == View.VISIBLE) hud.bottom else hud.top) + dp(12)
-        val avail = findViewById<View>(R.id.root).height - top - dp(16 + 10 + 24 + 76 + 18 + 12)
-        val rows = (items.size + 1) / 2
-        val itemH = (avail / rows - dp(10)).coerceIn(dp(84), dp(132))
+        val avail = root.height - top - dp(16 + 10 + 24 + 76 + 18 + 12)
+        val rows = (items.size + cols - 1) / cols
+        val itemH = (avail / rows - dp(10)).coerceIn(if (landscape) dp(64) else dp(84), dp(132))
         for ((i, item) in items.withIndex()) {
             val it = item
             val b = Button(this).apply {
@@ -1710,9 +1714,13 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(8), dp(14), dp(8), dp(12))
                 setOnClickListener { haptic(1); closeMenu(); item.action() }
             }
-            val lp = android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i / 2, 1f), android.widget.GridLayout.spec(i % 2, 1f)).apply { width = 0; height = itemH; setMargins(dp(5), dp(5), dp(5), dp(5)) }
+            val lp = android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i / cols, 1f), android.widget.GridLayout.spec(i % cols, 1f)).apply { width = 0; height = itemH; setMargins(dp(5), dp(5), dp(5), dp(5)) }
             grid.addView(b, lp)
         }
+        // the grid fits by construction; when the minimum button height clamps (a short landscape screen) it scrolls instead
+        val scroll = findViewById<android.widget.ScrollView>(R.id.menuScroll)
+        val gridH = rows * (itemH + dp(10))
+        scroll.layoutParams = scroll.layoutParams.apply { height = if (gridH > avail) avail.coerceAtLeast(dp(120)) else android.view.ViewGroup.LayoutParams.WRAP_CONTENT }
         scrim.visibility = View.VISIBLE
         sheet.translationY = sheet.height.toFloat().takeIf { it > 0 } ?: dp(600).toFloat()
         sheet.animate().translationY(0f).setDuration(180).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
