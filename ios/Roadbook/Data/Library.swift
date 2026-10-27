@@ -10,7 +10,7 @@ struct LibraryItem: Identifiable, Hashable {
     let line: [[Double]]   // lon,lat
 }
 
-struct Published { let name: String, length: Double, cues: Int, page: String }
+struct PublishedRoadbook { let name: String, length: Double, cues: Int, page: String }
 
 enum Library {
     static var site: String { Catalog.site }
@@ -36,12 +36,12 @@ enum Library {
         return (name, String(decoding: data, as: UTF8.self))
     }
 
-    static func publish(name: String, gpx: String, trim: Int) async throws -> Published {
+    static func publish(name: String, gpx: String, trim: Int) async throws -> PublishedRoadbook {
         let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
         let (data, r) = try await request("\(site)/api/roadbooks?name=\(q)&trim=\(trim)&source=app", method: "POST", body: Data(gpx.utf8), contentType: "application/gpx+xml")
         if r.statusCode != 200 { throw Fail(errorOf(data, r.statusCode)) }
         guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Fail("Unexpected reply") }
-        return Published(name: j["name"] as? String ?? name, length: (j["length"] as? NSNumber)?.doubleValue ?? 0, cues: (j["cues"] as? NSNumber)?.intValue ?? 0, page: j["page"] as? String ?? "")
+        return PublishedRoadbook(name: j["name"] as? String ?? name, length: (j["length"] as? NSNumber)?.doubleValue ?? 0, cues: (j["cues"] as? NSNumber)?.intValue ?? 0, page: j["page"] as? String ?? "")
     }
 
     static func browse(minLon: Double, minLat: Double, maxLon: Double, maxLat: Double) async throws -> [LibraryItem] {

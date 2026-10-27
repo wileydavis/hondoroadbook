@@ -5,6 +5,9 @@ import FoldCore
 /// Small bridges over the Kotlin/Native seam. The engine (routing, GPX, the follower, the cue rules) is the
 /// same Kotlin that runs on Android, exported as FoldCore.framework; these helpers keep the Swift side tidy.
 
+/// Kotlin's nested Gpx.Track is a nested type in Swift too
+typealias GpxTrack = Gpx.Track
+
 /// Milliseconds on a monotonic clock, for everything time-based (a wrong wall clock must never confuse dead reckoning).
 func nowMs() -> Int64 { Int64(ProcessInfo.processInfo.systemUptime * 1000) }
 
