@@ -27,6 +27,7 @@ final class Speech {
     /// Speak now, replacing whatever is being said.
     func say(_ text: String) {
         guard enabled, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        Tone.configureSession()
         synth.stopSpeaking(at: .immediate)
         let u = AVSpeechUtterance(string: text)
         u.voice = voice

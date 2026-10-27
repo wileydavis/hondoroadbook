@@ -17,10 +17,17 @@ final class Tone {
     private init() {}
 
     /// Playback that ducks other audio and mixes with it, and keeps the session alive in the background.
+    private static var configured = false
     static func configureSession() {
         let s = AVAudioSession.sharedInstance()
-        try? s.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers])
-        try? s.setActive(true)
+        // playback (plays with the silent switch on, through the media volume), ducking music while a cue plays;
+        // if the ducking options are refused on some setup, plain playback is still better than silence
+        do { try s.setCategory(.playback, mode: .default, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]) }
+        catch {
+            NSLog("Roadbook: audio session options refused (%@); plain playback", error.localizedDescription)
+            do { try s.setCategory(.playback, mode: .default) } catch { NSLog("Roadbook: audio session category refused: %@", error.localizedDescription) }
+        }
+        do { try s.setActive(true); configured = true } catch { NSLog("Roadbook: audio session could not activate: %@", error.localizedDescription) }
     }
 
     /// One or more notes back to back as 16-bit mono WAV bytes. freq in Hz, each ms long, with a soft attack/release.
@@ -58,12 +65,17 @@ final class Tone {
 
     private func play(_ key: String, _ build: () -> Data) {
         guard enabled else { return }
+        if !Tone.configured { Tone.configureSession() }
         lock.lock()
         var p = cache[key]
-        if p == nil { p = try? AVAudioPlayer(data: build()); p?.prepareToPlay(); cache[key] = p }
+        if p == nil {
+            do { let pl = try AVAudioPlayer(data: build()); pl.volume = 1; pl.prepareToPlay(); p = pl; cache[key] = pl }
+            catch { NSLog("Roadbook: tone %@ could not be made: %@", key, error.localizedDescription) }
+        }
         lock.unlock()
         guard let player = p else { return }
-        player.currentTime = 0; player.play()
+        player.currentTime = 0
+        if !player.play() { NSLog("Roadbook: tone %@ did not play", key) }
     }
 
     /// Approach pip: progress 0..1 → pitch 520..1040 Hz. Quantized to 16 steps so the cache stays small.
