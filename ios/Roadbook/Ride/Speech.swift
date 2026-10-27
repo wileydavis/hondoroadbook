@@ -4,7 +4,7 @@ import Foundation
 /// Spoken cues through the system voice (offline on every iPhone; no download, no model). Everything is
 /// best-effort: with the voice silent the pips and chimes carry the cue alone. A Piper voice, the same one
 /// Android bundles, can replace this later behind the same four calls.
-final class Speech: NSObject, AVSpeechSynthesizerDelegate {
+final class Speech {
     static let shared = Speech()
     private let synth = AVSpeechSynthesizer()
     private var voice: AVSpeechSynthesisVoice?
@@ -12,9 +12,7 @@ final class Speech: NSObject, AVSpeechSynthesizerDelegate {
     /// the system voice is always ready
     var ready: Bool { true }
 
-    private override init() {
-        super.init()
-        synth.delegate = self
+    private init() {
         // the ride owns the audio session (Tone.configureSession); the synthesizer must not reconfigure it
         synth.usesApplicationAudioSession = true
         // prefer an enhanced English voice when the phone has one downloaded

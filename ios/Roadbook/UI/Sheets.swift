@@ -85,7 +85,7 @@ struct SearchSheet: View {
             var scored: [(Int32, Hit)] = []
             for p in packs {
                 if let s = p.loadSearch(), let res = try? s.queryScored(q: q, limit: 20) {
-                    for pair in res { if let sc = pair.first as? KotlinInt, let h = pair.second as? Hit { scored.append((sc.int32Value, h)) } }
+                    for pair in res { if let sc = pair.first, let h = pair.second { scored.append((sc.int32Value, h)) } }
                 }
                 if g != gen { return }
             }
