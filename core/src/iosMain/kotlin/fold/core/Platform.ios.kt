@@ -12,6 +12,7 @@ import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.addressOf
 import platform.Foundation.NSString
+import platform.Foundation.create
 import platform.Foundation.decomposedStringWithCanonicalMapping
 import platform.posix.MAP_PRIVATE
 import platform.posix.O_RDONLY
@@ -63,4 +64,4 @@ class MmapBytes private constructor(private val base: CPointer<ByteVar>, overrid
 actual fun mapFile(path: String): Bytes = MmapBytes.map(path)
 
 @OptIn(ExperimentalForeignApi::class)
-actual fun decomposeNfd(s: String): String = (s as NSString).decomposedStringWithCanonicalMapping
+actual fun decomposeNfd(s: String): String = NSString.create(string = s).decomposedStringWithCanonicalMapping
