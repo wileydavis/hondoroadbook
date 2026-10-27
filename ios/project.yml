@@ -74,6 +74,9 @@ targets:
           set -e
           cd "$SRCROOT/.."
           export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 17+ 2>/dev/null || true)}"
+          # the engine is always built optimised: Kotlin/Native's debug build is many times slower on the router,
+          # and only the Swift side is ever debugged from Xcode
+          export KOTLIN_FRAMEWORK_BUILD_TYPE=release
           ./gradlew --no-daemon -q :core:embedAndSignAppleFrameworkForXcode
         outputFiles:
           - "$(SRCROOT)/../core/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)/FoldCore.framework"

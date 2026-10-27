@@ -53,6 +53,8 @@ choose it as the run destination, press Run. The first build takes a few minutes
 Kotlin engine (`./gradlew :core:embedAndSignAppleFrameworkForXcode`) and Swift Package Manager fetches MapLibre and
 ZIPFoundation.
 
+The Kotlin engine is always built as a release (optimised) framework, even for Debug app builds — a debug Kotlin/Native build routes many times slower and heats the phone. `KOTLIN_FRAMEWORK_BUILD_TYPE=release` in the script phase does that.
+
 If the script phase cannot find Java, set `JAVA_HOME` in the scheme's environment or in `project.yml`
 (`export JAVA_HOME=$(/usr/libexec/java_home -v 17)` is what it tries).
 
