@@ -1,4 +1,5 @@
 import Foundation
+import FoldCore
 
 /// A pencil mark on the map: a point with a name and a note.
 struct Mark: Identifiable, Hashable {
