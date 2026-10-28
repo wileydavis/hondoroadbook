@@ -145,7 +145,9 @@ struct MapsSheet: View {
                         HStack(spacing: 8) {
                             Button(model.prefs.metric ? "UNITS: KM / M" : "UNITS: MILES / FT") { model.setUnits(metric: !model.prefs.metric); tick += 1 }.buttonStyle(BigButton())
                             if model.hasTerrain { Button(model.prefs.terrain ? "TERRAIN: ON" : "TERRAIN: OFF") { model.toggleTerrain(); tick += 1 }.buttonStyle(BigButton()) }
+                            Button(model.prefs.places ? "PLACES: ON" : "PLACES: OFF") { model.togglePlaces(); tick += 1 }.buttonStyle(BigButton())
                         }
+                        Text("Places: fuel, camping, water, beds, repair and food from the map packs, drawn as you zoom in. Tap one to route to it.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
                         let n = marks.marks.count
                         HStack {
                             Text("Marks: \(n)")

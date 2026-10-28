@@ -56,6 +56,10 @@ class Prefs(ctx: Context) {
     var terrain: Boolean
         get() = p.getBoolean("terrain", true)
         set(v) { p.edit().putBoolean("terrain", v).apply() }
+    /** draw the packs' places (fuel, camping, water, beds, repair, food) on the map when zoomed in */
+    var places: Boolean
+        get() = p.getBoolean("places", true)
+        set(v) { p.edit().putBoolean("places", v).apply() }
     /** Modes shown on the compare screen. */
     var modes: Set<Profile>
         get() = (p.getStringSet("modes", null) ?: setOf("FAST", "BACKROADS", "RIDE")).mapNotNull { try { Profile.valueOf(it) } catch (_: Throwable) { null } }.toSet().ifEmpty { setOf(Profile.FAST) }

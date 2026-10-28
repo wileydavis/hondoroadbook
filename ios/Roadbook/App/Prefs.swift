@@ -10,6 +10,8 @@ final class Prefs: ObservableObject {
     @Published var metric: Bool { didSet { d.set(metric, forKey: "metric"); Units.metric = metric } }
     /// draw installed terrain (hillshade) packs under the roads
     @Published var terrain: Bool { didSet { d.set(terrain, forKey: "terrain") } }
+    /// draw the packs' places (fuel, camping, water, beds, repair, food) on the map when zoomed in
+    @Published var places: Bool { didSet { d.set(places, forKey: "places") } }
     @Published var sound: Bool { didSet { d.set(sound, forKey: "sound") } }
     /// battery saver: the screen dims and the phone may lock; the lock screen carries the next cue and lights for it
     @Published var batterySaver: Bool { didSet { d.set(batterySaver, forKey: "battery") } }
@@ -34,6 +36,7 @@ final class Prefs: ObservableObject {
         night = d.bool(forKey: "night")
         metric = d.bool(forKey: "metric")
         terrain = d.object(forKey: "terrain") == nil ? true : d.bool(forKey: "terrain")
+        places = d.object(forKey: "places") == nil ? true : d.bool(forKey: "places")
         sound = d.bool(forKey: "sound")
         batterySaver = d.bool(forKey: "battery")
         orientation = d.string(forKey: "orientation") ?? ""

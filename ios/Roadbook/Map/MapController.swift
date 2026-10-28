@@ -90,7 +90,7 @@ final class MapController: NSObject, MLNMapViewDelegate {
         st.setImage(Icons.cue(danger: false, night: night), forName: "cue")
         st.setImage(Icons.cue(danger: true, night: night), forName: "cue-danger")
         st.setImage(Icons.turn(night: night), forName: "turn")
-        for id in ["marks-src", "via-src", "cmp-src", "start-src", "lead-src", "route-src", "cues-src", "turns-src", "pin-src", "puck-src", "lib-src", "fog-src", "cover-src", "cover-label-src"] { _ = source(id, st) }
+        for id in ["marks-src", "via-src", "cmp-src", "start-src", "lead-src", "route-src", "cues-src", "turns-src", "pin-src", "puck-src", "lib-src", "fog-src", "cover-src", "cover-label-src", "places-src"] { _ = source(id, st) }
         let ink = Theme.ink.resolved(night), paper = Theme.paper.resolved(night), accent = Theme.accent.resolved(night), casing = Theme.routeCasing.resolved(night), track = Theme.track.resolved(night)
         // route lines go under the map's labels (road names, shields, towns), so a route never hides the name of the road it follows
         let firstLabel = st.layers.first { $0 is MLNSymbolStyleLayer }
@@ -114,6 +114,13 @@ final class MapController: NSObject, MLNMapViewDelegate {
         coverLabel.text = NSExpression(forKeyPath: "name"); coverLabel.textFontNames = Self.font; coverLabel.textFontSize = Self.c(13); coverLabel.textTransform = Self.c("uppercase"); coverLabel.textLetterSpacing = Self.c(0.15)
         coverLabel.textColor = Self.c(accent); coverLabel.textHaloColor = Self.c(paper); coverLabel.textHaloWidth = Self.c(1.5); coverLabel.textAllowsOverlap = Self.c(false); coverLabel.maximumZoomLevel = 7
         st.addLayer(coverLabel)
+        // the packs' places: fuel, camping, water, beds, repair, food — icons from the map's own sprite, each from its own zoom
+        let places = MLNSymbolStyleLayer(identifier: "places-layer", source: sources["places-src"]!)
+        places.iconImageName = NSExpression(forKeyPath: "icon"); places.iconAnchor = Self.c("center"); places.iconAllowsOverlap = Self.c(false); places.iconIgnoresPlacement = Self.c(false); places.iconScale = Self.c(1)
+        places.text = NSExpression(forKeyPath: "name"); places.textFontNames = Self.font; places.textFontSize = Self.c(11); places.textAnchor = Self.c("top"); places.textOffset = Self.c(NSValue(cgVector: CGVector(dx: 0, dy: 0.9)))
+        places.textColor = Self.c(Theme.inkSoft.resolved(night)); places.textHaloColor = Self.c(paper); places.textHaloWidth = Self.c(1.5); places.textOptional = Self.c(true)
+        places.predicate = NSPredicate(format: "$zoomLevel >= minzoom"); places.minimumZoomLevel = 11
+        st.addLayer(places)
         let marks = MLNSymbolStyleLayer(identifier: "marks-layer", source: sources["marks-src"]!)
         marks.iconImageName = Self.c("mark"); marks.iconAnchor = Self.c("center"); marks.iconAllowsOverlap = Self.c(true); marks.iconIgnoresPlacement = Self.c(true); marks.iconScale = Self.c(1)
         marks.text = NSExpression(forKeyPath: "name"); marks.textFontNames = Self.font; marks.textFontSize = Self.c(13); marks.textAnchor = Self.c("top"); marks.textOffset = Self.c(NSValue(cgVector: CGVector(dx: 0, dy: 0.9)))

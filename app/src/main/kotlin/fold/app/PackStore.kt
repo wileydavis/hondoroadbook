@@ -4,6 +4,8 @@ import android.content.Context
 import android.net.Uri
 import fold.core.Graph
 import fold.core.PackManifest
+import fold.core.Place
+import fold.core.Places
 import fold.core.Router
 import fold.core.SearchFile
 import fold.core.MultiRouter
@@ -17,6 +19,15 @@ class Pack(val dir: File, val manifest: PackManifest) {
     val tiles: File get() = File(dir, if (isTerrain) PackManifest.TERRAIN else PackManifest.TILES)
     /** roads.pmtiles, when the pack was built with it */
     val overview: File? get() = File(dir, PackManifest.OVERVIEW).takeIf { it.exists() }
+    /** pois.tsv, when the pack was built with it and installed since the app kept it */
+    val poisFile: File? get() = File(dir, PackManifest.POIS).takeIf { it.exists() }
+    @Volatile private var placeList: List<Place>? = null
+    /** the pack's places, parsed once; empty when the pack has none */
+    fun loadPlaces(): List<Place> {
+        placeList?.let { return it }
+        val l = try { poisFile?.let { Places.parse(it.readText()) } ?: emptyList() } catch (_: Throwable) { emptyList() }
+        placeList = l; return l
+    }
     @Volatile var router: Router? = null
     @Volatile private var search: SearchFile? = null
     val name get() = manifest.name
@@ -121,7 +132,7 @@ class PackStore(private val ctx: Context) {
                 val dir = File(root, safe)
                 val replacing = dir.exists()
                 val staging = File(root, ".staging-$safe").apply { deleteRecursively(); mkdirs() }
-                val wanted = manifest.required + listOfNotNull(PackManifest.OVERVIEW.takeIf { zip.getEntry(it) != null && !manifest.isTerrain })
+                val wanted = manifest.required + listOfNotNull(PackManifest.OVERVIEW.takeIf { zip.getEntry(it) != null && !manifest.isTerrain }, PackManifest.POIS.takeIf { zip.getEntry(it) != null && !manifest.isTerrain })
                 val total = wanted.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
                 val free = root.usableSpace
                 if (free < total + (64L shl 20)) throw IllegalStateException("Not enough space: pack needs ${total / (1024 * 1024)} MB, phone has ${free / (1024 * 1024)} MB free")

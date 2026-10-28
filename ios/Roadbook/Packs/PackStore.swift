@@ -39,6 +39,16 @@ final class Pack: Identifiable, Equatable {
         return search
     }
     func contains(_ lat: Double, _ lon: Double) -> Bool { manifest.contains(lat: lat, lon: lon) }
+
+    private var placeList: [Place]?
+    /// the pack's places (fuel, camping, water, beds, repair, food), parsed once from pois.tsv; empty when the pack has none
+    func loadPlaces() -> [Place] {
+        lock.lock(); defer { lock.unlock() }
+        if let l = placeList { return l }
+        let u = dir.appendingPathComponent("pois.tsv")
+        let l = (try? String(contentsOf: u, encoding: .utf8)).map { Places.shared.parse(text: $0, skipTowns: true) } ?? []
+        placeList = l; return l
+    }
 }
 
 final class PackStore {
@@ -134,6 +144,7 @@ final class PackStore {
         defer { try? fm.removeItem(at: staging) }
         var wanted = required
         if !manifest.isTerrain, zip["roads.pmtiles"] != nil { wanted.append("roads.pmtiles") }
+        if !manifest.isTerrain, zip["pois.tsv"] != nil { wanted.append("pois.tsv") }
         let total = wanted.reduce(Int64(0)) { $0 + Int64(zip[$1]?.uncompressedSize ?? 0) }
         let free = (try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? Int64.max
         if free < total + (64 << 20) { throw Fail("Not enough space: pack needs \(total / (1024 * 1024)) MB, phone has \(free / (1024 * 1024)) MB free") }

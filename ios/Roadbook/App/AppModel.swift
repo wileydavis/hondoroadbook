@@ -117,6 +117,10 @@ final class AppModel: ObservableObject, MapEvents {
     @Published var editLabel = ""
     @Published var noMaps = false
     @Published var hasTerrain = false
+    /// the packs whose places are on the map right now
+    var placesFor: [Pack] = []
+    /// the tapped place's full line ("Town Pump · fuel · 24/7") for the pin panel; "" when the pin is not a place
+    var placeLabel = ""
 
     /// the track being followed or edited, with its authored cues (Roadbook)
     var trackLats: [Double]?; var trackLons: [Double]?; var trackName = "Track"; var trackURL: URL?
@@ -234,6 +238,7 @@ final class AppModel: ObservableObject, MapEvents {
     func mapStyleLoaded() {
         // re-draw anything we had
         map.drawCoverage(packs.roadPacks)
+        placesFor = []; drawPlaces()
         if let r = route { map.drawRoute(r, color: isTrack ? Theme.track : Profiles.color(profile)) }
         drawCues(); drawMarks(); drawVias(); drawStart()
         if let p = pin { map.set("pin-src", MapController.point(p)) }
@@ -259,6 +264,31 @@ final class AppModel: ObservableObject, MapEvents {
         map.set("marks-src", MapController.collection(marks.marks.map { MapController.point(CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lon), ["name": $0.name, "id": NSNumber(value: $0.id)]) }))
     }
     func drawVias() { map.set("via-src", MapController.collection(vias.enumerated().map { i, v in MapController.point(v, ["idx": NSNumber(value: i)]) })) }
+
+    /// The styled packs' places onto the map (parsed on the worker the first time a pack is seen).
+    func drawPlaces() {
+        if !prefs.places { map.clear("places-src"); placesFor = []; return }
+        let packs = map.styledPacks.filter { !$0.isTerrain }
+        if packs == placesFor { return }
+        placesFor = packs
+        worker.async { [self] in
+            var feats: [MLNShape & MLNFeature] = []
+            for p in packs { for pl in p.loadPlaces() { feats.append(MapController.point(CLLocationCoordinate2D(latitude: pl.lat, longitude: pl.lon), ["icon": pl.icon, "name": pl.name, "label": pl.label, "minzoom": NSNumber(value: pl.minZoom)])) } }
+            let fc = MapController.collection(feats)
+            DispatchQueue.main.async { if self.placesFor == packs { self.map.set("places-src", fc) } }
+        }
+    }
+    func togglePlaces() { prefs.places.toggle(); placesFor = []; drawPlaces() }
+
+    /// Tap on a place: it becomes the pin, named, with the usual ROUTE HERE / VIA / FROM / ★.
+    func openPlace(_ f: MLNFeature) {
+        guard let pt = f as? MLNPointFeature else { return }
+        let label = (f.attribute(forKey: "label") as? String) ?? ""
+        pin = pt.coordinate; pinName = ((f.attribute(forKey: "name") as? String) ?? "").isEmpty ? String(label.split(separator: "·").first ?? "").trimmingCharacters(in: .whitespaces) : (f.attribute(forKey: "name") as? String) ?? ""
+        placeLabel = label
+        showPinMarker(pt.coordinate); follow = false
+        switchMode(.pin)
+    }
 
     /// Tap on a via: take it out of the route (and route again without it).
     func offerRemoveVia(_ idx: Int) {
@@ -385,6 +415,7 @@ final class AppModel: ObservableObject, MapEvents {
         if mode == .edit { addCue(at: c.latitude, c.longitude, snap: true); return }
         if mode == .compare, snapToPlan(c.latitude, c.longitude) != nil { addPlanCue(at: c.latitude, c.longitude); return }
         if route != nil { follow = false }
+        placeLabel = ""
         pin = c; pinName = fmt(c)
         showPinMarker(c)
         switchMode(.pin)
@@ -406,11 +437,14 @@ final class AppModel: ObservableObject, MapEvents {
         let viaIdx = (viaHit?.attribute(forKey: "idx") as? NSNumber).map { $0.intValue }
         let libHit = (libraryOn && mode == .idle) ? map.features(at: p, layer: "lib-line", radius: 16).first : nil
         let libItem = (libHit?.attribute(forKey: "id") as? String).flatMap { id in libraryItems.first { $0.id == id } }
+        // a place from the packs (fuel, camping…): a pin with its name, so ROUTE HERE / VIA / ★ work on it
+        let placeHit = (mode != .nav && mode != .edit && prefs.places) ? map.features(at: p, layer: "places-layer", radius: 18).first : nil
         if let c = cue { if mode == .compare { editPlanCue(c) } else { editCue(c) } }
         else if let ti = turnIdx { rewordTurn(ti) }
         else if let vi = viaIdx { offerRemoveVia(vi) }
         else if let it = libItem { sheet = .libraryItem(it) }
         else if let m = mark { sheet = .markCard(m) }
+        else if let ph = placeHit { openPlace(ph) }
         else if let pm = picked, candidates.contains(where: { $0.0 == pm }) { profile = pm; prefs.profile = pm; drawCandidates() }
         else if mode == .pin { clearPin() }
         else if mode == .nav { cycleZoom() }
@@ -435,6 +469,7 @@ final class AppModel: ObservableObject, MapEvents {
 
     func onSearchPick(_ hit: Hit) {
         let c = CLLocationCoordinate2D(latitude: hit.lat, longitude: hit.lon)
+        placeLabel = ""
         pin = c; pinName = hit.label
         showPinMarker(c); follow = false
         map.ease(to: c, zoom: 15, bearing: 0, navInset: false, animated: true)
@@ -443,6 +478,7 @@ final class AppModel: ObservableObject, MapEvents {
 
     func goToMark(_ m: Mark) {
         let c = CLLocationCoordinate2D(latitude: m.lat, longitude: m.lon)
+        placeLabel = ""
         pin = c; pinName = m.name; showPinMarker(c)
         follow = false
         map.ease(to: c, zoom: 15, bearing: 0, navInset: false, animated: true)
@@ -451,13 +487,14 @@ final class AppModel: ObservableObject, MapEvents {
 
     var pinLabel: String {
         guard let p = pin else { return "" }
+        if !placeLabel.isEmpty { return placeLabel }
         return pinName.isEmpty ? fmt(p) : pinName
     }
     /// a name worth saving (not a coordinate)
     var pinNameIsName: Bool { !pinName.isEmpty && !(pinName.first?.isNumber ?? true) && pinName.first != "-" }
 
     func clearPin() {
-        pin = nil; clearPinMarker()
+        pin = nil; placeLabel = ""; clearPinMarker()
         if !candidates.isEmpty { if let d = destination { showPinMarker(d) }; switchMode(.compare); drawCandidates() }
         else if route != nil { if let d = destination { showPinMarker(d) }; switchMode(.nav) }
         else { switchMode(.idle) }

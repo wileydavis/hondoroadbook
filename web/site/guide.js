@@ -228,6 +228,8 @@
             s.hideFinger(); s.layer('fog', false); s.layer('edge', true); s.layer('cover', true); s.layer('hill', true); await s.wait(300);
             s.marker('puck', 'puck', 160, 470); await s.toast('Montana roads + terrain installed', 1800); await s.wait(400);
           } },
+        { c: `Zoom in a little and the pack's places appear: fuel, camping, water, beds, repair, food — the important ones first. Tap one and it becomes a pin with its name and hours, ready for ${K('ROUTE HERE')}. ${K('MAPS')} → ${K('PLACES')} turns them off.`,
+          run: async s => { for (const [i, [x, y, l]] of [[232, 318, '⛽'], [66, 320, '▲'], [150, 150, '🍴'], [200, 470, '🛏'], [100, 460, '🔧']].entries()) { s.marker('pl' + i, 'place', x, y, l); await s.wait(220); } await s.wait(500); await s.tap([232, 318]); s.marker('pin', 'pin', 232, 318); s.pinPanel('Norris Pump & Go · fuel · 6am–10pm'); await s.wait(1200); } },
         { c: `Other ways in: ${K('IMPORT')} opens a .mappack you were sent (AirDrop, a USB stick, the Files app), and the same packs are listed at hondoroadbook.com/packs. Next: go somewhere.`,
           run: async s => { await s.wait(600); } },
       ] },

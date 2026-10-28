@@ -84,6 +84,9 @@ class MainActivity : AppCompatActivity() {
     private fun planned(r: Route): Route = if (editCues.isEmpty()) r else try { Route.withCues(r, Route.authoredCues(editCues, r)) } catch (_: Throwable) { r }
     private var srcCues: GeoJsonSource? = null
     private var srcTurns: GeoJsonSource? = null
+    private var srcPlaces: GeoJsonSource? = null
+    /** the packs whose places are on the map right now */
+    private var placesFor: List<Pack> = emptyList()
     private lateinit var panelEdit: View
     private lateinit var recStrip: View
     private lateinit var recStatus: TextView
@@ -253,7 +256,7 @@ class MainActivity : AppCompatActivity() {
             onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
             onDownload = { Catalog.show(this, packs) { onPacksChanged() } },
             onBrowse = { showLibrary(true) },
-            terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }) }
+            terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }, placesOn = prefs.places, onPlaces = { on -> prefs.places = on; drawPlaces() }) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
         findViewById<Button>(R.id.btnVia).setOnClickListener { pin?.let { addVia(it, pinName) } }
@@ -338,6 +341,8 @@ class MainActivity : AppCompatActivity() {
                 val viaIdx = viaHit?.getNumberProperty("idx")?.toInt()?.takeIf { it in vias.indices }
                 val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line").firstOrNull() } catch (_: Throwable) { null } else null
                 val libItem = libHit?.getStringProperty("id")?.let { id -> libraryItems.firstOrNull { it.id == id } }
+                // a place from the packs (fuel, camping…): a pin with its name, so ROUTE HERE / VIA / ★ work on it
+                val placeHit = if (mode != Mode.NAV && mode != Mode.EDIT && prefs.places) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(18), pt.y - dp(18), pt.x + dp(18), pt.y + dp(18)), "places-layer").firstOrNull() } catch (_: Throwable) { null } else null
                 when {
                     cue != null && mode == Mode.COMPARE -> { editPlanCue(cue); true }
                     cue != null -> { editCue(cue); true }
@@ -345,6 +350,7 @@ class MainActivity : AppCompatActivity() {
                     viaIdx != null -> { offerRemoveVia(viaIdx); true }
                     libItem != null -> { openLibraryItem(libItem); true }
                     mark != null -> { openMark(mark); true }
+                    placeHit != null -> { openPlace(placeHit); true }
                     pickedMode != null && candidates.containsKey(pickedMode) -> { profile = pickedMode; prefs.profile = pickedMode; rebuildCompareRows(prefs.modes.toList().sortedBy { it.ordinal }, false); drawCandidates(); true }
                     mode == Mode.PIN -> { clearPin(); true }
                     mode == Mode.NAV -> { cycleZoom(); true }
@@ -476,6 +482,14 @@ class MainActivity : AppCompatActivity() {
         st.addLayer(SymbolLayer("cover-label", "cover-label-src").withProperties(
             textField(org.maplibre.android.style.expressions.Expression.get("name")), textFont(arrayOf("Noto Sans Medium")), textSize(13f), textTransform(Property.TEXT_TRANSFORM_UPPERCASE), textLetterSpacing(0.15f),
             textColor(ContextCompat.getColor(this, R.color.accent)), textHaloColor(ContextCompat.getColor(this, R.color.paper)), textHaloWidth(1.5f), textAllowOverlap(false)).also { it.maxZoom = 7f })
+        // the packs' places: fuel, camping, water, beds, repair, food — icons from the map's own sprite, each from its own zoom
+        srcPlaces = GeoJsonSource("places-src", FeatureCollection.fromFeatures(emptyArray())).also { st.addSource(it) }
+        st.addLayer(SymbolLayer("places-layer", "places-src").withProperties(
+            iconImage(E.get("icon")), iconAnchor(Property.ICON_ANCHOR_CENTER), iconAllowOverlap(false), iconIgnorePlacement(false), iconSize(1f),
+            textField(E.get("name")), textFont(arrayOf("Noto Sans Regular")), textSize(11f), textAnchor(Property.TEXT_ANCHOR_TOP), textOffset(arrayOf(0f, 0.9f)),
+            textColor(ContextCompat.getColor(this, R.color.ink_soft)), textHaloColor(ContextCompat.getColor(this, R.color.paper)), textHaloWidth(1.5f), textOptional(true))
+            .withFilter(E.gte(E.zoom(), E.get("minzoom"))).also { it.minZoom = 11f })
+        placesFor = emptyList(); drawPlaces()
         st.addLayer(SymbolLayer("marks-layer", "marks-src").withProperties(
             iconImage("mark"), iconAnchor(Property.ICON_ANCHOR_CENTER), iconAllowOverlap(true), iconIgnorePlacement(true), iconSize(1f),
             textField(org.maplibre.android.style.expressions.Expression.get("name")), textFont(arrayOf("Noto Sans Medium")), textSize(13f), textAnchor(Property.TEXT_ANCHOR_TOP), textOffset(arrayOf(0f, 0.9f)),
@@ -583,6 +597,33 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until 10) { val ang = Math.PI / 2 + i * Math.PI / 5; val rr = if (i % 2 == 0) r else r * 0.45f; val x = (cx + rr * Math.cos(ang)).toFloat(); val y = (cy - rr * Math.sin(ang)).toFloat(); if (i == 0) p.moveTo(x, y) else p.lineTo(x, y) }
         p.close(); c.drawPath(p, fill); c.drawPath(p, stroke)
         return b
+    }
+
+    /** The visible packs' places onto the map (parsed on the worker the first time a pack is seen). */
+    private fun drawPlaces() {
+        val src = srcPlaces ?: return
+        if (!prefs.places) { src.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); placesFor = emptyList(); return }
+        val packs = styledPacks.filter { !it.isTerrain }
+        if (packs == placesFor) return
+        placesFor = packs
+        worker.execute {
+            val feats = ArrayList<Feature>()
+            for (p in packs) for (pl in p.loadPlaces()) feats.add(Feature.fromGeometry(Point.fromLngLat(pl.lon, pl.lat)).also { f ->
+                f.addStringProperty("icon", pl.icon); f.addStringProperty("name", pl.name); f.addStringProperty("label", pl.label); f.addNumberProperty("minzoom", pl.minZoom) })
+            val fc = FeatureCollection.fromFeatures(feats)
+            ui.post { if (placesFor == packs) srcPlaces?.setGeoJson(fc) }
+        }
+    }
+
+    /** Tap on a place: it becomes the pin, named, with the usual ROUTE HERE / VIA / FROM / ★. */
+    private fun openPlace(f: Feature) {
+        val pt = f.geometry() as? Point ?: return
+        val ll = LatLng(pt.latitude(), pt.longitude())
+        val label = f.getStringProperty("label") ?: ""
+        pin = ll; pinName = (f.getStringProperty("name") ?: "").ifEmpty { label.substringBefore(" · ") }
+        showPinMarker(ll); pinLabel.text = label
+        follow = false
+        switchMode(Mode.PIN)
     }
 
     private fun drawCoverage() {
