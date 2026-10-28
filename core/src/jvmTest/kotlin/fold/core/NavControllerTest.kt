@@ -44,6 +44,41 @@ class NavControllerTest {
         assertEquals("tone:ARRIVE", log.last { it.startsWith("tone:") }, "arrival last")
     }
 
+    @Test fun theChimeComesBeforeTheJunction() {
+        // at 15 m/s the chime must land in the turn-in zone: well before the junction, not at it or past it
+        val r = Fixtures.track(course, cues)
+        val rec = Rec(); val c = NavController(r, true, "Test", "FAST", rec).also { it.sound = true; it.speechReady = false }
+        val fixes = Fixtures.ride(course, 15.0, noise = 1.5)
+        val chimedAt = ArrayList<Double>()
+        for (f in fixes) {
+            c.update(f)
+            for (dt in listOf(0L, 400L, 800L)) { val before = rec.log.count { it == "tone:TURN" }; c.tick(f.timeMs + dt); if (rec.log.count { it == "tone:TURN" } > before) chimedAt.add(c.view(f.timeMs + dt).distToNext) }
+        }
+        assertEquals(2, chimedAt.size, "one chime per turn: $chimedAt")
+        for (d in chimedAt) assertTrue(d in 14.0..NavController.chimeLead(15.0) + 1.0, "chime $d m before the junction (lead ${NavController.chimeLead(15.0)} m)")
+    }
+
+    @Test fun pipsGoQuietWhenStoppedAndComeBackWhenMoving() {
+        // ride to 60 m short of the first turn, sit there for eight seconds, then move on: pips during the sit must stop
+        val r = Fixtures.track(course, cues)
+        val rec = Rec(); val c = NavController(r, true, "Test", "FAST", rec).also { it.sound = true; it.speechReady = false }
+        val fixes = Fixtures.ride(course, 12.0, noise = 0.5)
+        val firstTurn = r.maneuvers.first { it.turn != Turn.DEPART }
+        val stopAt = fixes.indexOfFirst { f -> c.follower.let { true } && Geo.fastDistance(f.lat, f.lon, r.lats[firstTurn.vertex], r.lons[firstTurn.vertex]) < 60.0 }
+        assertTrue(stopAt > 0)
+        for (i in 0 until stopAt) { c.update(fixes[i]); c.tick(fixes[i].timeMs); c.tick(fixes[i].timeMs + 500) }
+        val here = fixes[stopAt - 1]
+        val pipsBefore = rec.log.count { it == "tone:PIP" }
+        var pipsWhileStopped = 0
+        for (k in 1..8) { val t = here.timeMs + k * 1000L; c.update(Fix(here.lat, here.lon, 0.0, -1.0, t, 5.0)); val b = rec.log.count { it == "tone:PIP" }; c.tick(t); c.tick(t + 500); if (k > 3) pipsWhileStopped += rec.log.count { it == "tone:PIP" } - b }
+        assertEquals(0, pipsWhileStopped, "no pips after standing for more than ${NavController.STOP_QUIET_MS} ms")
+        // moving again: the rest of the ride pips and chimes as usual
+        val t0 = here.timeMs + 9000L
+        for (i in stopAt until fixes.size) { val f = fixes[i]; val t = t0 + (f.timeMs - fixes[stopAt].timeMs); c.update(Fix(f.lat, f.lon, f.speed, f.bearing, t, f.accuracy)); c.tick(t); c.tick(t + 500) }
+        assertTrue(rec.log.count { it == "tone:PIP" } > pipsBefore, "pips resumed once moving")
+        assertEquals(2, rec.log.count { it == "tone:TURN" }, "both turns chimed")
+    }
+
     @Test fun checkpointResumesWithoutRepeatingWhatWasPassed() {
         val r = Fixtures.track(course, cues)
         val rec = Rec(); val c = NavController(r, true, "Test", "FAST", rec).also { it.sound = true; it.speechReady = true }

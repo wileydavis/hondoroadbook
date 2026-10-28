@@ -191,7 +191,7 @@ class MainActivity : AppCompatActivity() {
 
     private var afterFolder: (() -> Unit)? = null
     private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) { FilePicker.rememberFolder(this, uri); afterFolder?.invoke() }
+        if (uri != null) { FilePicker.rememberFolder(this, uri); marks.syncMirror(); afterFolder?.invoke() }
         afterFolder = null
     }
     private fun chooseFolder(then: () -> Unit) { afterFolder = then; safe { pickFolder.launch(FilePicker.folder(this)) } }
@@ -256,7 +256,8 @@ class MainActivity : AppCompatActivity() {
             onBurnMarks = { safe { marks.burn(); drawMarks(); toast("All marks deleted") } },
             onDownload = { Catalog.show(this, packs) { onPacksChanged() } },
             onBrowse = { showLibrary(true) },
-            terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }, placesOn = prefs.places, onPlaces = { on -> prefs.places = on; drawPlaces() }) }
+            terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }, placesOn = prefs.places, onPlaces = { on -> prefs.places = on; drawPlaces() },
+            onImportMarks = { safe { browseGpx.launch(arrayOf("*/*")) } }) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
         findViewById<Button>(R.id.btnVia).setOnClickListener { pin?.let { addVia(it, pinName) } }
@@ -1531,7 +1532,12 @@ class MainActivity : AppCompatActivity() {
                     while (true) { val n = ins.read(buf); if (n < 0) break; total += n; if (total > cap) throw IllegalStateException("GPX is larger than 64 MB"); out.write(buf, 0, n) }
                     String(out.toByteArray(), Charsets.UTF_8)
                 } ?: throw IllegalStateException("Could not read file")
-                val tr = Gpx.parse(text) ?: throw IllegalStateException("No track or route points found")
+                val tr = Gpx.parse(text) ?: run {
+                    // no line at all: a file of waypoints (someone's saved places, a marks backup) can join the marks
+                    val n = MarkStore.parse(text).size
+                    if (n > 0) { ui.post { offerMarks(text, n) }; return@execute }
+                    throw IllegalStateException("No track or route points found")
+                }
                 if (tr.lats.size > 2_000_000) throw IllegalStateException("Track has too many points (${tr.lats.size})")
                 if (tr.cues.size > 20_000) throw IllegalStateException("Track has too many cues (${tr.cues.size})")
                 tr
@@ -1543,6 +1549,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    /** A GPX of waypoints and nothing else: add them to the marks. */
+    private fun offerMarks(text: String, n: Int) {
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("$n saved point${if (n == 1) "" else "s"}")
+            .setMessage("This file has places but no track. Add them to your marks? Points you already have are skipped.")
+            .setPositiveButton("ADD TO MARKS") { _, _ -> safe { val added = marks.merge(text); drawMarks(); toast(if (added == 0) "Nothing new — all $n already in your marks" else "Added $added mark${if (added == 1) "" else "s"}") } }
+            .setNegativeButton(R.string.cancel, null).show()
     }
 
     /** A GPX with route points is re-routed on this phone's maps; a bare track is followed as a line. */

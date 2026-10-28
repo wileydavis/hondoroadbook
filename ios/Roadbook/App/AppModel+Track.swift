@@ -36,11 +36,23 @@ extension AppModel {
         worker.async { [self] in packs.delete(p); DispatchQueue.main.async { self.showToast("Removed \(p.name)"); self.onPacksChanged() } }
     }
 
+    /// A GPX of waypoints and nothing else: add them to the marks.
+    func offerMarks(_ text: String, _ n: Int) {
+        ask("\(n) saved point\(n == 1 ? "" : "s")", "This file has places but no track. Add them to your marks? Points you already have are skipped.",
+            [Dialog.Btn(label: "ADD TO MARKS") { [self] in safe { let added = try marks.merge(text); drawMarks(); showToast(added == 0 ? "Nothing new — all \(n) already in your marks" : "Added \(added) mark\(added == 1 ? "" : "s")") } },
+             Dialog.Btn(label: "Cancel", role: .cancel) {}])
+    }
+
     func loadGpx(_ url: URL) {
         worker.async { [self] in
             let result: Result<GpxTrack, Error> = Result {
                 let text = try Files.readText(url)
-                guard let tr = try Gpx.shared.parse(text: text) else { throw Fail("No track or route points found") }
+                guard let tr = try Gpx.shared.parse(text: text) else {
+                    // no line at all: a file of waypoints (someone's saved places, a marks backup) can join the marks
+                    let n = MarkStore.parse(text).count
+                    if n > 0 { DispatchQueue.main.async { self.offerMarks(text, n) }; throw Fail("") }
+                    throw Fail("No track or route points found")
+                }
                 if tr.lats.size > 2_000_000 { throw Fail("Track has too many points (\(tr.lats.size))") }
                 if tr.cues.count > 20_000 { throw Fail("Track has too many cues (\(tr.cues.count))") }
                 return tr
@@ -48,7 +60,7 @@ extension AppModel {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let tr): self.onGpxLoaded(tr, url)
-                case .failure(let e): self.showToast("Track failed: \(e.text)")
+                case .failure(let e): if !e.text.isEmpty { self.showToast("Track failed: \(e.text)") }
                 }
             }
         }

@@ -99,7 +99,7 @@ object SearchDialog {
 
 /** Installed packs, import, delete, units. The only screen with any settings. */
 object MapsDialog {
-    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null, terrainOn: Boolean = true, onTerrain: ((Boolean) -> Unit)? = null, placesOn: Boolean = true, onPlaces: ((Boolean) -> Unit)? = null) {
+    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null, terrainOn: Boolean = true, onTerrain: ((Boolean) -> Unit)? = null, placesOn: Boolean = true, onPlaces: ((Boolean) -> Unit)? = null, onImportMarks: (() -> Unit)? = null) {
         val ctx = act
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(16), ctx.dp(20), ctx.dp(8)) }
         val list = packs.packs
@@ -149,6 +149,8 @@ object MapsDialog {
         row.addView(Button(ctx).apply { text = "BURN"; textSize = 12f; isEnabled = n > 0; setOnClickListener {
             AlertDialog.Builder(ctx).setMessage("Delete all $n marks from this phone? There is no undo.").setPositiveButton("Burn") { _, _ -> onBurnMarks(); text = "BURN"; isEnabled = false }.setNegativeButton(R.string.cancel, null).show() } })
         root.addView(row)
+        root.addView(TextView(ctx).apply { text = "Marks are your own saved places, drawn on the map with their names. A copy, \"${marks.mirrorName}\", is kept in your folder and replaced on every change; to restore or add marks, open any GPX of waypoints under TRACK (or IMPORT MARKS)."; textSize = 12f; setPadding(0, ctx.dp(2), 0, ctx.dp(4)) })
+        if (onImportMarks != null) root.addView(Button(ctx).apply { text = "IMPORT MARKS"; textSize = 12f; setOnClickListener { onImportMarks() } })
         if (onBrowse != null) {
             root.addView(TextView(ctx).apply { text = "ROADBOOKS OTHERS SHARED"; textSize = 12f; letterSpacing = 0.1f; setPadding(0, ctx.dp(16), 0, ctx.dp(4)) })
             root.addView(TextView(ctx).apply { text = "The library on hondoroadbook.com, drawn over the map. Tap one to follow it or save it."; textSize = 13f })

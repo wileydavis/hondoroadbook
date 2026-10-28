@@ -320,7 +320,7 @@
       steps: [
         { c: `While you ride: the next cue, the distance to it, the road it is on. The map is heading-up, you sit low on the screen so the road ahead gets the room. That is all.`,
           run: async s => { navScene(s); await s.wait(600); s.hud('left', '0.3 mi', 'MT-84', 30); await s.wait(800); } },
-        { c: `The bar under the arrow fills as the turn comes up. If sound is on, the pips rise with it and a chime marks the turn (section: Sound).`,
+        { c: `The bar under the arrow fills as the turn comes up. If sound is on, the pips rise with it and a chime says "turn in now" (section: Sound).`,
           run: async s => { s.hud('left', '600 ft', 'MT-84', 60); s.movePuck(160, 340); await s.wait(900); s.hud('left', '200 ft', 'MT-84', 90); s.movePuck(160, 315); await s.wait(900); } },
         { c: `${K('Tap the map')} to change the view: next turn → close up → whole route, each with its own buzz so you know where you landed without looking. A pinch keeps following at that zoom.`,
           run: async s => { await s.tap([140, 250]); s.hideFinger(); await s.toast('Close up', 900, true); await s.wait(300); await s.tap([140, 250]); s.hideFinger(); await s.toast('Whole route', 900, true); await s.wait(300); } },
@@ -368,7 +368,7 @@
       steps: [
         { c: `${K('≡')} → ${K('SOUND ON')}. The toast says where the audio is going: the phone's speaker, wired headphones, or a helmet comm by name. If you hear nothing, that line is the first thing to check.`,
           run: async s => { navScene(s); await s.tap($('.gfab', s.sc)); const it = await s.menu(MENU_NAV.map(x => x[0] === 'SOUND ON' ? ['SOUND OFF', '♪'] : x), 'NAVIGATING'); await s.tap(it('SOUND OFF')); s.closeMenu(); s.hideFinger(); await s.toast('Sound on · Cardo PACKTALK', 1800); } },
-        { c: `A cue is spoken once as it comes into range ("Left onto MT-84"). Then pips, rising in pitch and coming faster as the bar fills, and a two-note chime at the turn. Music ducks under it and comes back.`,
+        { c: `A cue is spoken once as it comes into range ("Left onto MT-84"). Then pips, rising in pitch and coming faster as the bar fills, and a two-note chime at the moment to turn in — a couple of seconds before the junction at your speed. Stopped at a sign, the pips go quiet until you move. Music ducks under it all and comes back.`,
           run: async s => { s.hud('left', '0.4 mi', 'MT-84', 10); await s.wait(500); for (const [d, p, y] of [['900 ft', 40, 350], ['500 ft', 65, 330], ['200 ft', 88, 312], ['Now', 100, 300]]) { s.hud('left', d, 'MT-84', p); s.movePuck(160, y); await s.wait(700); } } },
         { c: `A note is read in its author's words; a danger gets a low triple buzz before the words; arrival is three rising notes. Sound stays on with the screen off and the phone in a pocket.`,
           run: async s => { s.hud('straight', '0.6 mi', 'Washout after the cattle guard', 0); await s.wait(1200); } },

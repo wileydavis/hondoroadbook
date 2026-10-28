@@ -122,6 +122,7 @@ struct MapsSheet: View {
         @State private var importing = false
         @State private var confirmDelete: Pack?
         @State private var confirmBurn = false
+        @State private var importingMarks = false
         @State private var tick = 0
         var body: some View {
             SheetFrame(title: "Maps on this phone") {
@@ -155,6 +156,8 @@ struct MapsSheet: View {
                             Button("EXPORT GPX") { model.safe { let name = try model.marks.export(); model.showToast("Wrote \(name) to Roadbook's folder in Files") } }.buttonStyle(BigButton(compact: true)).disabled(n == 0)
                             Button("BURN") { confirmBurn = true }.buttonStyle(BigButton(compact: true)).disabled(n == 0)
                         }
+                        Text("Marks are your own saved places, drawn on the map with their names. A copy, \"\(MarkStore.mirrorName)\", is kept in Roadbook's folder in the Files app (and so in your iCloud backup) and replaced on every change; to restore or add marks, open any GPX of waypoints with Roadbook, or IMPORT MARKS.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                        Button("IMPORT MARKS") { importingMarks = true }.buttonStyle(BigButton())
                     }
                     Section("Roadbooks others shared") {
                         Text("The library on hondoroadbook.com, drawn over the map. Tap one to follow it or save it.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
@@ -175,6 +178,9 @@ struct MapsSheet: View {
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [UTType(exportedAs: "com.hondogarage.mappack"), .zip, .data], allowsMultipleSelection: true) { r in
                 if case .success(let urls) = r { model.sheet = nil; model.importPacks(urls) }
+            }
+            .fileImporter(isPresented: $importingMarks, allowedContentTypes: [UTType(importedAs: "com.topografix.gpx"), .xml, .data]) { r in
+                if case .success(let u) = r { model.sheet = nil; model.loadGpx(u) }
             }
             .alert("Remove \(confirmDelete?.name ?? "") from this phone?", isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } })) {
                 Button("Remove", role: .destructive) { if let p = confirmDelete { model.deletePack(p) }; confirmDelete = nil }
@@ -320,7 +326,7 @@ struct TrackPickerSheet: View {
                 }
             }
         }
-        .onAppear { files = Files.list([".gpx"]) }
+        .onAppear { files = Files.list([".gpx"]).filter { $0.name != MarkStore.mirrorName } }
         .fileImporter(isPresented: $browsing, allowedContentTypes: [UTType(importedAs: "com.topografix.gpx"), .xml, .data]) { r in
             if case .success(let u) = r { model.sheet = nil; model.loadGpx(u) }
         }

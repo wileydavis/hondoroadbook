@@ -126,7 +126,12 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
         if (v.progress <= 0.0) return
         // the window just opened (~15 s out): say what is coming, then the pips take over
         if (!spoken) { spoken = true; attention(true); if (speechReady) { val ph = v.phrase(); sink.say(ph); nextPipAt = now + 1500 + 60L * ph.length } }
-        if (v.progress >= 0.97 || v.distToNext < 12.0) {
+        // stopped in the approach (a stop sign, waiting for a gap): after a few seconds the pips go quiet, and the
+        // chime waits too; both come back the moment the wheels turn
+        if (v.stoppedMs >= STOP_QUIET_MS) { nextPipAt = now + 300; return }
+        // the chime marks the moment to turn in, not the junction itself: about two seconds of road at this speed
+        // (the GPS runs a second behind, and the bars go before the wheel is on the new road), never under 15 m
+        if (v.distToNext <= chimeLead(v.speed)) {
             if (!turnChimed) { turnChimed = true; val lead = v.hazard ?: m; when (lead.turn) { Turn.DANGER -> sink.tone(ToneKind.DANGER, lead.level); Turn.NOTE -> sink.tone(ToneKind.NOTE); else -> sink.tone(ToneKind.TURN) } }
             return
         }
@@ -162,6 +167,11 @@ class NavController(val route: Route, val isTrack: Boolean, val destName: String
     }
 
     companion object {
+        /** standing still this long in an approach silences the pips until you move again */
+        const val STOP_QUIET_MS = 3000L
+        /** How far before a turn the chime sounds, in metres: 15 at walking pace, ~38 at 50 km/h, 70 at highway speed. */
+        fun chimeLead(speedMps: Double): Double = (8.0 + speedMps * 2.0).coerceIn(15.0, 70.0)
+
         /** Builds a session back from [checkpoint] text, or null when the text is not one. */
         @Throws(Throwable::class) fun restore(text: String, sink: NavSink): NavController? {
             if (!text.startsWith("roadbook-nav 1\n")) return null

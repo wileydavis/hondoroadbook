@@ -39,7 +39,9 @@ class NavView(
     /** seconds since the last accepted fix */
     val fixAge: Double = 0.0,
     /** [next] plus every cue at the same place (within 20 m along the route), in order: one instruction */
-    val group: List<Maneuver> = listOfNotNull(next)
+    val group: List<Maneuver> = listOfNotNull(next),
+    /** how long the fixes have shown no movement (under 0.8 m/s), in ms; 0 while moving */
+    val stoppedMs: Long = 0L
 ) {
     /** everything to say for the next instruction: "Left. Danger. washout" */
     fun phrase(): String = group.joinToString(". ") { it.phrase() }
@@ -64,6 +66,7 @@ class Follower(val route: Route, private val lookAheadSeconds: Double = 15.0) {
     private var prevFix: Fix? = null
     private var heading = 0.0
     private var speedEma = 0.0
+    private var stillSince = -1L
     private var offCount = 0
     private var onRoute = true
     private var offDist = 0.0; private var offBearing = 0.0
@@ -123,6 +126,8 @@ class Follower(val route: Route, private val lookAheadSeconds: Double = 15.0) {
         }
         if (sp < 0) sp = 0.0
         speedEma = if (lf == null) sp else speedEma * 0.5 + sp * 0.5
+        // standing still is read from the raw fixes, not the smoothed speed, so a stop registers at once
+        if (sp < 0.8) { if (stillSince < 0) stillSince = fix.timeMs } else stillSince = -1L
         if (sp > 1.5 && fix.bearing >= 0) heading = fix.bearing
         else if (sp > 1.5 && lf != null) heading = Geo.bearing(lf.lat, lf.lon, fix.lat, fix.lon)
 
@@ -232,7 +237,8 @@ class Follower(val route: Route, private val lookAheadSeconds: Double = 15.0) {
         val remaining = max(0.0, route.length - est)
         val (plat, plon) = if (onRoute) interpolate(est) else Pair(lf.lat, lf.lon)
         val speed = if (state == FixState.STALE) 0.0 else speedEma
-        return NavView(onRoute, arrived, est, next, dist, progress, remaining, eta(remaining), plat, plon, heading, speed, offDist, offBearing, seg, state, age, group)
+        val stopped = if (stillSince < 0 || state == FixState.STALE) 0L else max(0L, nowMs - stillSince)
+        return NavView(onRoute, arrived, est, next, dist, progress, remaining, eta(remaining), plat, plon, heading, speed, offDist, offBearing, seg, state, age, group, stopped)
     }
 
     private fun eta(remaining: Double): Double {
