@@ -521,10 +521,45 @@
           run: async s => { await s.tap(s.cursorOver('[data-b="open"]')); s.hideFinger(); await s.wait(800); } },
       ] });
 
+  // ---- narration: the caption read aloud by the browser's own voice (the way the app speaks on the phone) ---------
+  const Narrator = {
+    on: false, ok: 'speechSynthesis' in window,
+    // the caption as words: the key chips read as their labels, the glyphs as what they are
+    text(html) {
+      const d = document.createElement('div'); d.innerHTML = html;
+      for (const k of d.querySelectorAll('.key')) k.textContent = ' ' + k.textContent + ' ';
+      return d.textContent.replace(/≡/g, 'the menu button').replace(/→/g, ', then').replace(/✕/g, 'the X').replace(/★/g, 'the star').replace(/▶/g, 'play').replace(/[·—]/g, ',').replace(/\s+/g, ' ').trim();
+    },
+    voice() {
+      const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+      return vs.find(v => /Samantha|Daniel|Karen|Google US English|Google UK English Female|Microsoft Aria|Microsoft Zira/.test(v.name)) || vs.find(v => v.default) || vs[0] || null;
+    },
+    /** speaks, resolving when the sentence ends (or at once when narration is off) */
+    say(html, s) {
+      if (!this.on || !this.ok) return Promise.resolve();
+      return new Promise(res => {
+        try {
+          speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(this.text(html)); u.rate = 1; u.lang = 'en-US';
+          const v = this.voice(); if (v) u.voice = v;
+          let done = false; const fin = () => { if (!done) { done = true; res(); } };
+          u.onend = fin; u.onerror = fin;
+          // a voice that never fires onend (it happens), or never starts, must not hang the step
+          setTimeout(fin, 1500 + u.text.length * 75);
+          setTimeout(() => { if (!speechSynthesis.speaking && !speechSynthesis.pending) fin(); }, 700);
+          this.u = u; speechSynthesis.speak(u);
+        } catch { res(); }
+      });
+    },
+    stop() { try { speechSynthesis.cancel(); } catch {} },
+  };
+  try { Narrator.on = localStorage.getItem('rb.narrate') !== 'off' && Narrator.ok; } catch { Narrator.on = Narrator.ok; }
+  if (Narrator.ok) speechSynthesis.getVoices();   // warms the list on browsers that load it lazily
+
   // ---- the player ---------------------------------------------------------------------------------------------------
   const stage = new Stage($('#gscene'));
   const nav = $('#gnav'), cap = $('#gcap'), rail = $('#grail'), head = $('#ghead'), next = $('#gnext');
-  const bPrev = $('#gprev'), bPlay = $('#gplay'), bNext = $('#gnextb'), bReplay = $('#greplay');
+  const bPrev = $('#gprev'), bPlay = $('#gplay'), bNext = $('#gnextb'), bReplay = $('#greplay'), bVoice = $('#gvoice');
   let sec = 0, step = 0, playing = false, running = null;
 
   // the list of sections, grouped
@@ -543,6 +578,7 @@
     rail.innerHTML = S.steps.map((_, i) => `<button data-s="${i}" class="${i < step ? 'done' : i === step ? 'on' : ''}" aria-label="Step ${i + 1}"></button>`).join('');
     bPrev.disabled = step === 0 && sec === 0; bNext.disabled = step === S.steps.length - 1 && sec === SECTIONS.length - 1;
     bPlay.textContent = playing ? '❚❚ Pause' : '▶ Play';
+    bVoice.textContent = Narrator.on ? '🔊 Voice on' : '🔇 Voice off'; bVoice.disabled = !Narrator.ok; bVoice.classList.toggle('on', Narrator.on);
     const last = step === S.steps.length - 1, N = SECTIONS[sec + 1];
     next.innerHTML = last && N ? `Next: <a href="#${N.id}">${esc(N.title)}</a>` : '';
   }
@@ -560,9 +596,12 @@
       for (let i = 0; i < step; i++) await S.steps[i].run(s);
       // let the fast-forwarded layout settle before transitions come back
       s.fast = false; await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); s.check(); $('#gscene').classList.remove('nofx');
+      // the sentence and the taps run together; the step is over when both are
+      const spoken = playing ? Narrator.say(S.steps[step].c, s) : Promise.resolve();
       await S.steps[step].run(s);
+      await spoken; s.check();
       if (autoAdvance && playing) {
-        await s.wait(1800);
+        await s.wait(Narrator.on ? 700 : 1800);
         if (step < S.steps.length - 1) { step++; setHash(S.id); show(true); }
         else { playing = false; paint(); }
       }
@@ -570,19 +609,22 @@
   }
   function setHash(id) { if (location.hash.slice(1) !== id) history.replaceState(null, '', '#' + id); }
 
-  function goto(i, st = 0, play = true) { sec = Math.max(0, Math.min(SECTIONS.length - 1, i)); step = st; playing = play; show(true); }
+  function goto(i, st = 0, play = true) { sec = Math.max(0, Math.min(SECTIONS.length - 1, i)); step = st; playing = play; Narrator.stop(); show(true); }
   bPrev.onclick = () => { if (step > 0) step--; else if (sec > 0) { sec--; step = SECTIONS[sec].steps.length - 1; } setHash(SECTIONS[sec].id); show(true); };
   bNext.onclick = () => { if (step < SECTIONS[sec].steps.length - 1) step++; else if (sec < SECTIONS.length - 1) { sec++; step = 0; } setHash(SECTIONS[sec].id); show(true); };
-  bPlay.onclick = () => { playing = !playing; if (playing) show(true); else { stage.token++; paint(); } };
+  bPlay.onclick = () => { playing = !playing; if (playing) show(true); else { stage.token++; Narrator.stop(); paint(); } };
+  bVoice.onclick = () => { Narrator.on = !Narrator.on && Narrator.ok; try { localStorage.setItem('rb.narrate', Narrator.on ? 'on' : 'off'); } catch {} if (!Narrator.on) Narrator.stop(); paint(); if (Narrator.on && playing) show(true); };
   bReplay.onclick = () => { step = 0; playing = true; show(true); };
-  rail.onclick = e => { const b = e.target.closest('button'); if (!b) return; step = +b.dataset.s; show(true); };
+  rail.onclick = e => { const b = e.target.closest('button'); if (!b) return; step = +b.dataset.s; Narrator.stop(); show(true); };
   document.addEventListener('keydown', e => { if (e.target.matches('input, textarea')) return; if (e.key === 'ArrowRight') bNext.click(); else if (e.key === 'ArrowLeft') bPrev.click(); else if (e.key === ' ') { e.preventDefault(); bPlay.click(); } });
   function fromHash() { const id = location.hash.slice(1); const i = SECTIONS.findIndex(x => x.id === id); return i < 0 ? 0 : i; }
   window.addEventListener('hashchange', () => { const i = fromHash(); if (i !== sec) goto(i); });
   nav.addEventListener('click', e => { const a = e.target.closest('a'); if (!a) return; e.preventDefault(); const i = +a.dataset.i; setHash(SECTIONS[i].id); goto(i); });
   $('#gshort').addEventListener('click', e => { const a = e.target.closest('a'); if (!a) return; e.preventDefault(); setHash(a.getAttribute('href').slice(1)); goto(fromHash()); $('#gscene').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && playing) { playing = false; stage.token++; paint(); } });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && playing) { playing = false; stage.token++; Narrator.stop(); paint(); } });
+  window.addEventListener('pagehide', () => Narrator.stop());
   // play only while the stage is on screen
-  if ('IntersectionObserver' in window) new IntersectionObserver(es => { for (const en of es) if (!en.isIntersecting && playing) { playing = false; stage.token++; paint(); } }, { threshold: 0.2 }).observe($('#gscene'));
-  goto(fromHash(), 0, !matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => { for (const en of es) if (!en.isIntersecting && playing) { playing = false; stage.token++; Narrator.stop(); paint(); } }, { threshold: 0.2 }).observe($('#gscene'));
+  // browsers only speak after a tap or click, so the guide waits for Play rather than starting on its own
+  goto(fromHash(), 0, false);
 })();
