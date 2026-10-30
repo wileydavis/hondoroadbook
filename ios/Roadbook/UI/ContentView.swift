@@ -32,8 +32,8 @@ struct ContentView: View {
                         HStack(spacing: 0) {
                             VStack(spacing: 8) {
                                 topArea(compact: true)
-                                Spacer(minLength: 0)
                                 NavPanel(hud: hud, stacked: true) { EmptyView() }
+                                Spacer(minLength: 0)
                                 menuButton
                             }
                             .frame(width: 236)

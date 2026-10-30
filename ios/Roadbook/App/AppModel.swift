@@ -616,8 +616,8 @@ final class AppModel: ObservableObject, MapEvents {
     }
 
     func toggleNight() { if prefs.sun { prefs.sun = false }; prefs.night.toggle() }
-    /// SUN MAP: the noon-sun handlebar style, on or off (off goes back to whichever of day and night was chosen).
-    func toggleSun() { prefs.sun.toggle(); showToast(prefs.sun ? "Sun map: white ground, dark roads, big labels, nothing else — for noon on the bars" : "Sun map off", 3) }
+    /// MAP: day → night → sun → day.
+    func cycleMap() { prefs.cycleMap(); if prefs.flavor == "sun" { showToast("Sun map: white ground, dark roads, big labels, nothing else — for noon on the bars", 3) } }
 
     func toggleTerrain() { prefs.terrain.toggle(); loadStyle() }
 

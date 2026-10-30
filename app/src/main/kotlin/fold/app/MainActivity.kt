@@ -111,6 +111,8 @@ class MainActivity : AppCompatActivity() {
         val editCues = ArrayList<Cue>()
         /** the modes the compare screen is limited to (a file is re-planned in its own mode); null = the rider's chosen set */
         var compareModes: List<Profile>? = null
+        /** the glove menu was open when the activity was recreated (a map theme change): bring it back */
+        var menuOpen = false
     }
 
     private lateinit var mapView: MapView
@@ -247,6 +249,8 @@ class MainActivity : AppCompatActivity() {
         pinLabel = findViewById(R.id.pinLabel); navRemaining = findViewById(R.id.navRemaining); navSpeed = findViewById(R.id.navSpeed)
         navEta = findViewById(R.id.navEta); navElev = findViewById(R.id.navElev); navScale = findViewById<ScaleView>(R.id.navScale).also { it.fixed = true }
         applyOrientation()
+        hud.addOnLayoutChangeListener(hudLayoutWatcher); offPanel.addOnLayoutChangeListener(hudLayoutWatcher)
+        if (NavSession.menuOpen) { NavSession.menuOpen = false; findViewById<View>(R.id.root).post { openMenu() } }
         toastView = findViewById(R.id.toast)
         panelCompare = findViewById(R.id.panelCompare); compareRows = findViewById(R.id.compareRows)
         turnChip = findViewById(R.id.turnChip); hudCompass = findViewById(R.id.hudCompass)
@@ -760,8 +764,8 @@ class MainActivity : AppCompatActivity() {
         arrow.layoutParams = arrow.layoutParams.also { it.width = dp(if (land) 78 else 104); it.height = it.width }
         hudDistance.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 32f else 40f)
         hudCompass.layoutParams = (hudCompass.layoutParams as LinearLayout.LayoutParams).also { it.width = dp(if (land) 30 else 40); it.height = it.width }
-        frame(panelNav, if (land) landColumn + dp(12) else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.BOTTOM, 0, 0, 0, 0)
-        panelNav.setPadding(dp(12), 0, if (land) 0 else dp(12), dp(if (land) 112 else 12))
+        frame(panelNav, if (land) landColumn + dp(12) else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.BOTTOM, 0, if (land) landCardTop() else 0, 0, 0)
+        panelNav.setPadding(dp(12), 0, if (land) 0 else dp(12), if (land) 0 else dp(12))
         findViewById<View>(R.id.navHole).layoutParams = findViewById<View>(R.id.navHole).layoutParams.also { it.width = dp(if (land) 10 else 104) }
         for (t in listOf(navRemaining, navSpeed)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 24f else 27f)
         for (t in listOf(navEta, navElev)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 13f else 15f)
@@ -769,6 +773,14 @@ class MainActivity : AppCompatActivity() {
         frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 16))
         mapView.post { if (mode == Mode.NAV && follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
     }
+
+    /** landscape: the nav card's top edge, just under whichever of the HUD and the off-track card is showing */
+    private fun landCardTop(): Int {
+        val top = if (offPanel.visibility == View.VISIBLE) offPanel else hud
+        val h = if (top.visibility == View.VISIBLE && top.height > 0) top.height else dp(110)
+        return dp(12) + h + dp(8)
+    }
+    private val hudLayoutWatcher = View.OnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (isLandscape && (b - t) != (ob - ot)) panelNav.post { (panelNav.layoutParams as android.widget.FrameLayout.LayoutParams).let { it.topMargin = landCardTop(); panelNav.layoutParams = it } } }
 
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
@@ -1712,10 +1724,11 @@ class MainActivity : AppCompatActivity() {
         if (AppCompatDelegate.getDefaultNightMode() != want) AppCompatDelegate.setDefaultNightMode(want) else loadStyle()
     }
 
-    /** SUN MAP: the noon-sun handlebar style, on or off (off goes back to whichever of day and night was chosen). */
-    private fun toggleSun() {
-        prefs.sun = !prefs.sun
-        toast(if (prefs.sun) "Sun map: white ground, dark roads, big labels, nothing else — for noon on the bars" else "Sun map off", 3000)
+    /** MAP: day → night → sun → day. A change of interface theme recreates the activity; the menu comes back up after it. */
+    private fun cycleMap() {
+        prefs.cycleMap()
+        if (prefs.flavor == "sun") toast("Sun map: white ground, dark roads, big labels, nothing else — for noon on the bars", 3000)
+        NavSession.menuOpen = findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE
         applyUiTheme()
     }
 
@@ -2087,15 +2100,16 @@ class MainActivity : AppCompatActivity() {
 
     // ---------------------------------------------------------------- the glove menu
 
-    private class MenuItem(val label: String, val icon: Int, val accent: Boolean = false, val on: Boolean = false, val action: () -> Unit)
+    /** [stay]: a toggle — the menu stays open so the next tap can cycle it again; the rest open something else and close it */
+    private class MenuItem(val label: String, val icon: Int, val accent: Boolean = false, val on: Boolean = false, val stay: Boolean = false, val action: () -> Unit)
 
     private fun menuItems(): List<MenuItem> {
         val nav = mode == Mode.NAV
         val items = ArrayList<MenuItem>()
         if (nav) {
             items.add(MenuItem("END", R.drawable.ic_end, accent = true) { endNavigation() })
-            items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound) { findViewById<ImageButton>(R.id.btnSound).performClick() })
-            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
+            items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound, stay = true) { findViewById<ImageButton>(R.id.btnSound).performClick() })
+            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver, stay = true) { setBatterySaver(!prefs.batterySaver) })
             if (isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })
             if (!isTrack) items.add(MenuItem("TURN LIST", R.drawable.ic_list) { route?.let { showTurnList(it) } })
             items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
@@ -2106,13 +2120,12 @@ class MainActivity : AppCompatActivity() {
             items.add(MenuItem("MAPS", R.drawable.ic_maps) { findViewById<ImageButton>(R.id.btnMaps).performClick() })
             items.add(MenuItem(if (Recorder.running) "RECORDING…" else "RECORD", R.drawable.ic_rec, on = Recorder.running) { if (Recorder.running) stopRecording() else startRecording() })
             if (libraryOn) items.add(MenuItem("HIDE ROADBOOKS", R.drawable.ic_list, on = true) { showLibrary(false) })
-            if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain) { prefs.terrain = !prefs.terrain; loadStyle() })
-            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
+            if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain, stay = true) { prefs.terrain = !prefs.terrain; loadStyle() })
+            items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver, stay = true) { setBatterySaver(!prefs.batterySaver) })
         }
-        items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night && !prefs.sun) { findViewById<ImageButton>(R.id.btnNight).performClick() })
-        items.add(MenuItem(if (prefs.sun) "SUN MAP ON" else "SUN MAP", R.drawable.ic_night, on = prefs.sun) { toggleSun() })
+        items.add(MenuItem("MAP: " + prefs.flavorLabel, R.drawable.ic_night, on = prefs.flavor != "light", stay = true) { cycleMap() })
         items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })
-        items.add(MenuItem(if (prefs.orientation >= 0) "UNLOCK SCREEN" else "LOCK SCREEN", if (prefs.orientation >= 0) R.drawable.ic_lock else R.drawable.ic_unlock, on = prefs.orientation >= 0) { toggleOrientationLock() })
+        items.add(MenuItem(if (prefs.orientation >= 0) "UNLOCK SCREEN" else "LOCK SCREEN", if (prefs.orientation >= 0) R.drawable.ic_lock else R.drawable.ic_unlock, on = prefs.orientation >= 0, stay = true) { toggleOrientationLock() })
         return items
     }
 
@@ -2141,7 +2154,7 @@ class MainActivity : AppCompatActivity() {
                 val icon = ContextCompat.getDrawable(this@MainActivity, it.icon)?.mutate()?.apply { setBounds(0, 0, dp(34), dp(34)); setTint(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, if (it.on) R.color.accent else R.color.ink)) }
                 setCompoundDrawables(null, icon, null, null); compoundDrawablePadding = dp(6)
                 setPadding(dp(8), dp(14), dp(8), dp(12))
-                setOnClickListener { haptic(1); closeMenu(); item.action() }
+                setOnClickListener { haptic(1); if (item.stay) { item.action(); if (findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) openMenu() } else { closeMenu(); item.action() } }
             }
             val lp = android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i / cols, 1f), android.widget.GridLayout.spec(i % cols, 1f)).apply { width = 0; height = itemH; setMargins(dp(5), dp(5), dp(5), dp(5)) }
             grid.addView(b, lp)
@@ -2150,6 +2163,7 @@ class MainActivity : AppCompatActivity() {
         val scroll = findViewById<android.widget.ScrollView>(R.id.menuScroll)
         val gridH = rows * (itemH + dp(10))
         scroll.layoutParams = scroll.layoutParams.apply { height = if (gridH > avail) avail.coerceAtLeast(dp(120)) else android.view.ViewGroup.LayoutParams.WRAP_CONTENT }
+        if (scrim.visibility == View.VISIBLE) return   // already up: the buttons were just rebuilt in place (a toggle)
         scrim.visibility = View.VISIBLE
         sheet.translationY = sheet.height.toFloat().takeIf { it > 0 } ?: dp(600).toFloat()
         sheet.animate().translationY(0f).setDuration(180).setInterpolator(android.view.animation.DecelerateInterpolator()).start()

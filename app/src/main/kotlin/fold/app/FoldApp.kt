@@ -62,6 +62,9 @@ class Prefs(ctx: Context) {
         set(v) { p.edit().putBoolean("sun", v).apply() }
     /** which layer file the map is drawn from right now */
     val flavor: String get() = if (sun) "sun" else if (night) "dark" else "light"
+    /** MAP: DAY → NIGHT → SUN → DAY */
+    fun cycleMap() { when (flavor) { "light" -> { night = true; sun = false }; "dark" -> { sun = true }; else -> { sun = false; night = false } } }
+    val flavorLabel: String get() = when (flavor) { "sun" -> "SUN"; "dark" -> "NIGHT"; else -> "DAY" }
     /** draw the packs' places (fuel, camping, water, beds, repair, food) on the map when zoomed in */
     var places: Boolean
         get() = p.getBoolean("places", true)

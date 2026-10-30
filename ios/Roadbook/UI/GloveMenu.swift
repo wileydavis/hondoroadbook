@@ -3,18 +3,27 @@ import SwiftUI
 /// The glove menu: giant buttons in two columns, reaching up to the HUD, for a gloved thumb at speed.
 struct GloveMenu: View {
     @EnvironmentObject var model: AppModel
+    let hudBottom: CGFloat
+    var body: some View { GloveMenuInner(prefs: model.prefs, hudBottom: hudBottom) }
+}
+
+/// (the real menu: it observes the settings, so a toggle's label changes under the thumb while the menu stays up)
+struct GloveMenuInner: View {
+    @EnvironmentObject var model: AppModel
+    @ObservedObject var prefs: Prefs
     @ObservedObject private var recorder = Recorder.shared
     let hudBottom: CGFloat
 
-    struct Item: Identifiable { let id = UUID(); let label: String; let icon: String; var accent = false; var on = false; let action: () -> Void }
+    /// `stay`: a toggle — the menu stays open so the next tap can cycle it again; the rest open something else and close it
+    struct Item: Identifiable { let id = UUID(); let label: String; let icon: String; var accent = false; var on = false; var stay = false; let action: () -> Void }
 
     private var items: [Item] {
-        let p = model.prefs
+        let p = prefs
         var items: [Item] = []
         if model.mode == .nav {
             items.append(Item(label: "END", icon: "xmark.circle.fill", accent: true) { model.endNavigation() })
-            items.append(Item(label: p.sound ? "SOUND ON" : "SOUND OFF", icon: p.sound ? "speaker.wave.2.fill" : "speaker.slash.fill", on: p.sound) { model.toggleSound() })
-            items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver) { model.setBatterySaver(!p.batterySaver) })
+            items.append(Item(label: p.sound ? "SOUND ON" : "SOUND OFF", icon: p.sound ? "speaker.wave.2.fill" : "speaker.slash.fill", on: p.sound, stay: true) { model.toggleSound() })
+            items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver, stay: true) { model.setBatterySaver(!p.batterySaver) })
             if model.isTrack { items.append(Item(label: "ADD CUE HERE", icon: "plus.circle") { model.addCueHere() }) }
             else { items.append(Item(label: "TURN LIST", icon: "list.bullet") { model.sheet = .turnList }) }
             items.append(Item(label: recorder.running ? "RECORDING…" : "RECORD", icon: "record.circle", on: recorder.running) { recorder.running ? model.stopRecording() : model.startRecording() })
@@ -25,13 +34,12 @@ struct GloveMenu: View {
             items.append(Item(label: "MAPS", icon: "map") { model.sheet = .maps })
             items.append(Item(label: recorder.running ? "RECORDING…" : "RECORD", icon: "record.circle", on: recorder.running) { recorder.running ? model.stopRecording() : model.startRecording() })
             if model.libraryOn { items.append(Item(label: "HIDE ROADBOOKS", icon: "books.vertical", on: true) { model.showLibrary(false) }) }
-            if model.hasTerrain { items.append(Item(label: p.terrain ? "TERRAIN ON" : "TERRAIN OFF", icon: "mountain.2", on: p.terrain) { model.toggleTerrain() }) }
-            items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver) { model.setBatterySaver(!p.batterySaver) })
+            if model.hasTerrain { items.append(Item(label: p.terrain ? "TERRAIN ON" : "TERRAIN OFF", icon: "mountain.2", on: p.terrain, stay: true) { model.toggleTerrain() }) }
+            items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver, stay: true) { model.setBatterySaver(!p.batterySaver) })
         }
-        items.append(Item(label: p.night ? "DAY MAP" : "NIGHT MAP", icon: p.night ? "sun.max.fill" : "moon.fill", on: p.night && !p.sun) { model.toggleNight() })
-        items.append(Item(label: p.sun ? "SUN MAP ON" : "SUN MAP", icon: "sun.max.circle.fill", on: p.sun) { model.toggleSun() })
+        items.append(Item(label: "MAP: " + p.flavorLabel, icon: p.sun ? "sun.max.fill" : p.night ? "moon.fill" : "sun.min", on: p.flavor != "light", stay: true) { model.cycleMap() })
         items.append(Item(label: "LOCATE", icon: "location.fill") { model.locate() })
-        items.append(Item(label: model.orientationLocked ? "UNLOCK SCREEN" : "LOCK SCREEN", icon: model.orientationLocked ? "lock.fill" : "lock.open", on: model.orientationLocked) { model.toggleOrientationLock() })
+        items.append(Item(label: model.orientationLocked ? "UNLOCK SCREEN" : "LOCK SCREEN", icon: model.orientationLocked ? "lock.fill" : "lock.open", on: model.orientationLocked, stay: true) { model.toggleOrientationLock() })
         return items
     }
 
@@ -52,7 +60,7 @@ struct GloveMenu: View {
                     ScrollView(.vertical, showsIndicators: false) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: cols), spacing: 10) {
                         ForEach(list) { it in
-                            Button { model.haptic(1); model.menuOpen = false; it.action() } label: {
+                            Button { model.haptic(1); if !it.stay { model.menuOpen = false }; it.action() } label: {
                                 VStack(spacing: 6) {
                                     Image(systemName: it.icon).font(.system(size: 30, weight: .semibold)).foregroundStyle(it.accent ? Color.white : (it.on ? Theme.sAccent : Theme.sInk))
                                     Text(it.label).font(.system(size: 19, weight: .bold)).tracking(0.5).multilineTextAlignment(.center).minimumScaleFactor(0.7).foregroundStyle(it.accent ? Color.white : Theme.sInk)

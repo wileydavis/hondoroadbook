@@ -14,6 +14,9 @@ final class Prefs: ObservableObject {
     @Published var sun: Bool { didSet { d.set(sun, forKey: "sun") } }
     /// which layer file the map is drawn from right now
     var flavor: String { sun ? "sun" : night ? "dark" : "light" }
+    var flavorLabel: String { sun ? "SUN" : night ? "NIGHT" : "DAY" }
+    /// MAP: DAY → NIGHT → SUN → DAY
+    func cycleMap() { switch flavor { case "light": night = true; sun = false; case "dark": sun = true; default: sun = false; night = false } }
     /// draw the packs' places (fuel, camping, water, beds, repair, food) on the map when zoomed in
     @Published var places: Bool { didSet { d.set(places, forKey: "places") } }
     @Published var sound: Bool { didSet { d.set(sound, forKey: "sound") } }
