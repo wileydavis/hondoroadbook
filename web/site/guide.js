@@ -328,7 +328,7 @@
           run: async s => { await s.tap([140, 470]); s.hideFinger(); await s.sheet('Ennis · 57 mi · 1 h 20', ['0.3 mi', 'Left onto MT-84', '12 mi', 'Right onto US-287', '31 mi', 'Keep left', '57 mi', 'Arrive'].reduce((h, v, i) => h + (i % 2 ? `${esc(v)}</div>` : `<div class="li"><span class="r" style="margin:0;width:44px">${esc(v)}</span>`), '')); await s.wait(1200); await s.closeSheet(); } },
         { c: `${K('≡')} holds the rest, extra large: END, sound, battery saver, the turn list, record, night map, locate, lock screen. Nothing to hunt for with a glove.`,
           run: async s => { await s.tap($('.gfab', s.sc)); await s.menu(MENU_NAV, 'NAVIGATING'); await s.wait(1200); } },
-        { c: `${K('NIGHT MAP')} flips the map dark; ${K('SUN MAP')} is the third map, for noon on the bars: black ground, wide bright roads, big labels, nothing else — reads through glare and spends the least power. The app remembers either. ${K('LOCK SCREEN')} holds the orientation the phone is in right now.`,
+        { c: `${K('NIGHT MAP')} flips the map dark; ${K('SUN MAP')} is the third map, for noon on the bars: white ground, wide dark roads, big labels, nothing else — the glass mirrors the sky, and a bright map out-shines that. The app remembers either. ${K('LOCK SCREEN')} holds the orientation the phone is in right now.`,
           run: async s => { const it = $('.gmenu [data-l="NIGHT MAP"]', s.sc); if (it) await s.tap(it); s.closeMenu(); night(s, true); s.hideFinger(); await s.wait(1200); } },
         { c: `${K('LOCATE')} snaps the map back to you after you have dragged it. ${K('END')} ends the ride; the plan is dropped and the map is just a map again.`,
           run: async s => { night(s, false); await s.wait(700); } },

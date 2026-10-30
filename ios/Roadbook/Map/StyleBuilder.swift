@@ -13,14 +13,14 @@ enum StyleBuilder {
         cache[flavor] = arr; return arr
     }
 
-    /// `flavor`: "light" (day), "dark" (night) or "sun" — the noon-sun handlebar style: black ground, wide bright roads,
-    /// big labels, nothing else drawn (no hillshade either), so it reads in glare and spends the least power.
+    /// `flavor`: "light" (day), "dark" (night) or "sun" — the noon-sun handlebar style: white ground (the glass mirrors
+    /// the sky; a bright map out-shines that), wide dark roads, big labels, nothing else drawn (no hillshade either).
     static func build(_ all: [Pack], flavor: String) throws -> Data {
         let packs = all.filter { !$0.isTerrain }
         let terrain = flavor == "sun" ? [] : all.filter { $0.isTerrain }
-        let night = flavor != "light"
+        let night = flavor == "dark"
         let template = try layers(flavor)
-        var style: [String: Any] = ["version": 8, "name": "fold-\(flavor)", "glyphs": "asset://fonts/{fontstack}/{range}.pbf", "sprite": "asset://sprites/\(flavor == "light" ? "light" : "dark")"]
+        var style: [String: Any] = ["version": 8, "name": "fold-\(flavor)", "glyphs": "asset://fonts/{fontstack}/{range}.pbf", "sprite": "asset://sprites/\(night ? "dark" : "light")"]
         var sources: [String: Any] = [:]
         for (i, p) in packs.enumerated() {
             sources["pack\(i)"] = ["type": "vector", "url": "pmtiles://file://" + p.tiles.path]

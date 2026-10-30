@@ -49,7 +49,7 @@ final class MapController: NSObject, MLNMapViewDelegate {
 
     /// Rebuilds the style from the chosen packs. The overlays are re-added when the style finishes loading.
     func loadStyle(_ packs: [Pack], flavor: String) throws {
-        self.night = flavor != "light"; styledPacks = packs; styleReady = false
+        self.night = flavor == "dark"; styledPacks = packs; styleReady = false
         mapView.styleURL = try StyleBuilder.write(packs, flavor: flavor)
     }
 

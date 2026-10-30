@@ -10,7 +10,7 @@ struct RoadbookApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
-                .preferredColorScheme(model.prefs.night || model.prefs.sun ? .dark : .light)
+                .preferredColorScheme(model.prefs.night && !model.prefs.sun ? .dark : .light)
                 .onOpenURL { url in model.open(url: url) }
         }
     }

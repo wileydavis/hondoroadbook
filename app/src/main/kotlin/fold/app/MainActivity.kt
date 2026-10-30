@@ -1657,9 +1657,9 @@ class MainActivity : AppCompatActivity() {
         const val TERMS_SHORT = "Roadbook is a riding aid, not a substitute for your eyes, your judgment or the law.\n\nThe map is made by volunteers and can be wrong: roads close, gates lock, a track that is public on the map may be private on the ground, and a legal road may be unsafe for you today. A route is a suggestion; a cue is a reminder of what the data says. If a cue and the road disagree, the road wins.\n\nYou are responsible for riding safely and legally, for watching the road rather than the screen, and for carrying what you need where there is no help. Roadbook is free and provided as is, with no warranty, and Hondo Garage is not liable for what happens on the road.\n\nFull terms: hondoroadbook.com/terms.html"
     }
 
-    /** The interface follows the map: dark for the night and sun maps, light for the day map (a change recreates the activity). */
+    /** The interface follows the map: dark for the night map, light for the day and sun maps (a change recreates the activity). */
     private fun applyUiTheme() {
-        val dark = prefs.night || prefs.sun
+        val dark = prefs.night && !prefs.sun
         val want = if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
         if (AppCompatDelegate.getDefaultNightMode() != want) AppCompatDelegate.setDefaultNightMode(want) else loadStyle()
     }
@@ -1667,7 +1667,7 @@ class MainActivity : AppCompatActivity() {
     /** SUN MAP: the noon-sun handlebar style, on or off (off goes back to whichever of day and night was chosen). */
     private fun toggleSun() {
         prefs.sun = !prefs.sun
-        toast(if (prefs.sun) "Sun map: black ground, bright roads, big labels — least power, reads in glare" else "Sun map off", 3000)
+        toast(if (prefs.sun) "Sun map: white ground, dark roads, big labels, nothing else — for noon on the bars" else "Sun map off", 3000)
         applyUiTheme()
     }
 

@@ -10,7 +10,7 @@ final class Prefs: ObservableObject {
     @Published var metric: Bool { didSet { d.set(metric, forKey: "metric"); Units.metric = metric } }
     /// draw installed terrain (hillshade) packs under the roads
     @Published var terrain: Bool { didSet { d.set(terrain, forKey: "terrain") } }
-    /// the noon-sun map: black ground, wide bright roads, big labels, nothing else; dark interface, least power
+    /// the noon-sun map: white ground, wide dark roads, big labels, nothing else drawn
     @Published var sun: Bool { didSet { d.set(sun, forKey: "sun") } }
     /// which layer file the map is drawn from right now
     var flavor: String { sun ? "sun" : night ? "dark" : "light" }

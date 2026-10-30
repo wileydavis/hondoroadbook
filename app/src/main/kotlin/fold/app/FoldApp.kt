@@ -56,7 +56,7 @@ class Prefs(ctx: Context) {
     var terrain: Boolean
         get() = p.getBoolean("terrain", true)
         set(v) { p.edit().putBoolean("terrain", v).apply() }
-    /** the noon-sun map: black ground, wide bright roads, big labels, nothing else; dark interface, least power */
+    /** the noon-sun map: white ground, wide dark roads, big labels, nothing else drawn */
     var sun: Boolean
         get() = p.getBoolean("sun", false)
         set(v) { p.edit().putBoolean("sun", v).apply() }
