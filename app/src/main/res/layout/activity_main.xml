@@ -249,7 +249,7 @@
                     <TextView android:id="@+id/navRemaining" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="27sp" android:textStyle="bold" android:maxLines="1" android:includeFontPadding="false" android:text="124 mi" />
                     <TextView android:id="@+id/navEta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="15sp" android:maxLines="1" android:includeFontPadding="false" android:paddingTop="3dp" android:text="3:42 PM · 2 h 10 min" />
                 </LinearLayout>
-                <Space android:layout_width="104dp" android:layout_height="1dp" />
+                <Space android:id="@+id/navHole" android:layout_width="104dp" android:layout_height="1dp" />
                 <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:gravity="end">
                     <TextView android:id="@+id/navSpeed" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="27sp" android:textStyle="bold" android:maxLines="1" android:includeFontPadding="false" android:text="45 mph" />
                     <TextView android:id="@+id/navElev" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="15sp" android:maxLines="1" android:includeFontPadding="false" android:paddingTop="3dp" android:text="4,830 ft" />

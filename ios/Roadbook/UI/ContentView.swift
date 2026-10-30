@@ -26,12 +26,30 @@ struct ContentView: View {
                             .overlay(Text(hud.darkText).font(.system(size: 28, weight: .semibold)).multilineTextAlignment(.center).foregroundStyle(Color(white: 0.6)).padding(24))
                             .onTapGesture { model.wakeFromDim() }
                     }
-                    VStack(spacing: 0) {
-                        topArea
-                        Spacer(minLength: 0)
-                        bottomArea(geo)
+                    if geo.size.width > geo.size.height && model.mode == .nav {
+                        // landscape while riding: the HUD, the nav card and the big button in one column at the left, so the
+                        // map keeps its height; the camera is told how wide the column is
+                        HStack(spacing: 0) {
+                            VStack(spacing: 8) {
+                                topArea(compact: true)
+                                Spacer(minLength: 0)
+                                NavPanel(hud: hud, stacked: true) { EmptyView() }
+                                menuButton
+                            }
+                            .frame(width: 236)
+                            .padding(.leading, 12).padding(.bottom, 12)
+                            .background(GeometryReader { g in Color.clear.onAppear { model.leftColumnPt = g.frame(in: .global).maxX }.onChange(of: g.size) { _, _ in model.leftColumnPt = g.frame(in: .global).maxX } })
+                            Spacer(minLength: 0)
+                        }
+                        .onDisappear { model.leftColumnPt = 0 }
+                    } else {
+                        VStack(spacing: 0) {
+                            topArea(compact: false)
+                            Spacer(minLength: 0)
+                            bottomArea(geo)
+                        }
+                        .padding(.horizontal, 12)
                     }
-                    .padding(.horizontal, 12)
                     if let t = model.toast {
                         VStack { Spacer(); Text(t).font(.system(size: 15, weight: .medium)).multilineTextAlignment(.center).foregroundStyle(Theme.sInk).padding(.horizontal, 16).padding(.vertical, 10).glass().padding(.bottom, bottomInset).padding(.horizontal, 24) }
                             .transition(.opacity).allowsHitTesting(false)
@@ -51,10 +69,10 @@ struct ContentView: View {
             switch model.mode { case .nav: return 120; case .pin: return 170; case .compare: return 260; case .edit: return 180; default: return 90 }
         }
 
-        @ViewBuilder private var topArea: some View {
+        @ViewBuilder private func topArea(compact: Bool) -> some View {
             VStack(spacing: 8) {
                 if model.mode == .nav {
-                    if hud.visible { HudView(hud: hud).padding(.top, 8) }
+                    if hud.visible { HudView(hud: hud, compact: compact).padding(.top, 8) }
                     if hud.offVisible {
                         HStack(spacing: 12) {
                             Text(hud.offText).font(.system(size: 22, weight: .heavy)).foregroundStyle(Theme.sAccent).lineLimit(1).minimumScaleFactor(0.6)
@@ -63,6 +81,8 @@ struct ContentView: View {
                         }
                         .padding(14).glass().padding(.top, 8)
                     }
+                    // a zero-height reporter under the HUD and the off-track card: where the map window begins
+                    Color.clear.frame(height: 0).background(GeometryReader { g in Color.clear.onAppear { model.hudBottomPt = g.frame(in: .global).minY }.onChange(of: g.frame(in: .global).minY) { _, v in model.hudBottomPt = v } })
                 }
                 if model.mode == .edit {
                     Text(model.editLabel).font(.system(size: 14, weight: .medium)).foregroundStyle(Theme.sInk).multilineTextAlignment(.center).padding(12).glass().padding(.top, 8)
@@ -93,7 +113,8 @@ struct ContentView: View {
                 switch model.mode {
                 case .pin: PinPanel()
                 case .compare: ComparePanel()
-                case .nav: NavPanel(hud: hud) { menuButton }
+                case .nav: NavPanel(hud: hud, stacked: false) { menuButton }
+                    .background(GeometryReader { g in Color.clear.onAppear { model.cardTopPt = g.frame(in: .global).minY }.onChange(of: g.frame(in: .global).minY) { _, v in model.cardTopPt = v } })
                 case .edit: EditPanel()
                 case .idle: EmptyView()
                 }
@@ -167,27 +188,34 @@ struct ComparePanel: View {
 struct NavPanel<Menu: View>: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var hud: HudState
+    /// landscape: the numbers in two rows with nothing between them (the big button sits below the card)
+    var stacked = false
     @ViewBuilder let menu: () -> Menu
     var body: some View {
         VStack(spacing: 4) {
             NavScaleBar(hud: hud).frame(height: 18).padding(.horizontal, 2)
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(hud.remaining).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
-                    Text(hud.eta).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1).minimumScaleFactor(0.7)
+            if stacked {
+                HStack { Text(hud.remaining).font(.system(size: 24, weight: .bold)); Spacer(); Text(hud.speed).font(.system(size: 24, weight: .bold)) }.foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
+                HStack { Text(hud.eta).font(.system(size: 13)); Spacer(); Text(hud.elevation).font(.system(size: 13)) }.foregroundStyle(Theme.sInkSoft).lineLimit(1).minimumScaleFactor(0.7)
+            } else {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(hud.remaining).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
+                        Text(hud.eta).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    menu()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(hud.speed).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
+                        Text(hud.elevation).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
-                menu()
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text(hud.speed).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
-                    Text(hud.elevation).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing).contentShape(Rectangle())
-                .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
             }
         }
         .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 10).glass()
+        .contentShape(Rectangle())
+        .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
     }
 }
 

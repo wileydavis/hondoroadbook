@@ -120,17 +120,19 @@ struct ScaleView: View {
 /// The HUD card while navigating: arrow + bar, the distance, the road.
 struct HudView: View {
     @ObservedObject var hud: HudState
+    /// landscape: a smaller arrow and figure, so the column stays short
+    var compact = false
     var body: some View {
-        HStack(spacing: 14) {
-            ArrowView(turn: hud.turn, exit: hud.exit, progress: hud.progress).frame(width: 96, height: 96)
+        HStack(spacing: compact ? 10 : 14) {
+            ArrowView(turn: hud.turn, exit: hud.exit, progress: hud.progress).frame(width: compact ? 72 : 96, height: compact ? 72 : 96)
             VStack(alignment: .leading, spacing: 2) {
-                Text(hud.distance).font(.system(size: 40, weight: .heavy, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).foregroundStyle(Theme.sInk)
-                Text(hud.street).font(.system(size: 20, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.7).foregroundStyle(Theme.sInk)
+                Text(hud.distance).font(.system(size: compact ? 32 : 40, weight: .heavy, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).foregroundStyle(Theme.sInk)
+                Text(hud.street).font(.system(size: compact ? 16 : 20, weight: .semibold)).lineLimit(2).minimumScaleFactor(0.7).foregroundStyle(Theme.sInk)
             }
             Spacer(minLength: 0)
-            CompassView(bearing: hud.compass).frame(width: 34, height: 34)
+            if !compact { CompassView(bearing: hud.compass).frame(width: 34, height: 34) }
         }
-        .padding(14)
+        .padding(compact ? 10 : 14)
         .glass()
     }
 }

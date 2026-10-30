@@ -289,7 +289,7 @@ extension AppModel {
     func setStartNamed(_ c: CLLocationCoordinate2D, _ label: String) {
         planStart = c; startName = placeName(label); drawStart()
         follow = false
-        map.ease(to: c, zoom: 12, bearing: 0, navInset: false, animated: true)
+        map.ease(to: c, zoom: 12, bearing: 0, inset: .zero, animated: true)
     }
 
     /// Where the plan starts: the chosen start, else where the compare was routed from, else the phone.

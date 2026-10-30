@@ -149,6 +149,9 @@ final class AppModel: ObservableObject, MapEvents {
     var overviewDone = false       // overview fits once, then holds still while the puck moves
     private var gestureFrom: CLLocationCoordinate2D?; private var gestureZoom = 0.0
     var lastFix: Fix?
+    /// the riding screen's layout, in points, reported by the views: where the HUD ends, where the nav card starts, and
+    /// the width of the left column in landscape — the map window is what is left
+    var hudBottomPt: CGFloat = 0, cardTopPt: CGFloat = 0, leftColumnPt: CGFloat = 0
     /// the last fix's height above sea level, metres (nil until known)
     var lastAltitude: Double?
     private var glowAt = Date.distantPast
@@ -367,17 +370,27 @@ final class AppModel: ObservableObject, MapEvents {
     }
 
     /// Zoom that puts the next maneuver comfortably on screen, bounded to a useful range.
+    /// The map window while riding: the screen minus the HUD (top), the nav card (bottom) and, in landscape, the left
+    /// column. The rider sits 68 % down that window. Returns (left, hudBottom, cardTop, puckY) in points.
+    private func mapWindow() -> (Double, Double, Double, Double) {
+        let size = map.size
+        let left = Double(leftColumnPt)
+        let top = leftColumnPt > 0 ? 0.0 : Double(hudBottomPt)
+        let cardTop = leftColumnPt > 0 || cardTopPt <= 0 ? Double(size.height) * (leftColumnPt > 0 ? 1.0 : 0.86) : Double(cardTopPt)
+        let puckY = top + 0.68 * (cardTop - top)
+        return (left, top, cardTop, puckY)
+    }
+
     private func turnZoom() -> Double {
         guard let f = follower else { return 15.5 }
         let v = f.view(nowMs: nowMs())
         let r = f.route
         let d = max(60.0, v.next.map { Geo.shared.fastDistance(lat1: v.lat, lon1: v.lon, lat2: r.lats.get(index: $0.vertex), lon2: r.lons.get(index: $0.vertex)) } ?? v.distToNext)
         let lat = lastFix?.lat ?? 45.0
-        // points per meter at zoom z ≈ 2^z / (156543 cos lat). You sit 70% down the screen, so the turn must fit in
-        // the smaller of the room above you and half the width, whatever direction it lies.
-        let size = map.size
-        let hudBottom = hud.visible ? 200.0 : 0.0
-        let room = max(200.0, min((size.height * 0.70 - hudBottom) * 0.80, size.width * 0.42))
+        // points per meter at zoom z ≈ 2^z / (156543 cos lat). The turn must fit in the smaller of the room above the
+        // rider and half the map's width, whatever direction it lies, with a margin for the markers themselves.
+        let (left, top, _, puckY) = mapWindow()
+        let room = max(160.0, min(puckY - top, (Double(map.size.width) - left) / 2) - 28)
         let wantMpp = d / room
         let z = log(156543.03 * cos(lat * .pi / 180) / wantMpp) / log(2.0)
         return min(16.5, max(4.0, z))
@@ -396,7 +409,10 @@ final class AppModel: ObservableObject, MapEvents {
             return
         }
         let zoom: Double = !nav ? max(map.zoom, 15.0) : manualZoom > 0 ? manualZoom : zoomMode == .close ? 17.3 : turnZoom()
-        map.ease(to: CLLocationCoordinate2D(latitude: lat, longitude: lon), zoom: zoom, bearing: nav ? heading : 0, navInset: nav, animated: animate)
+        // the inset centers the target in what is left; chosen so the rider sits 68 % down the map window
+        var inset = UIEdgeInsets.zero
+        if nav { let (left, _, cardTop, puckY) = mapWindow(); inset = UIEdgeInsets(top: max(0, 2 * puckY - cardTop), left: left, bottom: max(0, Double(map.size.height) - cardTop), right: 0) }
+        map.ease(to: CLLocationCoordinate2D(latitude: lat, longitude: lon), zoom: zoom, bearing: nav ? heading : 0, inset: inset, animated: animate)
     }
 
     func locate() {
@@ -499,7 +515,7 @@ final class AppModel: ObservableObject, MapEvents {
         placeLabel = ""
         pin = c; pinName = hit.label
         showPinMarker(c); follow = false
-        map.ease(to: c, zoom: 15, bearing: 0, navInset: false, animated: true)
+        map.ease(to: c, zoom: 15, bearing: 0, inset: .zero, animated: true)
         switchMode(.pin)
     }
 
@@ -508,7 +524,7 @@ final class AppModel: ObservableObject, MapEvents {
         placeLabel = ""
         pin = c; pinName = m.name; showPinMarker(c)
         follow = false
-        map.ease(to: c, zoom: 15, bearing: 0, navInset: false, animated: true)
+        map.ease(to: c, zoom: 15, bearing: 0, inset: .zero, animated: true)
         switchMode(.pin)
     }
 

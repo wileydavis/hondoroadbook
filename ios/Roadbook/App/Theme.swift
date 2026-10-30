@@ -17,7 +17,7 @@ enum Theme {
     static let barBg = dyn("#E5E1D8", "#333333")
     static let button = dyn("#1B1B1B", "#F2F2F2")
     static let buttonText = dyn("#FFFFFF", "#111111")
-    static let glass = dyn("#D9FFFFFF", "#D91E1E1E")
+    static let glass = dyn("#F5FFFFFF", "#F51E1E1E")
     static let glassEdge = dyn("#331B1B1B", "#33F2F2F2")
     static let start = UIColor(hex: "#16A34A")
 

@@ -246,6 +246,7 @@ class MainActivity : AppCompatActivity() {
         panelIdle = findViewById(R.id.panelIdle); panelPin = findViewById(R.id.panelPin); panelNav = findViewById(R.id.panelNav)
         pinLabel = findViewById(R.id.pinLabel); navRemaining = findViewById(R.id.navRemaining); navSpeed = findViewById(R.id.navSpeed)
         navEta = findViewById(R.id.navEta); navElev = findViewById(R.id.navElev); navScale = findViewById<ScaleView>(R.id.navScale).also { it.fixed = true }
+        applyOrientation()
         toastView = findViewById(R.id.toast)
         panelCompare = findViewById(R.id.panelCompare); compareRows = findViewById(R.id.compareRows)
         turnChip = findViewById(R.id.turnChip); hudCompass = findViewById(R.id.hudCompass)
@@ -515,7 +516,7 @@ class MainActivity : AppCompatActivity() {
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
         // the stretch of route between the rider and the next turn glows softly in the route's own colour
-        addUnderLabels(LineLayer("lead-line", "lead-src").withProperties(lineColor(ContextCompat.getColor(this, if (isTrack) R.color.track else R.color.route)), lineWidth(18f), lineOpacity(0.32f), lineBlur(5f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND)))
+        addUnderLabels(LineLayer("lead-line", "lead-src").withProperties(lineColor(ContextCompat.getColor(this, if (isTrack) R.color.track else R.color.route)), lineWidth(24f), lineOpacity(0.5f), lineBlur(4f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND)))
         // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
         st.addLayer(SymbolLayer("turns-layer", "turns-src").withProperties(iconImage("turn"), iconAllowOverlap(true), iconIgnorePlacement(true)).also { it.minZoom = 10f })
         if (mode == Mode.COMPARE) drawCandidates()
@@ -742,6 +743,52 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Zoom that puts the next maneuver comfortably on screen, bounded to a useful range. */
+    private val isLandscape: Boolean get() = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    /** landscape: the HUD, the nav card and the big button share one column at the left; the map has the rest */
+    private val landColumn: Int get() = dp(236)
+
+    /**
+     * Lays the riding screen out for the orientation: portrait stacks the HUD on top and the nav card along the bottom
+     * with the big button in its middle; landscape puts all three in one column at the left so the map keeps its height.
+     * (The activity handles rotation itself, so the map survives it; the layout is re-applied here instead of re-inflated.)
+     */
+    private fun applyOrientation() {
+        val land = isLandscape
+        fun frame(v: View, width: Int, gravity: Int, l: Int, t: Int, r: Int, b: Int) { v.layoutParams = (v.layoutParams as android.widget.FrameLayout.LayoutParams).also { it.width = width; it.gravity = gravity; it.setMargins(l, t, r, b) } }
+        frame(hud, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, dp(12), dp(12), dp(12), dp(12))
+        frame(offPanel, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, dp(12), dp(12), dp(12), dp(12))
+        arrow.layoutParams = arrow.layoutParams.also { it.width = dp(if (land) 78 else 104); it.height = it.width }
+        hudDistance.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 32f else 40f)
+        hudCompass.layoutParams = (hudCompass.layoutParams as LinearLayout.LayoutParams).also { it.width = dp(if (land) 30 else 40); it.height = it.width }
+        frame(panelNav, if (land) landColumn + dp(12) else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.BOTTOM, 0, 0, 0, 0)
+        panelNav.setPadding(dp(12), 0, if (land) 0 else dp(12), dp(if (land) 112 else 12))
+        findViewById<View>(R.id.navHole).layoutParams = findViewById<View>(R.id.navHole).layoutParams.also { it.width = dp(if (land) 10 else 104) }
+        for (t in listOf(navRemaining, navSpeed)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 24f else 27f)
+        for (t in listOf(navEta, navElev)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 13f else 15f)
+        val menu = findViewById<View>(R.id.btnMenu)
+        frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 16))
+        mapView.post { if (mode == Mode.NAV && follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyOrientation()
+    }
+
+    /**
+     * The map window while riding: the part of the screen not under the HUD (top), the nav card (bottom) or, in
+     * landscape, the left column. The rider sits 68 % down that window; the next turn must fit above or beside.
+     * Returns [left, hudBottom, cardTop, puckY] in pixels.
+     */
+    private fun mapWindow(): DoubleArray {
+        val land = isLandscape
+        val left = if (land) (landColumn + dp(12)).toDouble() else 0.0
+        val top = if (land) 0.0 else when { hud.visibility == View.VISIBLE -> hud.bottom.toDouble(); offPanel.visibility == View.VISIBLE -> offPanel.bottom.toDouble(); else -> 0.0 }
+        val cardTop = if (land) mapView.height.toDouble() else if (panelNav.visibility == View.VISIBLE && panelNav.height > 0) (panelNav.top + dp(0)).toDouble() else mapView.height * 0.9
+        val puckY = top + 0.68 * (cardTop - top)
+        return doubleArrayOf(left, top, cardTop, puckY)
+    }
+
     private fun turnZoom(): Double {
         val f = follower ?: return 15.5
         val v = f.view(android.os.SystemClock.elapsedRealtime())
@@ -749,10 +796,10 @@ class MainActivity : AppCompatActivity() {
         val r = f.route; val m = v.next
         val d = (if (m != null) Geo.fastDistance(v.lat, v.lon, r.lats[m.vertex], r.lons[m.vertex]) else v.distToNext).coerceAtLeast(60.0)
         val lat = lastFix?.lat ?: 45.0
-        // meters per pixel at zoom z ≈ 156543 * cos(lat) / 2^z. You sit 70% down the screen, so the turn
-        // must fit in the smaller of the room above you and half the width, whatever direction it lies.
-        val hudBottom = if (hud.visibility == View.VISIBLE) hud.bottom.toDouble() else 0.0
-        val room = minOf((mapView.height * 0.70 - hudBottom) * 0.80, mapView.width * 0.42).coerceAtLeast(200.0)
+        // meters per pixel at zoom z ≈ 156543 * cos(lat) / 2^z. The turn must fit in the smaller of the room above
+        // the rider and half the map's width, whatever direction it lies, with a margin for the markers themselves.
+        val w = mapWindow()
+        val room = (minOf(w[3] - w[1], (mapView.width - w[0]) / 2.0) - dp(28)).coerceAtLeast(160.0)
         val wantMpp = d / room
         val z = Math.log(156543.03 * Math.cos(Math.toRadians(lat)) / wantMpp) / Math.log(2.0)
         return z.coerceIn(4.0, 16.5)
@@ -778,10 +825,11 @@ class MainActivity : AppCompatActivity() {
             else -> turnZoom()
         }
         val bearing = if (nav) heading else 0.0
-        // padding centers the target in the remaining area: top 0.5h, bottom 0.1h puts you at 70% down the screen
-        val topPad = if (nav) mapView.height * 0.5 else 0.0
-        val bottomPad = if (nav) mapView.height * 0.1 else 0.0
-        val pos = CameraPosition.Builder().target(LatLng(lat, lon)).zoom(zoom).bearing(bearing).tilt(0.0).padding(0.0, topPad, 0.0, bottomPad).build()
+        // padding centers the target in the remaining area; chosen so the rider sits 68 % down the map window
+        val w = if (nav) mapWindow() else doubleArrayOf(0.0, 0.0, mapView.height.toDouble(), 0.0)
+        val bottomPad = if (nav) mapView.height - w[2] else 0.0
+        val topPad = if (nav) (2 * w[3] - w[2]).coerceAtLeast(0.0) else 0.0
+        val pos = CameraPosition.Builder().target(LatLng(lat, lon)).zoom(zoom).bearing(bearing).tilt(0.0).padding(if (nav) w[0] else 0.0, topPad, 0.0, bottomPad).build()
         val update = CameraUpdateFactory.newCameraPosition(pos)
         if (animate) m.easeCamera(update, 1000) else m.moveCamera(update)
     }

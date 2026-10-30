@@ -142,7 +142,7 @@ final class MapController: NSObject, MLNMapViewDelegate {
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
         // the stretch of route between the rider and the next turn glows softly in the route's own colour
-        let lead = line("lead-line", "lead-src", color: isTrack ? track : routeColor, width: 18, opacity: 0.32); lead.lineBlur = Self.c(5); addUnderLabels(lead)
+        let lead = line("lead-line", "lead-src", color: isTrack ? track : routeColor, width: 24, opacity: 0.5); lead.lineBlur = Self.c(4); addUnderLabels(lead)
         // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
         let turns = MLNSymbolStyleLayer(identifier: "turns-layer", source: sources["turns-src"]!); turns.iconImageName = Self.c("turn"); turns.iconAllowsOverlap = Self.c(true); turns.iconIgnoresPlacement = Self.c(true); turns.minimumZoomLevel = 10; st.addLayer(turns)
         let start = MLNSymbolStyleLayer(identifier: "start-layer", source: sources["start-src"]!); start.iconImageName = Self.c("start"); start.iconAllowsOverlap = Self.c(true); start.iconIgnoresPlacement = Self.c(true); st.addLayer(start)
@@ -186,11 +186,9 @@ final class MapController: NSObject, MLNMapViewDelegate {
     func metersPerPoint(at lat: Double) -> Double { mapView.metersPerPoint(atLatitude: lat) }
     var size: CGSize { mapView.bounds.size }
 
-    /// Centers a point at a zoom and bearing; the inset puts the target lower on the screen while navigating.
-    func ease(to c: CLLocationCoordinate2D, zoom: Double, bearing: Double, navInset: Bool, animated: Bool) {
-        let h = mapView.bounds.height
-        // padding centers the target in the remaining area: top 0.5h, bottom 0.1h puts you at 70% down the screen
-        mapView.contentInset = navInset ? UIEdgeInsets(top: h * 0.5, left: 0, bottom: h * 0.1, right: 0) : .zero
+    /// Centers a point at a zoom and bearing; the inset (while navigating) puts the target where the map window wants it.
+    func ease(to c: CLLocationCoordinate2D, zoom: Double, bearing: Double, inset: UIEdgeInsets, animated: Bool) {
+        mapView.contentInset = inset
         mapView.setCenter(c, zoomLevel: zoom, direction: bearing, animated: animated)
     }
 
