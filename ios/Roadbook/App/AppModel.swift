@@ -263,7 +263,9 @@ final class AppModel: ObservableObject, MapEvents {
         if let f = lastFix { map.updatePuck(f.lat, f.lon, heading: heading) }
         if mode == .compare { drawCandidates() }
         if libraryOn { drawLibrary() }
+        let menuWasOpen = menuOpen
         switchMode(mode)
+        menuOpen = menuWasOpen   // a style reload (a map change from the menu) must not pull the menu down
         if mode == .nav && follower != nil { startHudTimer() }
     }
 
@@ -501,7 +503,8 @@ final class AppModel: ObservableObject, MapEvents {
             ? [(50, "50 m"), (100, "100 m"), (200, "200 m"), (500, "500 m"), (1000, "1 km"), (2000, "2 km"), (5000, "5 km"), (10000, "10 km"), (20000, "20 km"), (50000, "50 km")]
             : [(30.48, "100 ft"), (76.2, "250 ft"), (152.4, "500 ft"), (402.336, "¼ mi"), (804.672, "½ mi"), (1609.344, "1 mi"), (3218.688, "2 mi"), (8046.72, "5 mi"), (16093.44, "10 mi"), (32186.88, "20 mi"), (80467.2, "50 mi")]
         var i = ladder.firstIndex { $0.1 == (Units.metric ? "1 km" : "1 mi") } ?? 5
-        let room = Double(map.size.width) - 110
+        // the bar lives on the nav card: in landscape that is the 236 pt column, not the screen
+        let room = (leftColumnPt > 0 ? 236.0 : Double(map.size.width)) - 110
         while i > 0 && ladder[i].0 / mpp > room { i -= 1 }
         while i < ladder.count - 1 && ladder[i].0 / mpp < 36 { i += 1 }
         if hud.navScaleLabel != ladder[i].1 { hud.navScaleLabel = ladder[i].1 }

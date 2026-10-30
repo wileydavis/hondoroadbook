@@ -223,13 +223,18 @@ struct NavPanel<Menu: View>: View {
 struct NavScaleBar: View {
     @ObservedObject var hud: HudState
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Path { p in p.move(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 0, y: 1)); p.addLine(to: CGPoint(x: hud.navScalePx, y: 1)); p.addLine(to: CGPoint(x: hud.navScalePx, y: 9)) }
-                .stroke(Theme.sInk, lineWidth: 2)
-                .frame(width: max(1, hud.navScalePx), height: 10)
-            Text(hud.navScaleLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sInk).padding(.top, -3)
-            Spacer(minLength: 0)
+        // drawn inside whatever width the card gives it, never wider: a mile that does not fit is clipped, not pushed out
+        GeometryReader { g in
+            let w = min(hud.navScalePx, max(1, g.size.width - 46))
+            HStack(alignment: .top, spacing: 6) {
+                Path { p in p.move(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 0, y: 1)); p.addLine(to: CGPoint(x: w, y: 1)); p.addLine(to: CGPoint(x: w, y: 9)) }
+                    .stroke(Theme.sInk, lineWidth: 2)
+                    .frame(width: max(1, w), height: 10)
+                Text(hud.navScaleLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sInk).padding(.top, -3).lineLimit(1)
+                Spacer(minLength: 0)
+            }
         }
+        .clipped()
     }
 }
 

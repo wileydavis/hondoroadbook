@@ -443,7 +443,7 @@ class MainActivity : AppCompatActivity() {
             if (mode == Mode.EDIT) findViewById<TextView>(R.id.editLabel).text = "$trackName · ${trackCues.size} cues\nLong-press on the line to add a cue. Tap a cue to edit it."
             pin?.let { showPinMarker(it); pinLabel.text = pinName.ifEmpty { "%.5f, %.5f".format(it.latitude, it.longitude) } }
             lastFix?.let { updatePuck(it.lat, it.lon, heading) }
-            switchMode(mode)
+            switchMode(mode, keepMenu = true)   // a style reload (a map change from the menu) must not pull the menu down
             if (mode == Mode.NAV && follower != null) {
                 window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 ui.removeCallbacks(hudTick); ui.post(hudTick)
@@ -1732,7 +1732,7 @@ class MainActivity : AppCompatActivity() {
         applyUiTheme()
     }
 
-    private fun switchMode(m: Mode) {
+    private fun switchMode(m: Mode, keepMenu: Boolean = false) {
         mode = m
         panelIdle.visibility = View.GONE          // the old small buttons stay hidden; the glove menu drives them
         panelPin.visibility = if (m == Mode.PIN) View.VISIBLE else View.GONE
@@ -1741,8 +1741,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.scale).visibility = if (m == Mode.NAV) View.GONE else View.VISIBLE
         panelCompare.visibility = if (m == Mode.COMPARE) View.VISIBLE else View.GONE
         panelEdit.visibility = if (m == Mode.EDIT) View.VISIBLE else View.GONE
-        findViewById<View>(R.id.btnMenu).visibility = if (m == Mode.IDLE || m == Mode.NAV) View.VISIBLE else View.GONE
-        closeMenu(animate = false)
+        val menuUp = findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE
+        findViewById<View>(R.id.btnMenu).visibility = if ((m == Mode.IDLE || m == Mode.NAV) && !(keepMenu && menuUp)) View.VISIBLE else View.GONE
+        if (!keepMenu) closeMenu(animate = false)
         updateRecStrip()
         if (m != Mode.NAV) { hud.visibility = View.GONE; offPanel.visibility = View.GONE; turnChip.visibility = View.GONE; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
         map?.uiSettings?.isCompassEnabled = m != Mode.NAV
