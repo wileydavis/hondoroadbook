@@ -17,17 +17,41 @@ final class Tone {
     private init() {}
 
     /// Playback that ducks other audio and mixes with it, and keeps the session alive in the background.
+    ///
+    /// The session is active only while something is sounding. iOS ducks other audio for as long as the session is
+    /// active, not just while a sound plays, so an always-on session would hold the rider's music down for the whole
+    /// ride. Every sound and every phrase takes a hold for about its own length; a short while after the last hold
+    /// lapses the session is released and the music comes back up.
     private static var configured = false
+    private static var holdUntil = Date.distantPast
+    private static var releaseTimer: Timer?
+    private static let session = AVAudioSession.sharedInstance()
     static func configureSession() {
-        let s = AVAudioSession.sharedInstance()
+        if configured { return }
         // playback (plays with the silent switch on, through the media volume), ducking music while a cue plays;
         // if the ducking options are refused on some setup, plain playback is still better than silence
-        do { try s.setCategory(.playback, mode: .default, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]) }
+        do { try session.setCategory(.playback, mode: .default, options: [.duckOthers, .interruptSpokenAudioAndMixWithOthers]) }
         catch {
             NSLog("Roadbook: audio session options refused (%@); plain playback", error.localizedDescription)
-            do { try s.setCategory(.playback, mode: .default) } catch { NSLog("Roadbook: audio session category refused: %@", error.localizedDescription) }
+            do { try session.setCategory(.playback, mode: .default) } catch { NSLog("Roadbook: audio session category refused: %@", error.localizedDescription) }
         }
-        do { try s.setActive(true); configured = true } catch { NSLog("Roadbook: audio session could not activate: %@", error.localizedDescription) }
+        configured = true
+    }
+    /// Activates the session for the next `seconds` (extending any hold already running) and arms the release.
+    static func hold(_ seconds: Double) {
+        configureSession()
+        let until = Date().addingTimeInterval(seconds)
+        if until > holdUntil { holdUntil = until }
+        do { try session.setActive(true) } catch { NSLog("Roadbook: audio session could not activate: %@", error.localizedDescription) }
+        DispatchQueue.main.async {
+            releaseTimer?.invalidate()
+            releaseTimer = Timer.scheduledTimer(withTimeInterval: max(0.2, holdUntil.timeIntervalSinceNow + 0.6), repeats: false) { _ in Tone.releaseIfIdle() }
+        }
+    }
+    /// Lets other audio back up once nothing is sounding; re-arms itself while something still is.
+    static func releaseIfIdle() {
+        if Date() < holdUntil || Speech.shared.speaking { DispatchQueue.main.async { releaseTimer?.invalidate(); releaseTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in Tone.releaseIfIdle() } }; return }
+        do { try session.setActive(false, options: .notifyOthersOnDeactivation) } catch { NSLog("Roadbook: audio session release: %@", error.localizedDescription) }
     }
 
     /// One or more notes back to back as 16-bit mono WAV bytes. freq in Hz, each ms long, with a soft attack/release.
@@ -65,7 +89,6 @@ final class Tone {
 
     private func play(_ key: String, _ build: () -> Data) {
         guard enabled else { return }
-        if !Tone.configured { Tone.configureSession() }
         lock.lock()
         var p = cache[key]
         if p == nil {
@@ -74,6 +97,7 @@ final class Tone {
         }
         lock.unlock()
         guard let player = p else { return }
+        Tone.hold(player.duration + 0.3)
         player.currentTime = 0
         if !player.play() { NSLog("Roadbook: tone %@ did not play", key) }
     }

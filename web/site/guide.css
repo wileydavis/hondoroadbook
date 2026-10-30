@@ -63,7 +63,7 @@
 
 /* chrome over the map */
 .gscreen .gabs { position: absolute; }
-.gscreen .gfab { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: 58px; height: 58px; border-radius: 50%; background: #1b1b1b; color: #f4efe6; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+.gscreen .gfab { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: 58px; height: 58px; border-radius: 50%; background: #1b1b1b; color: #f4efe6; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; box-shadow: 0 6px 16px rgba(0,0,0,.3); }
 .gscreen .gtop { position: absolute; left: 10px; right: 10px; top: 12px; display: none; }
 .gscreen .gcard { background: #fffdf8; border: 1px solid #e2dccf; border-radius: 14px; padding: 10px 12px; box-shadow: 0 6px 18px rgba(0,0,0,.12); color: #1b1b1b; }
 .gscreen .ghud { display: flex; align-items: center; gap: 10px; }
@@ -73,6 +73,15 @@
 .gscreen .gbar { height: 4px; border-radius: 2px; background: #e2dccf; margin-top: 8px; overflow: hidden; }
 .gscreen .gbar i { display: block; height: 100%; width: 0; background: #d8502f; transition: width 1.2s linear; }
 .gscreen .gpanel { position: absolute; left: 12px; right: 12px; bottom: 14px; display: none; }
+.gscreen .navcard { padding: 6px 12px 10px; }
+.gscreen .navcard .sc { display: flex; align-items: flex-start; gap: 5px; height: 14px; }
+.gscreen .navcard .sc i { display: block; width: 88px; height: 7px; border: 2px solid #1b1b1b; border-bottom: 0; }
+.gscreen .navcard .sc b { font-size: 9px; }
+.gscreen .navcard .row { display: flex; align-items: center; justify-content: space-between; }
+.gscreen .navcard .hole { width: 64px; flex: none; }
+.gscreen .navcard .big { font-size: 17px; font-weight: 800; line-height: 1.1; }
+.gscreen .navcard .small { font-size: 10px; color: #5a5a5a; margin-top: 2px; }
+.gscreen .gpanel .navcard { margin-bottom: 0; }
 .gscreen .gpanel.on, .gscreen .gtop.on { display: block; }
 .gscreen .grow { display: flex; gap: 6px; margin-top: 8px; }
 .gscreen .gbtn { flex: 1; min-width: 0; height: 36px; border-radius: 9px; background: #fffdf8; border: 1px solid #cfc9bb; color: #1b1b1b; font-weight: 800; font-size: 11px; letter-spacing: .04em; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 6px; white-space: nowrap; }

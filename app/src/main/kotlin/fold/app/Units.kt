@@ -43,6 +43,10 @@ object Units {
     }
 
     fun speed(ms: Double): String = if (metric) "${(ms * 3.6).roundToInt()} km/h" else "${(ms * 2.23694).roundToInt()} mph"
+    /** height above sea level, to the nearest 10 ft / 5 m */
+    fun elevation(m: Double): String = if (metric) "${((m / 5).roundToInt() * 5)} m" else "${String.format("%,d", (m * 3.28084 / 10).roundToInt() * 10)} ft"
+    /** the clock time [sec] from now, in the phone's own format ("3:42 PM") */
+    fun clockFromNow(ctx: android.content.Context, sec: Double): String = android.text.format.DateFormat.getTimeFormat(ctx).format(java.util.Date(System.currentTimeMillis() + (sec * 1000).toLong()))
 
     fun time(sec: Double): String {
         val m = (sec / 60).roundToInt()

@@ -21,6 +21,11 @@ final class HudState: ObservableObject {
     @Published var rerouteLabel = "REROUTE"
     @Published var remaining = ""
     @Published var speed = ""
+    @Published var eta = ""
+    @Published var elevation = ""
+    /// the fixed-distance scale bar on the nav card: one mile (one kilometre) unless that would not fit
+    @Published var navScaleLabel = ""
+    @Published var navScalePx: CGFloat = 0
     @Published var compass: Double = 0
     @Published var arrived = false
     @Published var darkText = ""
@@ -144,6 +149,9 @@ final class AppModel: ObservableObject, MapEvents {
     var overviewDone = false       // overview fits once, then holds still while the puck moves
     private var gestureFrom: CLLocationCoordinate2D?; private var gestureZoom = 0.0
     var lastFix: Fix?
+    /// the last fix's height above sea level, metres (nil until known)
+    var lastAltitude: Double?
+    private var glowAt = Date.distantPast
     var heading = 0.0
     var compareFrom: Fix?
     var compareGeneration = 0
@@ -182,7 +190,13 @@ final class AppModel: ObservableObject, MapEvents {
         // under 15 % while navigating, the saver turns itself on rather than let the ride die on a long leg
         UIDevice.current.isBatteryMonitoringEnabled = true
         NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification).sink { [weak self] _ in self?.batteryChanged() }.store(in: &cancellables)
-        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification).sink { [weak self] _ in self?.uiVisible = true; if let s = self, s.follow, let f = s.lastFix { s.moveCamera(f.lat, f.lon, animate: false) } }.store(in: &cancellables)
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification).sink { [weak self] _ in
+            guard let s = self else { return }
+            s.uiVisible = true
+            // a pinch the map thought it saw while we were away must not freeze the auto zoom: back to the mode's own zoom
+            s.manualZoom = -1; s.gestureFrom = nil; s.overviewDone = false
+            if s.follow, let f = s.lastFix { s.moveCamera(f.lat, f.lon, animate: false) }
+        }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification).sink { [weak self] _ in self?.uiVisible = false }.store(in: &cancellables)
         // @Published fires before the new value is stored: style from the value it hands over, never from prefs.night here
         prefs.$night.dropFirst().sink { [weak self] night in self?.loadStyle(night: night) }.store(in: &cancellables)
@@ -320,10 +334,12 @@ final class AppModel: ObservableObject, MapEvents {
         let fix = Fix(l)
         let first = lastFix == nil
         lastFix = fix
+        if l.verticalAccuracy >= 0 { lastAltitude = l.altitude }
         if fix.speed > 1.5 && fix.bearing >= 0 { heading = fix.bearing }
         if let f = follower {
             let v = f.view(nowMs: nowMs())
-            if mode == .nav { map.updatePuck(v.lat, v.lon, heading: (v.onRoute && v.speed > 1.5) ? f.route.segmentBearing(i: v.segment) : heading); handleOffRoute(v, fix) }
+            // the marker points where the GPS says the bike points, never along the road it is assumed to be on
+            if mode == .nav { map.updatePuck(v.lat, v.lon, heading: v.speed > 1.5 ? v.heading : heading); handleOffRoute(v, fix) }
             else { map.updatePuck(fix.lat, fix.lon, heading: heading) }
         } else { map.updatePuck(fix.lat, fix.lon, heading: heading) }
         if (follow || (first && !planningCamera)) && uiVisible { moveCamera(fix.lat, fix.lon, animate: !first) }
@@ -463,6 +479,16 @@ final class AppModel: ObservableObject, MapEvents {
         }
         if hud.scaleLabel != lbl { hud.scaleLabel = lbl }
         hud.scalePx = CGFloat(px)
+        // the nav card's bar: one mile / one kilometre, stepping down only when it would not fit, up when it would vanish
+        let ladder: [(Double, String)] = Units.metric
+            ? [(50, "50 m"), (100, "100 m"), (200, "200 m"), (500, "500 m"), (1000, "1 km"), (2000, "2 km"), (5000, "5 km"), (10000, "10 km"), (20000, "20 km"), (50000, "50 km")]
+            : [(30.48, "100 ft"), (76.2, "250 ft"), (152.4, "500 ft"), (402.336, "¼ mi"), (804.672, "½ mi"), (1609.344, "1 mi"), (3218.688, "2 mi"), (8046.72, "5 mi"), (16093.44, "10 mi"), (32186.88, "20 mi"), (80467.2, "50 mi")]
+        var i = ladder.firstIndex { $0.1 == (Units.metric ? "1 km" : "1 mi") } ?? 5
+        let room = Double(map.size.width) - 110
+        while i > 0 && ladder[i].0 / mpp > room { i -= 1 }
+        while i < ladder.count - 1 && ladder[i].0 / mpp < 36 { i += 1 }
+        if hud.navScaleLabel != ladder[i].1 { hud.navScaleLabel = ladder[i].1 }
+        hud.navScalePx = CGFloat(ladder[i].0 / mpp)
     }
 
     // ---------------------------------------------------------------- pin / modes
@@ -569,7 +595,7 @@ final class AppModel: ObservableObject, MapEvents {
 
     func toggleSound() {
         let on = !prefs.sound; prefs.sound = on; Tone.shared.enabled = on; Speech.shared.enabled = on
-        if on { Tone.configureSession(); Tone.shared.turn(); Speech.shared.say("Sound on"); showToast("Sound on · " + Tone.outputName, 4) } else { Speech.shared.stop() }
+        if on { Tone.shared.turn(); Speech.shared.say("Sound on"); showToast("Sound on · " + Tone.outputName, 4) } else { Speech.shared.stop(); Tone.releaseIfIdle() }
     }
 
     func toggleNight() { prefs.night.toggle() }
@@ -609,9 +635,19 @@ final class AppModel: ObservableObject, MapEvents {
     }
 
     /// Dashed line from you to the next turn, for turns still far out (next-turn view only).
+    /// The glow from the rider to the next cue: the route's own points between them, refreshed a few times a second.
     private func updateLead(_ v: NavView) {
-        guard let next = v.next, let r = follower?.route, v.onRoute, !v.arrived, zoomMode == .turn, next.turn != .arrive, v.progress <= 0, v.distToNext > 120 else { map.clear("lead-src"); return }
-        map.set("lead-src", MapController.lineFeature([CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon), r.coordinate(ofVertex: next.vertex)]))
+        guard let next = v.next, let r = follower?.route, v.onRoute, !v.arrived else { if glowAt != .distantPast { glowAt = .distantPast; map.clear("lead-src") }; return }
+        if Date().timeIntervalSince(glowAt) < 0.25 { return }
+        glowAt = Date()
+        var pts = [CLLocationCoordinate2D(latitude: v.lat, longitude: v.lon)]
+        let from = max(0, v.segment + 1), to = next.vertex
+        if to >= from {
+            let step = max(1, Int(to - from) / 600); var i = from
+            while i <= to { pts.append(r.coordinate(ofVertex: i)); i += Int32(step) }
+            if Int(to - from) % step != 0 { pts.append(r.coordinate(ofVertex: to)) }
+        } else { pts.append(r.coordinate(ofVertex: to)) }
+        map.set("lead-src", MapController.lineFeature(pts))
     }
 
     private func renderHud(_ v: NavView) {
@@ -619,11 +655,11 @@ final class AppModel: ObservableObject, MapEvents {
             let m = v.next
             hud.darkText = v.arrived ? "ARRIVED" : !v.onRoute ? "OFF TRACK" : m == nil ? Units.distance(v.remaining) : Units.cue(v.distToNext) + "\n" + (m!.turn == .arrive ? "Destination" : m!.phrase())
         }
-        if mode != .nav { if v.onRoute { map.updatePuck(v.lat, v.lon, heading: follower?.route.segmentBearing(i: v.segment) ?? heading) }; return }
+        if mode != .nav { if v.fixState == .valid || v.fixState == .degraded { map.updatePuck(v.lat, v.lon, heading: v.speed > 1.5 ? v.heading : heading) }; return }
         if v.arrived {
             hud.visible = true; hud.offVisible = false; hud.arrived = true
             hud.turn = .arrive; hud.distance = "ARRIVED"; hud.street = ""; hud.progress = 1
-            hud.remaining = Units.distance(0)
+            hud.remaining = Units.distance(0); hud.eta = ""
             return
         }
         hud.arrived = false
@@ -632,7 +668,7 @@ final class AppModel: ObservableObject, MapEvents {
             hud.visible = false; hud.offVisible = true
             hud.offText = v.fixState == FixState.none ? "WAITING FOR GPS" : "NO GPS · " + Units.time(v.fixAge)
             hud.showReroute = false
-            hud.remaining = Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds); hud.speed = "—"
+            hud.remaining = Units.distance(v.remaining); hud.eta = Units.time(v.etaSeconds); hud.speed = "—"
             return
         }
         if !v.onRoute {
@@ -656,12 +692,12 @@ final class AppModel: ObservableObject, MapEvents {
                 hud.progress = v.progress
             }
         }
-        hud.remaining = Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds)
-        hud.speed = Units.speed(v.speed)
+        hud.remaining = Units.distance(v.remaining); hud.eta = Units.clockFromNow(v.etaSeconds) + " · " + Units.time(v.etaSeconds)
+        hud.speed = Units.speed(v.speed); hud.elevation = lastAltitude.map { Units.elevation($0) } ?? ""
         hud.compass = map.bearing
         updateLead(v)
         // smooth puck between fixes
-        if v.onRoute { map.updatePuck(v.lat, v.lon, heading: follower?.route.segmentBearing(i: v.segment) ?? heading) }
+        if v.fixState == .valid || v.fixState == .degraded { map.updatePuck(v.lat, v.lon, heading: v.speed > 1.5 ? v.heading : heading) }
     }
 
     // ---------------------------------------------------------------- open-with (a .gpx or .mappack from Files, Mail, AirDrop)

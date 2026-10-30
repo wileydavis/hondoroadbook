@@ -141,7 +141,8 @@ final class MapController: NSObject, MLNMapViewDelegate {
             let cl = line("cmp-line\(suffix)", "cmp-src", color: .gray, width: sel ? 6 : 3, opacity: sel ? 1 : 0.75); cl.lineColor = colorByMode; cl.predicate = pred; addUnderLabels(cl)
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
-        let lead = line("lead-line", "lead-src", color: ink, width: 2.5, opacity: 0.45, dash: [2, 2]); addUnderLabels(lead)
+        // the stretch of route between the rider and the next turn glows softly in the route's own colour
+        let lead = line("lead-line", "lead-src", color: isTrack ? track : routeColor, width: 18, opacity: 0.32); lead.lineBlur = Self.c(5); addUnderLabels(lead)
         // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
         let turns = MLNSymbolStyleLayer(identifier: "turns-layer", source: sources["turns-src"]!); turns.iconImageName = Self.c("turn"); turns.iconAllowsOverlap = Self.c(true); turns.iconIgnoresPlacement = Self.c(true); turns.minimumZoomLevel = 10; st.addLayer(turns)
         let start = MLNSymbolStyleLayer(identifier: "start-layer", source: sources["start-src"]!); start.iconImageName = Self.c("start"); start.iconAllowsOverlap = Self.c(true); start.iconIgnoresPlacement = Self.c(true); st.addLayer(start)
@@ -166,6 +167,7 @@ final class MapController: NSObject, MLNMapViewDelegate {
         guard let r = r else { clear("route-src"); return }
         set("route-src", Self.lineFeature(r.coords))
         (mapView.style?.layer(withIdentifier: "route-line") as? MLNLineStyleLayer)?.lineColor = Self.c(color)
+        (mapView.style?.layer(withIdentifier: "lead-line") as? MLNLineStyleLayer)?.lineColor = Self.c(color)
     }
 
     func updatePuck(_ lat: Double, _ lon: Double, heading: Double) {

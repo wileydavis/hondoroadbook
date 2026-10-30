@@ -235,7 +235,16 @@ class Follower(val route: Route, private val lookAheadSeconds: Double = 15.0) {
         var progress = if (windowMeters < 0 || !onRoute) 0.0 else (1.0 - dist / windowMeters).coerceIn(0.0, 1.0)
         if (onRoute) { if (progress > barMax) barMax = progress else progress = barMax }
         val remaining = max(0.0, route.length - est)
-        val (plat, plon) = if (onRoute) interpolate(est) else Pair(lf.lat, lf.lon)
+        // where to draw the rider: on the line only while the fix sits on it and points along it; the moment the
+        // heading disagrees with the road (a missed turn, riding the route backwards) the raw fix is shown, dead-reckoned
+        // along the heading, so the marker never turns a corner the rider did not
+        val snapped = onRoute && state != FixState.STALE && offDist <= max(12.0, lf.accuracy) &&
+            (speedEma < 1.5 || kotlin.math.abs(Geo.turnAngle(heading, route.segmentBearing(seg))) < 35.0)
+        val (plat, plon) = if (snapped) interpolate(est) else {
+            val dt = if (state == FixState.STALE) 0.0 else ((nowMs - lf.timeMs) / 1000.0).coerceIn(0.0, 2.0)
+            val d = if (speedEma > 1.0) speedEma * dt else 0.0
+            if (d > 0.0) Geo.destination(lf.lat, lf.lon, heading, d).let { Pair(it[0], it[1]) } else Pair(lf.lat, lf.lon)
+        }
         val speed = if (state == FixState.STALE) 0.0 else speedEma
         val stopped = if (stillSince < 0 || state == FixState.STALE) 0L else max(0L, nowMs - stillSince)
         return NavView(onRoute, arrived, est, next, dist, progress, remaining, eta(remaining), plat, plon, heading, speed, offDist, offBearing, seg, state, age, group, stopped)

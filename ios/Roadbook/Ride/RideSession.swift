@@ -42,7 +42,7 @@ final class RideSession: NSObject, NavSink {
         if let old = controller, old !== c { old.end() }
         controller = c; lastFailure = nil
         title = c.destName.isEmpty ? "Navigating" : (c.isTrack ? "Following " : "To ") + c.destName
-        Tone.configureSession()
+        Tone.configureSession()   // the category only; the session goes active per sound, so music is not held down all ride
         if sub == nil { sub = Location.shared.subscribe { [weak self] l in self?.fix(l) } }
         Location.shared.start()
         running = true

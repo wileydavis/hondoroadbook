@@ -79,27 +79,25 @@ struct ContentView: View {
             }
         }
 
+        private var menuButton: some View {
+            Button { model.haptic(1); model.menuOpen = true } label: {
+                Image(systemName: "line.3.horizontal").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.sButtonText)
+                    .frame(width: 76, height: 76).background(Theme.sButton, in: Circle()).shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+            }
+            .opacity(model.menuOpen ? 0 : 1)
+        }
+
         @ViewBuilder private func bottomArea(_ geo: GeometryProxy) -> some View {
             VStack(spacing: 8) {
-                HStack { ScaleView(hud: hud).padding(.leading, 4); Spacer() }
+                if model.mode != .nav { HStack { ScaleView(hud: hud).padding(.leading, 4); Spacer() } }
                 switch model.mode {
                 case .pin: PinPanel()
                 case .compare: ComparePanel()
-                case .nav: NavPanel(hud: hud)
+                case .nav: NavPanel(hud: hud) { menuButton }
                 case .edit: EditPanel()
                 case .idle: EmptyView()
                 }
-                if model.mode == .idle || model.mode == .nav {
-                    HStack {
-                        Spacer()
-                        Button { model.haptic(1); model.menuOpen = true } label: {
-                            Image(systemName: "line.3.horizontal").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.sButtonText)
-                                .frame(width: 76, height: 76).background(Theme.sButton, in: Circle()).shadow(color: .black.opacity(0.25), radius: 6, y: 3)
-                        }
-                        .opacity(model.menuOpen ? 0 : 1)
-                        Spacer()
-                    }
-                }
+                if model.mode == .idle { HStack { Spacer(); menuButton; Spacer() } }
             }
             .padding(.bottom, 12)
         }
@@ -164,23 +162,46 @@ struct ComparePanel: View {
     }
 }
 
-/// The bottom card while navigating: what is left, the speed; tap for the turn list.
-struct NavPanel: View {
+/// The bottom card while navigating: it wraps the big button, with what is left and the ETA on its left, speed and
+/// elevation on its right, and the scale bar along its top edge. Tap the numbers for the turn list; END is in the menu.
+struct NavPanel<Menu: View>: View {
     @EnvironmentObject var model: AppModel
     @ObservedObject var hud: HudState
+    @ViewBuilder let menu: () -> Menu
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(hud.remaining).font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1)
-                Text(hud.speed).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft)
+        VStack(spacing: 4) {
+            NavScaleBar(hud: hud).frame(height: 18).padding(.horizontal, 2)
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(hud.remaining).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(hud.eta).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1).minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
+                menu()
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(hud.speed).font(.system(size: 27, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
+                    Text(hud.elevation).font(.system(size: 15)).foregroundStyle(Theme.sInkSoft).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing).contentShape(Rectangle())
+                .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
-            Spacer()
-            if model.isTrack { Button { model.addCueHere() } label: { Image(systemName: "plus.circle").font(.system(size: 22, weight: .semibold)).foregroundStyle(Theme.sInk).frame(width: 44, height: 44) } }
-            Button("END") { model.endNavigation() }.buttonStyle(BigButton(accent: true, compact: true))
         }
-        .padding(12).glass()
+        .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 10).glass()
+    }
+}
+
+/// The nav card's scale: always a fixed distance (a mile, a kilometre), only its length changes with the zoom.
+struct NavScaleBar: View {
+    @ObservedObject var hud: HudState
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Path { p in p.move(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 0, y: 1)); p.addLine(to: CGPoint(x: hud.navScalePx, y: 1)); p.addLine(to: CGPoint(x: hud.navScalePx, y: 9)) }
+                .stroke(Theme.sInk, lineWidth: 2)
+                .frame(width: max(1, hud.navScalePx), height: 10)
+            Text(hud.navScaleLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sInk).padding(.top, -3)
+            Spacer(minLength: 0)
+        }
     }
 }
 

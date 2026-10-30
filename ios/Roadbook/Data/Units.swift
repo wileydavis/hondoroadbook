@@ -33,6 +33,14 @@ enum Units {
     }
 
     static func speed(_ ms: Double) -> String { metric ? "\(Int((ms * 3.6).rounded())) km/h" : "\(Int((ms * 2.23694).rounded())) mph" }
+    /// height above sea level, to the nearest 10 ft / 5 m
+    static func elevation(_ m: Double) -> String {
+        if metric { return "\(Int((m / 5).rounded()) * 5) m" }
+        let f = NumberFormatter(); f.numberStyle = .decimal
+        return (f.string(from: NSNumber(value: Int((m * 3.28084 / 10).rounded()) * 10)) ?? "") + " ft"
+    }
+    /// the clock time `sec` from now, in the phone's own format ("3:42 PM")
+    static func clockFromNow(_ sec: Double) -> String { let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f.string(from: Date().addingTimeInterval(sec)) }
 
     static func time(_ sec: Double) -> String {
         let m = Int((sec / 60).rounded())

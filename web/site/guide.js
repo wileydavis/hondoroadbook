@@ -148,7 +148,7 @@
       const t = this.top(`<div class="gcard ghud"><div class="arrow">${arrowSvg(turn)}</div><div><div class="d">${esc(dist)}</div><div class="s">${esc(street)}</div></div></div><div class="gcard" style="padding:6px 12px;margin-top:6px"><div class="gbar"><i style="width:${progress}%"></i></div></div>`);
       return t;
     }
-    navPanel(remaining, speed) { const p = this.panel(`<div class="gcard" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:74px"><div><div class="label">${esc(remaining)}</div><div style="font-size:11px;color:#5a5a5a">remaining · tap for the turn list</div></div><div style="font-size:20px;font-weight:800">${esc(speed)}</div></div>`); this.fab(true); return p; }
+    navPanel(remaining, speed, eta = '3:42 PM · 1 h 20', elev = '4,830 ft') { const p = this.panel(`<div class="gcard navcard"><div class="sc"><i></i><b>1 mi</b></div><div class="row"><div><div class="big">${esc(remaining)}</div><div class="small">${esc(eta)}</div></div><div class="hole"></div><div style="text-align:right"><div class="big">${esc(speed)}</div><div class="small">${esc(elev)}</div></div></div></div>`); this.fab(true); return p; }
     btn(name) { return $(`[data-b="${name}"]`, this.sc); }
     row(name) { return $(`.r[data-m="${name}"]`, this.sc); }
     // ---- the planner
@@ -256,7 +256,7 @@
         { c: `${K('GO')}. The screen becomes the riding view: the next cue, the distance to it, the road. The route stays on the phone — no signal needed from here to Ennis.`,
           run: async s => {
             await s.tap(s.btn('go')); s.hideFinger(); s.panel(''); s.clearRoutes(); s.route('nav', RIDE, MODES.ride[1], { draw: false });
-            s.hud('left', '0.4 mi', 'MT-84'); s.navPanel('57 mi · 1 h 20', '41'); s.fab(true);
+            s.hud('left', '0.4 mi', 'MT-84'); s.navPanel('57 mi', '41 mph'); s.fab(true);
             await s.wait(300); s.movePuck(160, 400); await s.wait(1000); s.hud('left', '0.2 mi', 'MT-84', 40); s.movePuck(160, 330); await s.wait(1000); s.hud('left', '350 ft', 'MT-84', 85); await s.wait(600);
           } },
         { c: `The quick way, without typing: ${K('long-press')} anywhere on the map and ${K('ROUTE HERE')}. Next: pulling a route through places on the way.`,
@@ -307,7 +307,7 @@
   ];
 
   // ---- phone: the rest ------------------------------------------------------------------------------------------------
-  const navScene = (s, { dist = '0.4 mi', street = 'MT-84', progress = 0 } = {}) => { idleMap(s); s.layer('hill', true); s.route('nav', RIDE, MODES.ride[1], { draw: false }); s.marker('pin', 'pin', 252, 74); s.hud('left', dist, street, progress); s.navPanel('57 mi · 1 h 20', '41'); s.movePuck(160, 380); };
+  const navScene = (s, { dist = '0.4 mi', street = 'MT-84', progress = 0 } = {}) => { idleMap(s); s.layer('hill', true); s.route('nav', RIDE, MODES.ride[1], { draw: false }); s.marker('pin', 'pin', 252, 74); s.hud('left', dist, street, progress); s.navPanel('57 mi', '41 mph'); s.movePuck(160, 380); };
   const trackScene = s => { idleMap(s); s.layer('hill', true); s.route('trk', 'M160 470 V300 H60 V200 H220 V84 Q236 79 252 74', '#7c3aed', { draw: false }); s.marker('c1', 'cue', 60, 300, 'Left'); s.marker('c2', 'cue danger', 60, 250, 'Washout'); s.marker('c3', 'cue', 140, 200, 'Note'); s.marker('c4', 'cue', 220, 84, 'Right'); };
   const trackSheet = (s, name, meta) => s.sheet(name, `<div class="sub">${esc(meta)}</div><div class="grow"><div class="gbtn accent" data-b="follow">FOLLOW</div></div><div class="grow"><div class="gbtn" data-b="editc">EDIT CUES</div><div class="gbtn" data-b="editr">EDIT ROUTE</div></div><div class="grow"><div class="gbtn" data-b="pub">PUBLISH TO THE LIBRARY</div></div>`);
   const trackList = (s, files) => s.sheet('Follow a track', `<div class="grow" style="margin:0 0 8px"><div class="gbtn" data-b="code">FETCH CODE FROM THE PLANNER</div></div>${files.map((f, i) => `<div class="li" data-h="${i}"><div>${esc(f[0])}<div style="font-size:10px;color:#5a5a5a">${esc(f[1])}</div></div></div>`).join('')}<div class="grow" style="margin-top:8px"><div class="gbtn" data-b="browse">BROWSE FILES…</div></div>`);
@@ -318,13 +318,13 @@
     { group: 'Getting started', id: 'riding-screen', title: 'The riding screen', device: 'phone',
       blurb: 'What is on the screen while you ride, and the one button that holds everything else.',
       steps: [
-        { c: `While you ride: the next cue, the distance to it, the road it is on. The map is heading-up, you sit low on the screen so the road ahead gets the room. That is all.`,
-          run: async s => { navScene(s); await s.wait(600); s.hud('left', '0.3 mi', 'MT-84', 30); await s.wait(800); } },
+        { c: `While you ride: the next cue, the distance to it, the road it is on. The map is heading-up, you sit low on the screen so the road ahead gets the room, and the stretch of route up to the next cue glows. That is all.`,
+          run: async s => { navScene(s); s.route('glow', 'M160 380 V300 H60', MODES.ride[1], { casing: false, draw: false }); $('#r-glow .line', s.sc).style.strokeWidth = '16'; $('#r-glow .line', s.sc).style.opacity = '.3'; await s.wait(600); s.hud('left', '0.3 mi', 'MT-84', 30); await s.wait(800); } },
         { c: `The bar under the arrow fills as the turn comes up. If sound is on, the pips rise with it and a chime says "turn in now" (section: Sound).`,
           run: async s => { s.hud('left', '600 ft', 'MT-84', 60); s.movePuck(160, 340); await s.wait(900); s.hud('left', '200 ft', 'MT-84', 90); s.movePuck(160, 315); await s.wait(900); } },
         { c: `${K('Tap the map')} to change the view: next turn → close up → whole route, each with its own buzz so you know where you landed without looking. A pinch keeps following at that zoom.`,
           run: async s => { await s.tap([140, 250]); s.hideFinger(); await s.toast('Close up', 900, true); await s.wait(300); await s.tap([140, 250]); s.hideFinger(); await s.toast('Whole route', 900, true); await s.wait(300); } },
-        { c: `The card at the bottom: what is left and the speed. Tap it for the written turn list.`,
+        { c: `The card at the bottom wraps the big button: what is left and the ETA on the left, your speed and the elevation on the right, a one-mile scale bar along its top. Tap the numbers for the written turn list.`,
           run: async s => { await s.tap([140, 470]); s.hideFinger(); await s.sheet('Ennis · 57 mi · 1 h 20', ['0.3 mi', 'Left onto MT-84', '12 mi', 'Right onto US-287', '31 mi', 'Keep left', '57 mi', 'Arrive'].reduce((h, v, i) => h + (i % 2 ? `${esc(v)}</div>` : `<div class="li"><span class="r" style="margin:0;width:44px">${esc(v)}</span>`), '')); await s.wait(1200); await s.closeSheet(); } },
         { c: `${K('≡')} holds the rest, extra large: END, sound, battery saver, the turn list, record, night map, locate, lock screen. Nothing to hunt for with a glove.`,
           run: async s => { await s.tap($('.gfab', s.sc)); await s.menu(MENU_NAV, 'NAVIGATING'); await s.wait(1200); } },
@@ -343,7 +343,7 @@
         { c: `Tap a file. Roadbook reads the line and its cues and says what it found.`,
           run: async s => { await s.tap($('[data-h="0"]', s.sc)); await trackSheet(s, 'Bozeman loop (Ride)', '112 mi · 14 cues · a saved route'); await s.wait(600); } },
         { c: `${K('FOLLOW')} rides the line exactly as it is, cues and all — no router involved, so a track off every road still works. ${K('EDIT CUES')} opens it to add or change cues; ${K('EDIT ROUTE')} brings a saved route back to the plan screen with its stops.`,
-          run: async s => { await s.tap(s.btn('follow')); await s.closeSheet(); s.hideFinger(); trackScene(s); s.hud('left', '0.4 mi', 'Bozeman loop', 10); s.navPanel('112 mi · 2 h 40', '38'); await s.toast('Following "Bozeman loop"', 1200); } },
+          run: async s => { await s.tap(s.btn('follow')); await s.closeSheet(); s.hideFinger(); trackScene(s); s.hud('left', '0.4 mi', 'Bozeman loop', 10); s.navPanel('112 mi', '38 mph', '5:10 PM · 2 h 40'); await s.toast('Following "Bozeman loop"', 1200); } },
         { c: `Following a track, a cue reads whatever its author wrote — "Washout after the cattle guard" — and a danger buzzes harder than a turn. Off the line, the screen says so and points back (section: Off the line).`,
           run: async s => { s.movePuck(160, 380); await s.wait(900); s.hud('left', '0.2 mi', 'onto the ridge road', 45); s.movePuck(160, 330); await s.wait(1000); } },
         { c: `Files get in several ways: saved from a plan, recorded, fetched by code, AirDropped or shared to Roadbook, or dropped into its folder (section: Get a GPX in and out).`,

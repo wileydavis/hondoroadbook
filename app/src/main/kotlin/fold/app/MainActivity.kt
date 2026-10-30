@@ -130,6 +130,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hudDistance: TextView; private lateinit var hudStreet: TextView; private lateinit var offTrack: TextView; private lateinit var offPanel: View; private lateinit var btnReroute: Button
     private lateinit var panelIdle: View; private lateinit var panelPin: View; private lateinit var panelNav: View
     private lateinit var pinLabel: TextView; private lateinit var navRemaining: TextView; private lateinit var navSpeed: TextView
+    private lateinit var navEta: TextView; private lateinit var navElev: TextView; private lateinit var navScale: ScaleView
+    /** the last fix's height above sea level, metres (NaN until known) */
+    private var lastAltitude = Double.NaN
+    private var glowAt = 0L
     private lateinit var toastView: TextView
     private lateinit var panelCompare: View; private lateinit var compareRows: LinearLayout
     private var srcCompare: GeoJsonSource? = null
@@ -241,6 +245,7 @@ class MainActivity : AppCompatActivity() {
         btnReroute.setOnClickListener { rerouteNow() }
         panelIdle = findViewById(R.id.panelIdle); panelPin = findViewById(R.id.panelPin); panelNav = findViewById(R.id.panelNav)
         pinLabel = findViewById(R.id.pinLabel); navRemaining = findViewById(R.id.navRemaining); navSpeed = findViewById(R.id.navSpeed)
+        navEta = findViewById(R.id.navEta); navElev = findViewById(R.id.navElev); navScale = findViewById<ScaleView>(R.id.navScale).also { it.fixed = true }
         toastView = findViewById(R.id.toast)
         panelCompare = findViewById(R.id.panelCompare); compareRows = findViewById(R.id.compareRows)
         turnChip = findViewById(R.id.turnChip); hudCompass = findViewById(R.id.hudCompass)
@@ -373,7 +378,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             val scale = findViewById<ScaleView>(R.id.scale)
-            m.addOnCameraMoveListener { scale.update(m.projection.getMetersPerPixelAtLatitude(m.cameraPosition.target?.latitude ?: 45.0)) }
+            m.addOnCameraMoveListener { val mpp = m.projection.getMetersPerPixelAtLatitude(m.cameraPosition.target?.latitude ?: 45.0); scale.update(mpp); navScale.update(mpp) }
             scale.update(m.projection.getMetersPerPixelAtLatitude(m.cameraPosition.target?.latitude ?: 45.0))
             loadStyle()
         }
@@ -509,7 +514,8 @@ class MainActivity : AppCompatActivity() {
                 lineSortKey(E.switchCase(E.toBool(E.get("sel")), E.literal(2f), E.literal(1f)))))
         }
         // the "string to the next turn": straight, dashed, half transparent, on top of the route but under labels
-        addUnderLabels(LineLayer("lead-line", "lead-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.ink)), lineWidth(2.5f), lineOpacity(0.45f), lineDasharray(arrayOf(2f, 2f)), lineCap(Property.LINE_CAP_ROUND)))
+        // the stretch of route between the rider and the next turn glows softly in the route's own colour
+        addUnderLabels(LineLayer("lead-line", "lead-src").withProperties(lineColor(ContextCompat.getColor(this, if (isTrack) R.color.track else R.color.route)), lineWidth(18f), lineOpacity(0.32f), lineBlur(5f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND)))
         // plan mode: the router's turns on the selected route, small hollow rings, tap to reword
         st.addLayer(SymbolLayer("turns-layer", "turns-src").withProperties(iconImage("turn"), iconAllowOverlap(true), iconIgnorePlacement(true)).also { it.minZoom = 10f })
         if (mode == Mode.COMPARE) drawCandidates()
@@ -673,7 +679,9 @@ class MainActivity : AppCompatActivity() {
         val pts = ArrayList<Point>(r.size)
         for (i in 0 until r.size) pts.add(Point.fromLngLat(r.lons[i], r.lats[i]))
         srcRoute?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(pts)))
-        style?.getLayer("route-line")?.setProperties(lineColor(if (r.isTrack) ContextCompat.getColor(this, R.color.track) else Color.parseColor(profile.color)))
+        val color = if (r.isTrack) ContextCompat.getColor(this, R.color.track) else Color.parseColor(profile.color)
+        style?.getLayer("route-line")?.setProperties(lineColor(color))
+        style?.getLayer("lead-line")?.setProperties(lineColor(color))
     }
 
     private fun showPinMarker(ll: LatLng) { srcPin?.setGeoJson(Feature.fromGeometry(Point.fromLngLat(ll.longitude, ll.latitude))) }
@@ -705,11 +713,13 @@ class MainActivity : AppCompatActivity() {
         val fix = Fix(loc.latitude, loc.longitude, if (loc.hasSpeed()) loc.speed.toDouble() else -1.0, if (loc.hasBearing()) loc.bearing.toDouble() else -1.0, loc.elapsedRealtimeNanos / 1_000_000L, if (loc.hasAccuracy()) loc.accuracy.toDouble() else 50.0)
         val first = lastFix == null
         lastFix = fix
+        lastAltitude = when { android.os.Build.VERSION.SDK_INT >= 34 && loc.hasMslAltitude() -> loc.mslAltitudeMeters; loc.hasAltitude() -> loc.altitude; else -> lastAltitude }
         if (fix.speed > 1.5 && fix.bearing >= 0) heading = fix.bearing
         val f = follower
         if (f != null) {
             val v = f.view(android.os.SystemClock.elapsedRealtime())
-            if (mode == Mode.NAV) { updatePuck(v.lat, v.lon, if (v.onRoute && v.speed > 1.5) f.route.segmentBearing(v.segment) else heading); handleOffRoute(v, fix) }
+            // the marker points where the GPS says the bike points, never along the road it is assumed to be on
+            if (mode == Mode.NAV) { updatePuck(v.lat, v.lon, if (v.speed > 1.5) v.heading else heading); handleOffRoute(v, fix) }
             else updatePuck(fix.lat, fix.lon, heading)
         } else updatePuck(fix.lat, fix.lon, heading)
         if ((follow || (first && !planningCamera)) && uiVisible) moveCamera(fix.lat, fix.lon, animate = !first)
@@ -1428,23 +1438,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** Dashed line from you to the next turn with a time-to-turn chip, for turns still far out (next-turn view only). */
+    /** The glow from the rider to the next cue: the route's own points between them, refreshed a few times a second. */
     private fun updateLead(v: NavView) {
-        val m = map; val next = v.next; val r = follower?.route
-        val show = m != null && r != null && next != null && v.onRoute && !v.arrived && zoomMode == ZoomMode.TURN && next.turn != Turn.ARRIVE && v.progress <= 0.0 && v.distToNext > 120.0
-        if (!show) { if (turnChip.visibility != View.GONE) { turnChip.visibility = View.GONE; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }; return }
-        val tLat = r!!.lats[next!!.vertex]; val tLon = r.lons[next.vertex]
-        srcLead?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(listOf(Point.fromLngLat(v.lon, v.lat), Point.fromLngLat(tLon, tLat)))))
-        // (the time-to-turn chip was retired: the HUD already shows the distance; the line alone marks the view)
+        val next = v.next; val r = follower?.route
+        val show = r != null && next != null && v.onRoute && !v.arrived
+        if (!show) { if (glowAt != 0L) { glowAt = 0L; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }; return }
+        val now = android.os.SystemClock.elapsedRealtime(); if (now - glowAt < 250) return; glowAt = now
+        val pts = ArrayList<Point>()
+        pts.add(Point.fromLngLat(v.lon, v.lat))
+        val from = (v.segment + 1).coerceAtLeast(0); val to = next!!.vertex
+        if (to >= from) { val step = maxOf(1, (to - from) / 600); var i = from; while (i <= to) { pts.add(Point.fromLngLat(r!!.lons[i], r.lats[i])); i += step }; if ((to - from) % step != 0) pts.add(Point.fromLngLat(r!!.lons[to], r.lats[to])) }
+        else pts.add(Point.fromLngLat(r!!.lons[to], r.lats[to]))
+        srcLead?.setGeoJson(Feature.fromGeometry(LineString.fromLngLats(pts)))
         turnChip.visibility = View.GONE
     }
 
     private fun renderHud(v: NavView) {
         darkText?.let { t -> if (dark?.visibility == View.VISIBLE) { val m = v.next; t.text = when { v.arrived -> getString(R.string.arrived); !v.onRoute -> getString(R.string.off_track); m == null -> Units.distance(v.remaining); else -> Units.cue(v.distToNext) + "\n" + (if (m.turn == Turn.ARRIVE) "Destination" else m.phrase()) } } }
-        if (mode != Mode.NAV) { if (v.onRoute) updatePuck(v.lat, v.lon, follower?.route?.segmentBearing(v.segment) ?: heading); return }
+        if (mode != Mode.NAV) { if (v.fixState == FixState.VALID || v.fixState == FixState.DEGRADED) updatePuck(v.lat, v.lon, if (v.speed > 1.5) v.heading else heading); return }
         if (v.arrived) {
             hud.visibility = View.VISIBLE; offPanel.visibility = View.GONE
             arrow.turn = Turn.ARRIVE; hudDistance.text = getString(R.string.arrived); hudStreet.text = ""; arrow.progress = 1f
-            navRemaining.text = Units.distance(0.0)
+            navRemaining.text = Units.distance(0.0); navEta.text = ""
             return
         }
         if (v.fixState == FixState.NONE || v.fixState == FixState.STALE) {
@@ -1453,7 +1468,7 @@ class MainActivity : AppCompatActivity() {
             offPanel.visibility = View.VISIBLE
             offTrack.text = if (v.fixState == FixState.NONE) "WAITING FOR GPS" else "NO GPS · " + Units.time(v.fixAge)
             btnReroute.visibility = View.GONE
-            navRemaining.text = Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds)
+            navRemaining.text = Units.distance(v.remaining); navEta.text = Units.time(v.etaSeconds)
             navSpeed.text = "—"
             return
         }
@@ -1486,12 +1501,12 @@ class MainActivity : AppCompatActivity() {
                 arrow.progress = v.progress.toFloat()
             }
         }
-        navRemaining.text = Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds)
-        navSpeed.text = Units.speed(v.speed)
+        navRemaining.text = Units.distance(v.remaining); navEta.text = Units.clockFromNow(this, v.etaSeconds) + " · " + Units.time(v.etaSeconds)
+        navSpeed.text = Units.speed(v.speed); navElev.text = if (lastAltitude.isNaN()) "" else Units.elevation(lastAltitude)
         map?.let { hudCompass.bearing = it.cameraPosition.bearing.toFloat() }
         updateLead(v)
         // smooth puck between fixes
-        if (v.onRoute) updatePuck(v.lat, v.lon, follower?.route?.segmentBearing(v.segment) ?: heading)
+        if (v.fixState == FixState.VALID || v.fixState == FixState.DEGRADED) updatePuck(v.lat, v.lon, if (v.speed > 1.5) v.heading else heading)
     }
 
     // ---------------------------------------------------------------- packs / gpx
@@ -1648,6 +1663,7 @@ class MainActivity : AppCompatActivity() {
         panelPin.visibility = if (m == Mode.PIN) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnVia).visibility = if (m == Mode.PIN && destination != null && !isTrack) View.VISIBLE else View.GONE
         panelNav.visibility = if (m == Mode.NAV) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.scale).visibility = if (m == Mode.NAV) View.GONE else View.VISIBLE
         panelCompare.visibility = if (m == Mode.COMPARE) View.VISIBLE else View.GONE
         panelEdit.visibility = if (m == Mode.EDIT) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnMenu).visibility = if (m == Mode.IDLE || m == Mode.NAV) View.VISIBLE else View.GONE
@@ -2101,7 +2117,12 @@ class MainActivity : AppCompatActivity() {
 
     /** false while the screen is off or the app is behind another: no camera work, a slower HUD tick, the service keeps the fixes coming */
     private var uiVisible = true
-    override fun onStart() { super.onStart(); mapView.onStart(); uiVisible = true; if (follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
+    override fun onStart() {
+        super.onStart(); mapView.onStart(); uiVisible = true
+        // a pinch the map thought it saw while we were away must not freeze the auto zoom: back to the mode's own zoom
+        manualZoom = -1.0; gestureFrom = null; overviewDone = false
+        if (follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) }
+    }
     override fun onResume() { super.onResume(); mapView.onResume() }
     override fun onPause() { super.onPause(); mapView.onPause() }
     override fun onStop() { uiVisible = false; super.onStop(); mapView.onStop() }
