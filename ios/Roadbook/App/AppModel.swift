@@ -199,7 +199,8 @@ final class AppModel: ObservableObject, MapEvents {
         }.store(in: &cancellables)
         NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification).sink { [weak self] _ in self?.uiVisible = false }.store(in: &cancellables)
         // @Published fires before the new value is stored: style from the value it hands over, never from prefs.night here
-        prefs.$night.dropFirst().sink { [weak self] night in self?.loadStyle(night: night) }.store(in: &cancellables)
+        prefs.$night.dropFirst().sink { [weak self] night in guard let s = self else { return }; s.loadStyle(flavor: s.prefs.sun ? "sun" : night ? "dark" : "light") }.store(in: &cancellables)
+        prefs.$sun.dropFirst().sink { [weak self] sun in guard let s = self else { return }; s.loadStyle(flavor: sun ? "sun" : s.prefs.night ? "dark" : "light") }.store(in: &cancellables)
         locSub = Location.shared.subscribe { [weak self] l in self?.onFix(l) }
         Location.shared.start()
         let afterTerms = { [self] in
@@ -243,10 +244,10 @@ final class AppModel: ObservableObject, MapEvents {
         if v.map({ $0.dir }) != map.styledPacks.map({ $0.dir }) { loadStyle() }
     }
 
-    func loadStyle(night: Bool? = nil) {
+    func loadStyle(flavor: String? = nil) {
         let chosen = visiblePacks().filter { prefs.terrain || !$0.isTerrain }
         map.isTrack = isTrack
-        do { try map.loadStyle(chosen, night: night ?? prefs.night) } catch { showToast("Style error: \(error.text)") }
+        do { try map.loadStyle(chosen, flavor: flavor ?? prefs.flavor) } catch { showToast("Style error: \(error.text)") }
     }
 
     func mapStyleLoaded() {
@@ -598,7 +599,9 @@ final class AppModel: ObservableObject, MapEvents {
         if on { Tone.shared.turn(); Speech.shared.say("Sound on"); showToast("Sound on · " + Tone.outputName, 4) } else { Speech.shared.stop(); Tone.releaseIfIdle() }
     }
 
-    func toggleNight() { prefs.night.toggle() }
+    func toggleNight() { if prefs.sun { prefs.sun = false }; prefs.night.toggle() }
+    /// SUN MAP: the noon-sun handlebar style, on or off (off goes back to whichever of day and night was chosen).
+    func toggleSun() { prefs.sun.toggle(); showToast(prefs.sun ? "Sun map: black ground, bright roads, big labels — least power, reads in glare" : "Sun map off", 3) }
 
     func toggleTerrain() { prefs.terrain.toggle(); loadStyle() }
 

@@ -15,16 +15,20 @@ object StyleBuilder {
         JSONArray(ctx.assets.open("style/layers_$flavor.json").bufferedReader().readText())
     }
 
-    fun build(ctx: Context, all: List<Pack>, night: Boolean): String {
+    /**
+     * [flavor]: "light" (day), "dark" (night) or "sun" — the noon-sun handlebar style: black ground, wide bright roads,
+     * big labels, nothing else drawn (no hillshade either), so it reads in glare and spends the least power.
+     */
+    fun build(ctx: Context, all: List<Pack>, flavor: String): String {
         val packs = all.filter { !it.isTerrain }
-        val terrain = all.filter { it.isTerrain }
-        val flavor = if (night) "dark" else "light"
+        val terrain = if (flavor == "sun") emptyList() else all.filter { it.isTerrain }
+        val night = flavor != "light"
         val template = layers(ctx, flavor)
         val style = JSONObject()
         style.put("version", 8)
         style.put("name", "fold-$flavor")
         style.put("glyphs", "asset://fonts/{fontstack}/{range}.pbf")
-        style.put("sprite", "asset://sprites/$flavor")
+        style.put("sprite", "asset://sprites/" + if (flavor == "light") "light" else "dark")
         val sources = JSONObject()
         packs.forEachIndexed { i, p ->
             sources.put("pack$i", JSONObject().put("type", "vector").put("url", "pmtiles://file://" + p.tiles.absolutePath))

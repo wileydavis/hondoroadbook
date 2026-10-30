@@ -311,8 +311,8 @@ class MainActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btnLocate).setOnClickListener(locate)
         findViewById<ImageButton>(R.id.btnLocateNav).setOnClickListener(locate)
         val night = View.OnClickListener {
-            val n = !prefs.night; prefs.night = n
-            AppCompatDelegate.setDefaultNightMode(if (n) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+            val n = !prefs.night; prefs.night = n; prefs.sun = false
+            applyUiTheme()
         }
         findViewById<ImageButton>(R.id.btnNight).setOnClickListener(night)
         findViewById<ImageButton>(R.id.btnNightNav).setOnClickListener(night)
@@ -427,7 +427,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadStyle() {
         val m = map ?: return
         val chosen = visiblePacks().filter { prefs.terrain || !it.isTerrain }
-        val json = try { StyleBuilder.build(this, chosen, prefs.night) } catch (e: Throwable) { toast("Style error: ${e.message}"); return }
+        val json = try { StyleBuilder.build(this, chosen, prefs.flavor) } catch (e: Throwable) { toast("Style error: ${e.message}"); return }
         styledPacks = chosen
         m.setStyle(Style.Builder().fromJson(json)) { st ->
             style = st
@@ -1657,6 +1657,20 @@ class MainActivity : AppCompatActivity() {
         const val TERMS_SHORT = "Roadbook is a riding aid, not a substitute for your eyes, your judgment or the law.\n\nThe map is made by volunteers and can be wrong: roads close, gates lock, a track that is public on the map may be private on the ground, and a legal road may be unsafe for you today. A route is a suggestion; a cue is a reminder of what the data says. If a cue and the road disagree, the road wins.\n\nYou are responsible for riding safely and legally, for watching the road rather than the screen, and for carrying what you need where there is no help. Roadbook is free and provided as is, with no warranty, and Hondo Garage is not liable for what happens on the road.\n\nFull terms: hondoroadbook.com/terms.html"
     }
 
+    /** The interface follows the map: dark for the night and sun maps, light for the day map (a change recreates the activity). */
+    private fun applyUiTheme() {
+        val dark = prefs.night || prefs.sun
+        val want = if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        if (AppCompatDelegate.getDefaultNightMode() != want) AppCompatDelegate.setDefaultNightMode(want) else loadStyle()
+    }
+
+    /** SUN MAP: the noon-sun handlebar style, on or off (off goes back to whichever of day and night was chosen). */
+    private fun toggleSun() {
+        prefs.sun = !prefs.sun
+        toast(if (prefs.sun) "Sun map: black ground, bright roads, big labels — least power, reads in glare" else "Sun map off", 3000)
+        applyUiTheme()
+    }
+
     private fun switchMode(m: Mode) {
         mode = m
         panelIdle.visibility = View.GONE          // the old small buttons stay hidden; the glove menu drives them
@@ -2047,7 +2061,8 @@ class MainActivity : AppCompatActivity() {
             if (packs.packs.any { it.isTerrain }) items.add(MenuItem(if (prefs.terrain) "TERRAIN ON" else "TERRAIN OFF", R.drawable.ic_maps, on = prefs.terrain) { prefs.terrain = !prefs.terrain; loadStyle() })
             items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver) { setBatterySaver(!prefs.batterySaver) })
         }
-        items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night) { findViewById<ImageButton>(R.id.btnNight).performClick() })
+        items.add(MenuItem(if (prefs.night) "DAY MAP" else "NIGHT MAP", R.drawable.ic_night, on = prefs.night && !prefs.sun) { findViewById<ImageButton>(R.id.btnNight).performClick() })
+        items.add(MenuItem(if (prefs.sun) "SUN MAP ON" else "SUN MAP", R.drawable.ic_night, on = prefs.sun) { toggleSun() })
         items.add(MenuItem("LOCATE", R.drawable.ic_locate) { findViewById<ImageButton>(R.id.btnLocate).performClick() })
         items.add(MenuItem(if (prefs.orientation >= 0) "UNLOCK SCREEN" else "LOCK SCREEN", if (prefs.orientation >= 0) R.drawable.ic_lock else R.drawable.ic_unlock, on = prefs.orientation >= 0) { toggleOrientationLock() })
         return items

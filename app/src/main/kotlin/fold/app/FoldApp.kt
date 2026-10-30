@@ -56,6 +56,12 @@ class Prefs(ctx: Context) {
     var terrain: Boolean
         get() = p.getBoolean("terrain", true)
         set(v) { p.edit().putBoolean("terrain", v).apply() }
+    /** the noon-sun map: black ground, wide bright roads, big labels, nothing else; dark interface, least power */
+    var sun: Boolean
+        get() = p.getBoolean("sun", false)
+        set(v) { p.edit().putBoolean("sun", v).apply() }
+    /** which layer file the map is drawn from right now */
+    val flavor: String get() = if (sun) "sun" else if (night) "dark" else "light"
     /** draw the packs' places (fuel, camping, water, beds, repair, food) on the map when zoomed in */
     var places: Boolean
         get() = p.getBoolean("places", true)

@@ -28,7 +28,8 @@ struct GloveMenu: View {
             if model.hasTerrain { items.append(Item(label: p.terrain ? "TERRAIN ON" : "TERRAIN OFF", icon: "mountain.2", on: p.terrain) { model.toggleTerrain() }) }
             items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver) { model.setBatterySaver(!p.batterySaver) })
         }
-        items.append(Item(label: p.night ? "DAY MAP" : "NIGHT MAP", icon: p.night ? "sun.max.fill" : "moon.fill", on: p.night) { model.toggleNight() })
+        items.append(Item(label: p.night ? "DAY MAP" : "NIGHT MAP", icon: p.night ? "sun.max.fill" : "moon.fill", on: p.night && !p.sun) { model.toggleNight() })
+        items.append(Item(label: p.sun ? "SUN MAP ON" : "SUN MAP", icon: "sun.max.circle.fill", on: p.sun) { model.toggleSun() })
         items.append(Item(label: "LOCATE", icon: "location.fill") { model.locate() })
         items.append(Item(label: model.orientationLocked ? "UNLOCK SCREEN" : "LOCK SCREEN", icon: model.orientationLocked ? "lock.fill" : "lock.open", on: model.orientationLocked) { model.toggleOrientationLock() })
         return items

@@ -42,7 +42,7 @@
   const arrowSvg = (t, color = '#d8502f') => `<svg viewBox="0 0 100 100"><path d="${ARROW[t] || ARROW.straight}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   const MODES = { fast: ['Fast', '#2b6cb0'], backroads: ['Backroads', '#2f855a'], ride: ['Ride', '#7c3aed'] };
   const MENU_IDLE = [['GO TO', '⌕'], ['PLAN', '▤'], ['TRACK', '⤳'], ['MAPS', '▦'], ['RECORD', '●'], ['BATTERY SAVER', '▭'], ['NIGHT MAP', '☾'], ['LOCATE', '◎'], ['LOCK SCREEN', '⊡']];
-  const MENU_NAV = [['END', '✕', 'acc'], ['SOUND ON', '♪', 'onn'], ['BATTERY SAVER', '▭'], ['TURN LIST', '≡'], ['RECORD', '●'], ['NIGHT MAP', '☾'], ['LOCATE', '◎'], ['LOCK SCREEN', '⊡']];
+  const MENU_NAV = [['END', '✕', 'acc'], ['SOUND ON', '♪', 'onn'], ['BATTERY SAVER', '▭'], ['TURN LIST', '≡'], ['RECORD', '●'], ['NIGHT MAP', '☾'], ['SUN MAP', '☀'], ['LOCATE', '◎'], ['LOCK SCREEN', '⊡']];
 
   // ---- the stage ---------------------------------------------------------------------------------------------------
   class Stage {
@@ -328,7 +328,7 @@
           run: async s => { await s.tap([140, 470]); s.hideFinger(); await s.sheet('Ennis · 57 mi · 1 h 20', ['0.3 mi', 'Left onto MT-84', '12 mi', 'Right onto US-287', '31 mi', 'Keep left', '57 mi', 'Arrive'].reduce((h, v, i) => h + (i % 2 ? `${esc(v)}</div>` : `<div class="li"><span class="r" style="margin:0;width:44px">${esc(v)}</span>`), '')); await s.wait(1200); await s.closeSheet(); } },
         { c: `${K('≡')} holds the rest, extra large: END, sound, battery saver, the turn list, record, night map, locate, lock screen. Nothing to hunt for with a glove.`,
           run: async s => { await s.tap($('.gfab', s.sc)); await s.menu(MENU_NAV, 'NAVIGATING'); await s.wait(1200); } },
-        { c: `${K('NIGHT MAP')} flips the map dark; the app remembers it. ${K('LOCK SCREEN')} holds the orientation the phone is in right now — set it on the mount, then forget it.`,
+        { c: `${K('NIGHT MAP')} flips the map dark; ${K('SUN MAP')} is the third map, for noon on the bars: black ground, wide bright roads, big labels, nothing else — reads through glare and spends the least power. The app remembers either. ${K('LOCK SCREEN')} holds the orientation the phone is in right now.`,
           run: async s => { const it = $('.gmenu [data-l="NIGHT MAP"]', s.sc); if (it) await s.tap(it); s.closeMenu(); night(s, true); s.hideFinger(); await s.wait(1200); } },
         { c: `${K('LOCATE')} snaps the map back to you after you have dragged it. ${K('END')} ends the ride; the plan is dropped and the map is just a map again.`,
           run: async s => { night(s, false); await s.wait(700); } },

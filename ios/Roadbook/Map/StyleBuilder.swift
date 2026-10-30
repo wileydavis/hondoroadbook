@@ -13,12 +13,14 @@ enum StyleBuilder {
         cache[flavor] = arr; return arr
     }
 
-    static func build(_ all: [Pack], night: Bool) throws -> Data {
+    /// `flavor`: "light" (day), "dark" (night) or "sun" — the noon-sun handlebar style: black ground, wide bright roads,
+    /// big labels, nothing else drawn (no hillshade either), so it reads in glare and spends the least power.
+    static func build(_ all: [Pack], flavor: String) throws -> Data {
         let packs = all.filter { !$0.isTerrain }
-        let terrain = all.filter { $0.isTerrain }
-        let flavor = night ? "dark" : "light"
+        let terrain = flavor == "sun" ? [] : all.filter { $0.isTerrain }
+        let night = flavor != "light"
         let template = try layers(flavor)
-        var style: [String: Any] = ["version": 8, "name": "fold-\(flavor)", "glyphs": "asset://fonts/{fontstack}/{range}.pbf", "sprite": "asset://sprites/\(flavor)"]
+        var style: [String: Any] = ["version": 8, "name": "fold-\(flavor)", "glyphs": "asset://fonts/{fontstack}/{range}.pbf", "sprite": "asset://sprites/\(flavor == "light" ? "light" : "dark")"]
         var sources: [String: Any] = [:]
         for (i, p) in packs.enumerated() {
             sources["pack\(i)"] = ["type": "vector", "url": "pmtiles://file://" + p.tiles.path]
@@ -52,9 +54,9 @@ enum StyleBuilder {
     }
 
     /// MapLibre loads a style from a URL: the JSON is written to a temporary file for it.
-    static func write(_ all: [Pack], night: Bool) throws -> URL {
-        let data = try build(all, night: night)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("style-\(night ? "dark" : "light").json")
+    static func write(_ all: [Pack], flavor: String) throws -> URL {
+        let data = try build(all, flavor: flavor)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("style-\(flavor).json")
         try data.write(to: url, options: .atomic)
         return url
     }
