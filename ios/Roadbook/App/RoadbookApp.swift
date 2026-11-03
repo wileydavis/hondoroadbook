@@ -16,8 +16,9 @@ struct RoadbookApp: App {
     }
 }
 
-/// Orientation lock and the crash file. No crash reporting leaves the phone by itself: an uncaught error is
-/// written to a private file, and SEND FEEDBACK offers to include it in the rider's own email.
+/// Orientation lock, the crash file, and clearing ride Live Activities the app can no longer update. No crash
+/// reporting leaves the phone by itself: an uncaught error is written to a private file, and SEND FEEDBACK offers
+/// to include it in the rider's own email.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     /// the orientations the app allows right now: everything, or the one the rider locked
     static var orientations: UIInterfaceOrientationMask = .all
@@ -27,7 +28,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             let text = "Roadbook \(Device.version) · \(Device.model) · iOS \(Device.osVersion)\n\(Date())\n\n\(e.name.rawValue): \(e.reason ?? "")\n\(e.callStackSymbols.joined(separator: "\n"))"
             try? text.write(to: Files.crashFile, atomically: true, encoding: .utf8)
         }
+        // A fresh process has no ride yet: any ride on the lock screen or in the Dynamic Island was left by one that
+        // was closed or died. Clear it (a crashed ride is still offered for resume from its checkpoint).
+        RideSession.endAllActivities()
         return true
+    }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        RideSession.shared.appWillTerminate()
     }
 
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {

@@ -30,6 +30,7 @@ final class RideSession: NSObject, NavSink {
     private var activity: Activity<RideActivityAttributes>?
     private var title = "Navigating"
     private var lastState: RideActivityAttributes.ContentState?
+    private var lastPush: Int64 = 0
 
     static var checkpointFile: URL {
         let d = Files.support.appendingPathComponent("nav", isDirectory: true)
@@ -140,25 +141,34 @@ final class RideSession: NSObject, NavSink {
                                                    remaining: Units.distance(v.remaining) + " · " + Units.time(v.etaSeconds), arrived: v.arrived, offRoute: !v.onRoute)
     }
 
+    /// How long an update stays true. A running ride refreshes well inside this; if the app dies without ending
+    /// the activity (a crash, iOS reclaiming it), the card turns stale and says so instead of showing a frozen cue.
+    private static let staleAfter: TimeInterval = 120
+    private static var staleDate: Date { Date().addingTimeInterval(staleAfter) }
+
     private func startActivity() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled, let c = controller else { return }
         endActivity()
+        RideSession.endAllActivities()   // never two: anything left by an earlier process goes first
         let s = RideSession.state(c.view(nowMs: nowMs()), c)
-        activity = try? Activity.request(attributes: RideActivityAttributes(title: title), content: .init(state: s, staleDate: nil), pushType: nil)
-        lastState = s
+        activity = try? Activity.request(attributes: RideActivityAttributes(title: title), content: .init(state: s, staleDate: RideSession.staleDate), pushType: nil)
+        lastState = s; lastPush = nowMs()
     }
 
     private func updateActivity(_ v: NavView, _ c: NavController, alert: Bool = false) {
         guard let a = activity else { return }
         let s = RideSession.state(v, c)
-        if s == lastState && !alert { return }
-        lastState = s
+        let now = nowMs()
+        // unchanged: only re-sent once a minute, to push the stale date along on a long straight
+        if s == lastState && !alert && now - lastPush < 60_000 { return }
+        lastState = s; lastPush = now
+        let content = ActivityContent(state: s, staleDate: RideSession.staleDate)
         Task {
             if alert {
                 // the lock screen lights up and shows the cue: in battery saver this is how the rider is told to look
-                await a.update(.init(state: s, staleDate: nil), alertConfiguration: AlertConfiguration(title: LocalizedStringResource(stringLiteral: s.distance), body: LocalizedStringResource(stringLiteral: s.instruction), sound: .default))
+                await a.update(content, alertConfiguration: AlertConfiguration(title: LocalizedStringResource(stringLiteral: s.distance), body: LocalizedStringResource(stringLiteral: s.instruction), sound: .default))
             } else {
-                await a.update(.init(state: s, staleDate: nil))
+                await a.update(content)
             }
         }
     }
@@ -167,5 +177,28 @@ final class RideSession: NSObject, NavSink {
         guard let a = activity else { return }
         activity = nil
         Task { await a.end(nil, dismissalPolicy: .immediate) }
+    }
+
+    /// Ends every ride activity this app has on the lock screen and in the Dynamic Island, including ones left by
+    /// an earlier process that was closed or died mid-ride (iOS keeps those for hours, across restarts). Called at
+    /// launch, when no ride can be running yet, and before a new ride starts its own.
+    static func endAllActivities() {
+        for a in Activity<RideActivityAttributes>.activities {
+            Task { await a.end(nil, dismissalPolicy: .immediate) }
+        }
+    }
+
+    /// The app is being closed (swiped away in the app switcher while a ride runs in the background): end the
+    /// activity before the process goes, waiting briefly for iOS to take it. Without this the cue stays up.
+    func appWillTerminate() {
+        let all = Activity<RideActivityAttributes>.activities
+        guard !all.isEmpty else { return }
+        activity = nil
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            for a in all { await a.end(nil, dismissalPolicy: .immediate) }
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 1.5)
     }
 }

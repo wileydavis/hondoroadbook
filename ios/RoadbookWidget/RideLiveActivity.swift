@@ -7,32 +7,53 @@ import WidgetKit
 struct RideLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: RideActivityAttributes.self) { context in
-            LockScreenCard(title: context.attributes.title, s: context.state)
-                .activityBackgroundTint(Color.black.opacity(0.85))
-                .activitySystemActionForegroundColor(.white)
+            Group {
+                if context.isStale { StaleCard() }   // Roadbook stopped updating it: don't pretend to guide
+                else { LockScreenCard(title: context.attributes.title, s: context.state) }
+            }
+            .activityBackgroundTint(Color.black.opacity(0.85))
+            .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     TurnGlyph(turn: context.state.turn, arrived: context.state.arrived, offRoute: context.state.offRoute)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 44, height: 44).opacity(context.isStale ? 0.35 : 1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.distance).font(.system(size: 26, weight: .bold, design: .rounded)).monospacedDigit()
+                    Text(context.isStale ? "—" : context.state.distance).font(.system(size: 26, weight: .bold, design: .rounded)).monospacedDigit()
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(context.state.instruction).font(.headline).lineLimit(1)
-                        Text(context.state.remaining).font(.caption).foregroundStyle(.secondary)
+                        Text(context.isStale ? "Not navigating" : context.state.instruction).font(.headline).lineLimit(1)
+                        Text(context.isStale ? "Open Roadbook to carry on" : context.state.remaining).font(.caption).foregroundStyle(.secondary)
                     }
                 }
             } compactLeading: {
                 TurnGlyph(turn: context.state.turn, arrived: context.state.arrived, offRoute: context.state.offRoute).frame(width: 20, height: 20)
+                    .opacity(context.isStale ? 0.35 : 1)
             } compactTrailing: {
-                Text(context.state.distance).font(.caption.weight(.semibold)).monospacedDigit()
+                Text(context.isStale ? "—" : context.state.distance).font(.caption.weight(.semibold)).monospacedDigit()
             } minimal: {
                 TurnGlyph(turn: context.state.turn, arrived: context.state.arrived, offRoute: context.state.offRoute).frame(width: 18, height: 18)
+                    .opacity(context.isStale ? 0.35 : 1)
             }
         }
+    }
+}
+
+/// Shown when the ride's updates have stopped (the app was closed or died): says so plainly.
+private struct StaleCard: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "location.slash").font(.system(size: 34, weight: .semibold)).frame(width: 64, height: 64)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Not navigating").font(.title3.weight(.semibold))
+                Text("Roadbook stopped. Open it to carry on, or swipe this away.").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .foregroundStyle(.white.opacity(0.8))
     }
 }
 
