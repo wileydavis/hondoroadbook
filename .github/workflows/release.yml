@@ -47,7 +47,7 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           for f in out/*.apk; do rclone copyto "$f" "r2:roadbook-packs/app/$(basename "$f")"; done
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')

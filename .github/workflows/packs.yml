@@ -120,7 +120,7 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
           rclone copyto --ignore-times --s3-upload-cutoff 200M --s3-chunk-size 64M --s3-upload-concurrency 4 "$r-roads.mappack" "r2:$BUCKET/$path/$r-roads.mappack"
           rclone copyto --ignore-times "$r-roads.json" "r2:$BUCKET/$path/$r-roads.json"
@@ -188,7 +188,7 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
           rclone copyto --ignore-times "$r-terrain.mappack" "r2:$BUCKET/$path/$r-terrain.mappack"
           rclone copyto --ignore-times "$r-terrain.json" "r2:$BUCKET/$path/$r-terrain.json"
@@ -227,6 +227,6 @@ jobs:
       - name: Mirror to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           rclone copyto --ignore-times catalog.json "r2:$BUCKET/catalog.json"
           rclone copyto --ignore-times na-overview.pmtiles "r2:$BUCKET/na-overview.pmtiles"

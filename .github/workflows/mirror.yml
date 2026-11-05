@@ -36,7 +36,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
       - name: Copy every release asset to the bucket, one at a time, under its catalog path
         run: |
-          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[] | "\(.name)\t\(.size)"' > assets.tsv
           wc -l assets.tsv
           while IFS=$'\t' read -r name size; do
