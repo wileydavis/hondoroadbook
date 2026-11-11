@@ -5,7 +5,8 @@
   "description": "hondoroadbook.com: the Cloudflare Worker (web/worker.js), its routing container and the planner",
   "scripts": {
     "deploy": "node deploy.mjs",
-    "dev": "wrangler dev"
+    "dev": "wrangler dev",
+    "test": "node --test web/test/*.test.mjs"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.7"

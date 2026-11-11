@@ -156,3 +156,47 @@ button.icon:hover { border-color: var(--soft); }
 .sections h4 .mini, .web h4 .mini { text-transform: none; letter-spacing: 0; margin-left: 6px; vertical-align: middle; }
 .sections h4 a.muted, .web h4 a.muted { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 11px; margin-left: 4px; display: inline; }
 .nogl { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 420px; background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 22px; z-index: 50; font-size: 15px; box-shadow: 0 18px 50px rgba(0,0,0,.18); color: var(--ink); }
+
+/* roll charts */
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 99px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; background: transparent; color: var(--soft); cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--rule); }
+.seg button.on { background: var(--ink); color: var(--card); }
+#chartLayout { display: flex; margin-bottom: 10px; }
+#chartLayout button { flex: 1; }
+.chart-actions { margin-bottom: 6px; }
+.chart-hint { margin: 4px 0 8px; }
+.cwarn { list-style: none; margin: 0 0 8px; padding: 0; font-size: 12px; }
+.cwarn li { padding: 5px 8px; border-left: 3px solid #d97706; background: color-mix(in srgb, #d97706 10%, transparent); margin-bottom: 4px; border-radius: 4px; cursor: pointer; }
+.crows { display: flex; flex-direction: column; align-items: center; background: #fff; border-radius: 8px; padding: 6px 0; }
+.crows svg { display: block; width: 100%; height: auto; }
+.crows.A svg { max-width: 230px; }
+.crow { position: relative; width: 100%; display: flex; justify-content: center; cursor: pointer; }
+.crow:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.crow.over { outline: 2px solid #dc2626; outline-offset: -2px; }
+.crow .tag { position: absolute; top: 4px; right: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: #94a3b8; border-radius: 4px; padding: 1px 5px; pointer-events: none; }
+.crow.sel { outline: 3px solid var(--accent); outline-offset: -3px; }
+.tabs { display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 1px solid var(--rule); }
+.tabs button { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--soft); cursor: pointer; margin-bottom: -1px; }
+.tabs button.on { color: var(--ink); border-bottom-color: var(--accent); }
+.tulip-ed { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; }
+#tulipEd { width: 240px; height: 240px; flex: none; background: #fff; border: 1px solid var(--rule); border-radius: 8px; touch-action: none; cursor: crosshair; }
+.tulip-side { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.tulip-side p { margin: 0; }
+.rform { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; font-size: 13px; }
+.rform label, .rform .lbl { display: flex; flex-direction: column; gap: 3px; color: var(--soft); }
+.rform .inl { flex-direction: row; align-items: center; gap: 6px; }
+.rform .wide { grid-column: 1 / -1; }
+.rform input:not([type=checkbox]), .rform select { font: inherit; font-size: 13px; padding: 5px 7px; border-radius: 7px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); min-width: 0; }
+.rform details summary { cursor: pointer; color: var(--ink); }
+.rform details .rform { margin-top: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chips button { font: inherit; font-size: 11px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+.chips button:hover { border-color: var(--soft); }
+.glyphs { display: grid; grid-template-columns: repeat(auto-fill, 30px); gap: 4px; max-height: 108px; overflow-y: auto; padding: 4px; border: 1px solid var(--rule); border-radius: 8px; background: #fff; }
+.glyphs button { width: 30px; height: 30px; padding: 3px; border: 1px solid transparent; border-radius: 6px; background: transparent; cursor: pointer; }
+.glyphs button:hover { border-color: #94a3b8; }
+.glyphs svg, #rSyms svg { width: 100%; height: 100%; display: block; }
+#rSyms button { display: inline-flex; align-items: center; gap: 3px; }
+#rSyms button span { display: inline-block; width: 16px; height: 16px; background: #fff; border-radius: 3px; }
+#openWpts { margin-bottom: 8px; }

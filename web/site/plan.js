@@ -57,6 +57,8 @@ const S = {
   catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
 };
+const RC = window.RoadbookChart;          // the roll-chart engine (chart.js)
+S.chart = RC.settings({ layout: "A" }); S.chartOn = false;
 
 // ---- map ---------------------------------------------------------------------------------------------------
 maplibregl.setWorkerUrl("/map/vendor/maplibre-gl-csp-worker.js");   // the CSP build: no blob workers, no eval
@@ -77,6 +79,7 @@ async function init() {
   try { S.hasOverview = (await fetch("/tiles/overview/tiles.pmtiles", { method: "HEAD" })).ok; } catch {}
   buildModes();
   restoreHash();
+  if (!S.pts.length && !new URLSearchParams(location.hash.slice(1)).get("rb")) offerRestore();
   status("Loading the map…", false, true);
   const slow = setTimeout(() => status("Still loading — the first visit to a region is the slow one; after that it is cached", false, true), 8000);
   map.once("idle", () => { clearTimeout(slow); $("#status").hidden = true; });
@@ -471,7 +474,7 @@ function setRoute(j, preview) {
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
   // the opened file's own cues that fall off the routed line come back with "back to the track"
   if (S.imported && S.imported.routed) for (const c of S.cues) if (!c.auto && c.imp && !kept.includes(c)) S.imported.merged.add(c.imp);
-  const auto = j.cues.filter(c => !S.deletedAuto.some(d => dist([d.lon, d.lat], [c.lon, c.lat]) < 40)).map(c => ({ lon: c.lon, lat: c.lat, turn: c.turn, level: 0, exit: c.exit || 0, text: c.turn === "ROUNDABOUT" ? c.name : (c.name || ""), auto: true }));
+  const auto = j.cues.filter(c => !S.deletedAuto.some(d => dist([d.lon, d.lat], [c.lon, c.lat]) < 40)).map(c => ({ lon: c.lon, lat: c.lat, turn: c.turn, level: 0, exit: c.exit || 0, angle: Number.isFinite(c.angle) ? c.angle : undefined, text: c.turn === "ROUNDABOUT" ? c.name : (c.name || ""), auto: true }));
   S.cues = [...auto, ...kept];
   mergeImported();
   if (dropped) status(`${dropped} of your cues no longer touch the route and were dropped`, true);
@@ -486,7 +489,7 @@ function renderStats() {
   const have = !!c;
   $("#btnLoop").textContent = isLoop() ? "open loop" : "loop";
   $("#btnLoop").title = isLoop() ? "Make the last stop the finish again" : "Finish where you started";
-  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have; $("#actions").hidden = !have;
+  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have || S.chartOn; $("#chartSec").hidden = !have || !S.chartOn; $("#actions").hidden = !have;
   if (!have) { $("#trackSwap").hidden = true; return; }
   const len = S.route ? S.route.length : lineLength(c);
   $("#dist").textContent = fmtDist(len);
@@ -548,7 +551,7 @@ function renderCues() {
   for (const m of S.cueMarkers) m.remove(); S.cueMarkers = [];
   const ol = $("#cues"); ol.innerHTML = "";
   const line = lineCoords(); if (!line) { $("#cueCount").textContent = ""; return; }
-  for (const c of S.cues) { if (!c.id) c.id = ++S.cueSeq; c.at = alongLine(line, [c.lon, c.lat]).at; }
+  for (const c of S.cues) { if (!c.id) c.id = ++S.cueSeq; placeCue(c, line); }
   S.cues.sort((a, b) => a.at - b.at);
   $("#cueCount").textContent = S.cues.length ? `(${S.cues.length})` : "";
   S.cues.forEach((c, idx) => {
@@ -561,6 +564,22 @@ function renderCues() {
     el.addEventListener("click", e => { e.stopPropagation(); editCue(c.id); });
     S.cueMarkers.push(new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat([c.lon, c.lat]).addTo(map));
   });
+  if (S.chartOn) scheduleChart();
+  scheduleAutosave();
+}
+/** Where a cue sits along the line: its nearest point, or, where the line passes it twice (a loop, an out-and-back),
+ *  the pass nearest the distance it was stored at, so its row keeps its place in the chart. */
+function placeCue(c, line) {
+  const near = alongLine(line, [c.lon, c.lat]); c.off = near.d;
+  const stored = c.rally && c.rally.at != null ? c.rally.at : c.atHint;
+  if (stored == null) { c.at = near.at; return; }
+  c.at = RC.placeAt(line, cumulative(line), [c.lon, c.lat], near.at, stored, segmentsNear(line, [c.lon, c.lat]));
+}
+/** The line's segments within a cell of a point, from the same index alongLine uses. */
+function segmentsNear(line, p) {
+  const idx = lineIndex(line), cx = Math.floor(p[0] / idx.cell), cy = Math.floor(p[1] / idx.cell), out = new Set(idx.longs);
+  for (let x = cx - 1; x <= cx + 1; x++) for (let y = cy - 1; y <= cy + 1; y++) { const l = idx.cells.get(x * 100003 + y); if (l) for (const i of l) out.add(i); }
+  return [...out].sort((a, b) => a - b);
 }
 
 let editing = null;   // {id} for an existing cue (looked up at save time: the list can be re-sorted or regenerated meanwhile) or {lon,lat} for a new one
@@ -569,12 +588,20 @@ const grid = $("#turnGrid");
 for (const t of TURNS) { const b = document.createElement("button"); b.dataset.turn = t; b.innerHTML = arrowSvg(t); b.title = WORDS[t]; grid.appendChild(b); }
 document.querySelectorAll("#cueEd .dangerRow [data-turn]").forEach(b => { const t = b.dataset.turn; b.innerHTML = arrowSvg(t, Number(b.dataset.level || 0)) + (t === "NOTE" ? "<span>Note</span>" : ""); b.title = t === "NOTE" ? "A note, read in your words" : `Danger ${b.dataset.level}`; });
 document.querySelectorAll("#cueEd [data-turn]").forEach(b => b.onclick = () => { document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.remove("on")); b.classList.add("on"); if (b.dataset.turn === "NOTE") $("#cueText").focus(); });
-function editCue(id) {
+function editCue(id, tab) {
   const c = cueById(id); if (!c) return;
   editing = { id };
   openCueEditor(c.turn, c.level, c.text, "Edit cue");
+  rallyOpen(c); showCueTab(tab || (S.chartOn ? "rally" : "cue"));
 }
-function newCue(lon, lat) { editing = { lon, lat }; openCueEditor("STRAIGHT", 0, "", "New cue"); }
+function newCue(lon, lat) {
+  // where along the line it was clicked: on a loop that pins the pass, not just the place
+  const line = lineCoords(); let at = null;
+  if (line && ctxAt && ctxAt.index) { const cum = cumulative(line); at = cum[ctxAt.index - 1] + dist(line[ctxAt.index - 1], [lon, lat]); }
+  editing = { lon, lat, at };
+  openCueEditor("STRAIGHT", 0, "", "New cue");
+  rallyOpen(null); showCueTab(S.chartOn ? "rally" : "cue");
+}
 function openCueEditor(turn, level, text, title) {
   $("#cueEdTitle").textContent = title; $("#cueText").value = text || "";
   document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.toggle("on", x.dataset.turn === turn && (turn !== "DANGER" || Number(x.dataset.level) === (level || 2))));
@@ -585,12 +612,13 @@ function openCueEditor(turn, level, text, title) {
 $("#cueSave").onclick = () => {
   const on = $("#cueEd [data-turn].on"); if (!on) return;
   const turn = on.dataset.turn, level = turn === "DANGER" ? Number(on.dataset.level) : 0, text = $("#cueText").value.trim();
-  if (turn === "NOTE" && !text) { $("#cueText").focus(); return; }
+  if (turn === "NOTE" && !text && !($("#rInfo").value.trim())) { showCueTab("cue"); $("#cueText").focus(); return; }
   if (editing.id != null) {
     const c = cueById(editing.id); if (!c) { $("#cueEd").hidden = true; status("That cue is no longer on the route", true); return; }
     if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat });
     Object.assign(c, { turn, level, text, auto: false, climb: false });   // yours now: no generator may replace it; c.link stays
-  } else S.cues.push({ lon: editing.lon, lat: editing.lat, turn, level, text, auto: false });
+    const r = rallyResult(); if (r !== undefined) { if (r) c.rally = r; else delete c.rally; }
+  } else { const c = { lon: editing.lon, lat: editing.lat, turn, level, text, auto: false }; if (editing.at != null) c.atHint = editing.at; const r = rallyResult(); if (r) c.rally = r; S.cues.push(c); }
   $("#cueEd").hidden = true; renderCues();
 };
 $("#cueDelete").onclick = () => { if (editing.id == null) return; const i = S.cues.findIndex(c => c.id === editing.id); $("#cueEd").hidden = true; if (i < 0) { status("That cue is no longer on the route", true); return; } const c = S.cues[i]; if (c.auto) S.deletedAuto.push({ lon: c.lon, lat: c.lat }); S.cues.splice(i, 1); renderCues(); };
@@ -1076,19 +1104,24 @@ async function search() {
 }
 
 // ---- GPX in and out ------------------------------------------------------------------------------------------------
-function gpxOut() {
+/** The GPX. opts.rally adds the roll-chart fields (Download GPX and the autosave); Send to phone and Publish leave
+ *  them out in v1. Every <type> stays exactly as the apps know it; the rally object is JSON in one <rally> element,
+ *  the last thing in its <wpt>, with no child named name, desc or type, so both parsers skip it. */
+function gpxOut(opts) {
+  opts = opts || {};
   const line = lineCoords(); const name = $("#name").value.trim() || "Roadbook";
   const cues = S.cues.slice().sort((a, b) => a.at - b.at);
   let paved = 0, unpaved = 0; if (S.route) for (const r of S.route.surface) { if (r.unpaved || r.cls === "track" || r.cls === "path") unpaved += r.m; else paved += r.m; }
-  const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<gpx version="1.1" creator="Roadbook Planner" xmlns="http://www.topografix.com/GPX/1/1">', `  <metadata><name>${esc(name)}</name><extensions><roadbook>${S.route ? `<mode>${S.route.mode}</mode><paved>${Math.round(paved)}</paved><unpaved>${Math.round(unpaved)}</unpaved>` : ""}<planner>1</planner></roadbook></extensions></metadata>`];
-  for (const c of cues) { const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`; out.push(`  <wpt lat="${c.lat.toFixed(6)}" lon="${c.lon.toFixed(6)}"><name>${esc(c.text || WORDS[c.turn])}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link && /^https?:\/\//.test(c.link) ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type></wpt>`); }
+  const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<gpx version="1.1" creator="Roadbook Planner" xmlns="http://www.topografix.com/GPX/1/1">', `  <metadata><name>${esc(name)}</name><extensions><roadbook>${S.route ? `<mode>${S.route.mode}</mode><paved>${Math.round(paved)}</paved><unpaved>${Math.round(unpaved)}</unpaved>` : ""}<planner>1</planner>${opts.rally ? `<chart>${esc(JSON.stringify(RC.settingsForFile(S.chart)))}</chart>` : ""}</roadbook></extensions></metadata>`];
+  for (const c of cues) { const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`; out.push(`  <wpt lat="${c.lat.toFixed(6)}" lon="${c.lon.toFixed(6)}"><name>${esc(c.text || WORDS[c.turn])}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link && /^https?:\/\//.test(c.link) ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type>${opts.rally ? rallyXml(c) : ""}</wpt>`); }
   out.push(`  <trk><name>${esc(name)}</name><trkseg>`);
   // a kept track keeps the heights its file had; a routed line has none to give
   for (const p of line) out.push(`    <trkpt lat="${p[1].toFixed(6)}" lon="${p[0].toFixed(6)}">${S.track && p.length > 2 ? `<ele>${p[2].toFixed(1)}</ele>` : ""}</trkpt>`);
   out.push("  </trkseg></trk>", "</gpx>", "");
   return out.join("\n");
 }
-$("#btnGpx").onclick = () => { const blob = new Blob([gpxOut()], { type: "application/gpx+xml" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = ($("#name").value.trim() || "roadbook").replace(/[^\w .-]+/g, "_") + ".gpx"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+function rallyXml(c) { const r = Object.assign({}, c.rally || {}); if (Number.isFinite(c.at)) r.at = Math.round(c.at * 10) / 10; const clean = RC.cleanRally(r); return clean ? `<extensions><rally>${esc(JSON.stringify(clean))}</rally></extensions>` : ""; }
+$("#btnGpx").onclick = () => { const blob = new Blob([gpxOut({ rally: true })], { type: "application/gpx+xml" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = ($("#name").value.trim() || "roadbook").replace(/[^\w .-]+/g, "_") + ".gpx"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
 $("#btnPhone").onclick = async () => {
   const sh = $("#codeSheet"); for (const s of document.querySelectorAll(".sheet")) s.hidden = true; sh.hidden = false; $("#codeTitle").textContent = "Send to phone"; $("#codeBody").innerHTML = `<p class="muted">Parking the roadbook…</p>`;
   try {
@@ -1110,7 +1143,7 @@ $("#btnPublish").onclick = async () => {
     } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   };
 };
-$("#btnClear").onclick = () => { S.imported = null; $("#openSheet").hidden = true; S.pts = []; S.cues = []; S.deletedAuto = []; S.pendingNotes = []; editing = null; $("#cueEd").hidden = true; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
+$("#btnClear").onclick = () => { forgetAutosave(); S.imported = null; $("#openSheet").hidden = true; S.pts = []; S.cues = []; S.deletedAuto = []; S.pendingNotes = []; editing = null; $("#cueEd").hidden = true; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
 const MIRROR = { LEFT: "RIGHT", RIGHT: "LEFT", SLIGHT_LEFT: "SLIGHT_RIGHT", SLIGHT_RIGHT: "SLIGHT_LEFT", SHARP_LEFT: "SHARP_RIGHT", SHARP_RIGHT: "SHARP_LEFT", KEEP_LEFT: "KEEP_RIGHT", KEEP_RIGHT: "KEEP_LEFT" };
 /** A loop: the finish is the start. With only two points that is an out-and-back; drag the line to make it a circuit. */
 function isLoop() { return S.pts.length >= 2 && Math.abs(S.pts[0].lon - S.pts[S.pts.length - 1].lon) < 1e-9 && Math.abs(S.pts[0].lat - S.pts[S.pts.length - 1].lat) < 1e-9; }
@@ -1127,12 +1160,13 @@ $("#btnReverse").onclick = () => {
     S.track = { ...S.track, coords: S.track.coords.slice().reverse() };
     if (S.imported) S.imported.coords = S.track.coords;   // "back to the track" keeps the new direction
     let flagged = 0;
-    S.cues = S.cues.map(c => { if (MIRROR[c.turn]) { if (c.text) flagged++; return { ...c, turn: MIRROR[c.turn] }; } if (c.turn === "ROUNDABOUT" || c.text) flagged++; return { ...c }; });
+    S.cues = S.cues.map(c => { c = reversedRally(c); if (MIRROR[c.turn]) { if (c.text) flagged++; return { ...c, turn: MIRROR[c.turn] }; } if (c.turn === "ROUNDABOUT" || c.text) flagged++; return { ...c }; });
     refreshRouteSources(); renderAll();
     status(`Reversed: turns mirrored${flagged ? `; ${flagged} cue${flagged > 1 ? "s" : ""} with words or a roundabout exit need a look` : ""}`, flagged > 0);
     return;
   }
   if (S.imported && S.imported.routed) S.imported.coords = S.imported.coords.slice().reverse();
+  S.cues = S.cues.map(reversedRally);
   S.pts.reverse(); afterPointsChange();
 };
 $("#file").onchange = async e => {
@@ -1148,25 +1182,36 @@ function parseGpx(text) {
   const pts = [], rte = [];
   for (const m of text.matchAll(/<trkpt\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/trkpt>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A track point has a bad coordinate"); if (pts.length >= IMPORT_LIMITS.points) throw new Error(`More than ${IMPORT_LIMITS.points.toLocaleString()} points; simplify the track first`); const ele = Number(/<ele>\s*([-\d.eE+]+)\s*<\/ele>/.exec(m[2] || "")?.[1]); pts.push(Number.isFinite(ele) && Math.abs(ele) < 12000 ? [lon, lat, ele] : [lon, lat]); }
   for (const m of text.matchAll(/<rtept\s+([^>]*?)(?:\/>|>[\s\S]*?<\/rtept>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A route point has a bad coordinate"); rte.push({ lon, lat }); }
-  const cues = []; for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
+  const cues = [], wpts = []; for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
     const type = (/<type>([\s\S]*?)<\/type>/.exec(m[2])?.[1] || "").trim().toLowerCase();
-    if (!(type.startsWith("cue:") || type.startsWith("danger") || type === "note")) continue;
+    if (!(type.startsWith("cue:") || type.startsWith("danger") || type === "note")) {
+      // a plain waypoint (a gas stop, a gate someone marked): offered as a note when it sits by the line
+      const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180), nm = unesc((/<name>([\s\S]*?)<\/name>/.exec(m[2])?.[1] || "").trim()).slice(0, 120);
+      if (lat != null && lon != null && nm && wpts.length < IMPORT_LIMITS.cues) wpts.push({ lon, lat, name: nm, desc: unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] || "").trim()).slice(0, 120) });
+      continue;
+    }
     const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A cue has a bad coordinate");
     if (cues.length >= IMPORT_LIMITS.cues) throw new Error(`More than ${IMPORT_LIMITS.cues.toLocaleString()} cues`);
     const words = unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[2])?.[1] || /<name>([\s\S]*?)<\/name>/.exec(m[2])?.[1] || "").trim()).slice(0, 200);
     const link = unesc(/<link\s+href="([^"]*)"/.exec(m[2])?.[1] || ""); const safeLink = /^https?:\/\/[^\s"'<>]+$/.test(link) ? link : "";
+    const rx = /<rally>([\s\S]*?)<\/rally>/.exec(m[2]); const rally = rx ? RC.parseRally(unesc(rx[1])) : null;
+    const n0 = cues.length;
     if (type.startsWith("cue:") && TURNS.includes(type.slice(4).toUpperCase())) cues.push({ lon, lat, turn: type.slice(4).toUpperCase(), level: 0, text: words, link: safeLink, auto: false });
     else if (type.startsWith("danger")) cues.push({ lon, lat, turn: "DANGER", level: Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)), text: words, link: safeLink, auto: false });
-    else if (type === "note" && words) cues.push({ lon, lat, turn: "NOTE", level: 0, text: words, link: safeLink, auto: false });
+    else if (type === "note" && (words || rally)) cues.push({ lon, lat, turn: "NOTE", level: 0, text: words, link: safeLink, auto: false });
+    if (rally && cues.length > n0) cues[cues.length - 1].rally = rally;
   }
   const name = unesc((/<metadata>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || /<trk>[\s\S]*?<name>([\s\S]*?)<\/name>/.exec(text) || [, ""])[1].trim()).slice(0, 80);
   const mode = (/<roadbook>[\s\S]*?<mode>([A-Z_]+)<\/mode>/.exec(text) || [, ""])[1];
-  return { pts, rte, cues, name, mode };
+  const cx = /<roadbook>[\s\S]*?<chart>([\s\S]*?)<\/chart>/.exec(text); const chart = cx ? RC.parseSettings(unesc(cx[1])) : null;
+  return { pts, rte, cues, name, mode, chart, wpts };
 }
 function unesc(s) { return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"); }
-function loadGpxText(text, fallbackName) {
+function loadGpxText(text, fallbackName, opts) {
+  opts = opts || {};
   let g;
   try { g = parseGpx(text); } catch (e) { status(e.message, true); return; }   // the current plan is untouched by a bad file
+  if (g.chart) { S.chart = g.chart; if (S.chartOn) syncChartLayout(); }
   if (g.pts.length < 2 && g.rte.length >= 2) {
     // a route file with no track: its points are routing controls, so plan it here
     S.imported = null; $("#openSheet").hidden = true;
@@ -1186,12 +1231,18 @@ function loadGpxText(text, fallbackName) {
   if (g.pts.length < 2) { status("That file has no track", true); return; }
   // the file as it came, so the person can route it and still come back to it (and its cues) later
   g.cues.forEach((c, i) => c.imp = i + 1);
+  hintOrder(g.cues, g.pts);
   S.imported = { coords: g.pts, name: g.name || fallbackName, cues: g.cues.map(c => ({ ...c })), mode: MODES.some(m => m[0] === g.mode) ? g.mode : null, merged: new Set() };
   keepTrack(g.cues);
   $("#name").value = S.imported.name || "Roadbook";
   const b = g.pts.reduce((bb, p) => [Math.min(bb[0], p[0]), Math.min(bb[1], p[1]), Math.max(bb[2], p[0]), Math.max(bb[3], p[1])], [180, 90, -180, -90]);
   map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, duration: 600 });
   for (const sh of document.querySelectorAll(".sheet")) sh.hidden = true;
+  if (opts.restore) { status(`Restored “${S.imported.name}”: ${g.cues.length} cues`); return; }
+  // plain waypoints near the line (a gas stop, a gate someone marked) can come in as notes
+  const near = g.wpts.filter(w => nearLine(w, g.pts) < 150 && !g.cues.some(c => dist([c.lon, c.lat], [w.lon, w.lat]) < 10));
+  const wb = $("#openWpts"); wb.hidden = !near.length;
+  if (near.length) { wb.textContent = `Add ${near.length} waypoint${near.length > 1 ? "s" : ""} from the file as notes`; wb.onclick = () => { for (const w of near) S.cues.push({ lon: w.lon, lat: w.lat, turn: "NOTE", level: 0, text: (w.desc && w.desc !== w.name ? `${w.name}: ${w.desc}` : w.name).slice(0, 120), auto: false }); wb.hidden = true; renderCues(); status(`Added ${near.length} notes`); }; }
   $("#openTitle").textContent = `Opened “${S.imported.name}”`;
   $("#openBody").textContent = `${fmtDist(lineLength(g.pts))} of track, ${g.cues.length} cue${g.cues.length === 1 ? "" : "s"}. Keep the line as it is, or route it on roads (${modeLabel()})?`;
   $("#openSheet").hidden = false;
@@ -1285,6 +1336,361 @@ async function openLibraryItem(id) {
   } catch (e) { $("#rbBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
 }
 
+// ---- roll charts: the preview, the rally fields on a cue, the export ----------------------------------------------------
+// The engine (chart.js) lays out every row; this part feeds it the line and the cues, shows what it draws, and edits the
+// rally object on each cue. The PDF writer (chart-pdf.js) loads only when the export dialog opens.
+const juncCache = new Map();
+const juncKey = c => c.lon.toFixed(5) + "," + c.lat.toFixed(5);
+function chartSettings() { const st = RC.settings(S.chart); if (!st.title) st.title = $("#name").value.trim() || "Roadbook"; return st; }
+function chartData() {
+  const line = lineCoords(); if (!line) return null;
+  const st = chartSettings();
+  return { st, line, chart: RC.buildRows(line, S.cues, st, { cum: cumulative(line), surface: S.route ? S.route.surface : null }) };
+}
+let chartT = 0, selRow = null;
+function scheduleChart() { clearTimeout(chartT); chartT = setTimeout(renderChart, 150); }
+function syncChartLayout() { for (const b of document.querySelectorAll("#chartLayout button")) b.classList.toggle("on", b.dataset.l === S.chart.layout); $("#chartRows").className = "crows " + S.chart.layout; }
+/** The preview: the head block and every row, drawn by the same code as the PDF; the rows that need a look listed above. */
+function renderChart() {
+  if (!S.chartOn) return;
+  syncChartLayout();
+  const d = chartData(), box = $("#chartRows"), warn = $("#chartWarn");
+  if (!d) { box.innerHTML = ""; warn.innerHTML = ""; return; }
+  const parts = [`<div class="crow head">${RC.headSvg(d.chart, d.st)}</div>`], issues = d.chart.warnings.slice(), bad = new Set();
+  for (const r of d.chart.rows) {
+    const { svg, overflow } = RC.rowSvg(r, d.st);
+    if (overflow) issues.push({ row: r.n, id: r.id, text: r.kind === "banner" ? "A section name is too long for its banner" : `Row ${r.n}: the words do not fit even at the smallest size; shorten them` });
+    for (const ch of RC.winAnsi((r.info || "") + (r.name || "")).bad) bad.add(ch);
+    parts.push(`<div class="crow${overflow ? " over" : ""}${r.id != null && r.id === selRow ? " sel" : ""}"${r.id != null ? ` data-id="${r.id}"` : ""}${Number.isFinite(r.at) ? ` data-at="${r.at}"` : ""}>${svg}${r.auto ? '<span class="tag">auto</span>' : ""}</div>`);
+  }
+  if (bad.size) issues.push({ text: `These characters cannot be printed and will show as “?”: ${[...bad].join(" ")}` });
+  box.innerHTML = parts.join("");
+  // a town route can flag a short partial on every row; the first few and a count read better than a wall
+  const shorts = issues.filter(w => w.kind === "short"), rest = issues.filter(w => w.kind !== "short");
+  const shown = rest.slice(0, 8).concat(shorts.length > 3 ? [{ text: `${shorts.length} rows have a short partial (under 400 m); FIA marks them pink with an arrow, as the chart does` }] : shorts);
+  if (rest.length > 8) shown.push({ text: `and ${rest.length - 8} more` });
+  warn.innerHTML = shown.map(w => `<li${w.id != null ? ` data-id="${w.id}"` : ""}>${esc(w.text)}</li>`).join("");
+  $("#chartCount").textContent = `(${d.chart.rows.filter(r => r.kind !== "banner").length} rows)`;
+}
+function goToCue(c) { selRow = c.id; map.flyTo({ center: [c.lon, c.lat], zoom: Math.max(map.getZoom(), 15) }); editCue(c.id, "rally"); renderChart(); }
+$("#chartRows").addEventListener("click", e => {
+  const el = e.target.closest(".crow"); if (!el) return;
+  if (el.dataset.id) { const c = cueById(Number(el.dataset.id)); if (c) goToCue(c); }
+  else if (el.dataset.at) { const line = lineCoords(); if (line) map.flyTo({ center: RC.pointAt(line, cumulative(line), Number(el.dataset.at)), zoom: Math.max(map.getZoom(), 14) }); }
+});
+$("#chartWarn").addEventListener("click", e => { const li = e.target.closest("li"); const c = li && li.dataset.id ? cueById(Number(li.dataset.id)) : null; if (c) goToCue(c); });
+document.querySelectorAll("#chartLayout button").forEach(b => b.onclick = () => { setLayout(b.dataset.l); renderChart(); });
+function setLayout(l) { if (S.chart.layout === l) return; S.chart = RC.settings({ layout: l, title: S.chart.title, scale: S.chart.scale, decline: S.chart.decline }); scheduleAutosave(); }
+$("#btnChart").onclick = () => { S.chartOn = true; renderStats(); renderChart(); fetchJunctions(false); $("#chartSec").scrollIntoView({ block: "start", behavior: "smooth" }); };
+$("#btnChartClose").onclick = () => { S.chartOn = false; renderStats(); };
+$("#btnJunctions").onclick = () => fetchJunctions(true);
+$("#btnSuggest").onclick = suggestCues;
+
+/**
+ * The other roads at each cue's junction, from the routing graph (/api/junctions): suggestions only. A cue whose tulip
+ * the rider has drawn keeps their roads; with no answer the tulip shows stem and exit alone.
+ */
+let juncBusy = false;
+async function fetchJunctions(ask, only) {
+  if (juncBusy) return;
+  const todo = [];
+  for (const c of (only || S.cues)) {
+    if (c.rally && c.rally.branches) continue;
+    const k = juncKey(c); if (juncCache.has(k)) c.junc = juncCache.get(k); else todo.push([c, k]);
+  }
+  if (!todo.length) { if (S.chartOn) scheduleChart(); if (ask) status("Every junction is already looked up"); return; }
+  juncBusy = true; if (ask) status(`Asking the map about ${todo.length} junction${todo.length > 1 ? "s" : ""}…`, false, true);
+  let ok = true;
+  try {
+    for (let i = 0; i < todo.length; i += 200) {
+      const batch = todo.slice(i, i + 200);
+      const r = await fetch(`/api/junctions?pts=${encodeURIComponent(batch.map(([c]) => `${c.lon.toFixed(6)},${c.lat.toFixed(6)}`).join(";"))}`);
+      if (!r.ok) { ok = false; break; }
+      const j = await r.json();
+      batch.forEach(([c, k], n) => { const v = { arms: (j.junctions && j.junctions[n] && j.junctions[n].arms) || [] }; juncCache.set(k, v); c.junc = v; });
+    }
+  } catch { ok = false; }
+  juncBusy = false;
+  if (ask) status(ok ? "Junctions found. They are suggestions: drag or click a tulip to make it yours" : "The map's junctions are not available here right now; draw the roads by hand", !ok);
+  if (S.chartOn) scheduleChart(); drawTulipEd();
+}
+
+/** Turns from a kept track's shape, the way the phone finds them in a bare track (Route.fromTrack): marked auto. */
+function suggestCues() {
+  const line = lineCoords(); if (!line) return;
+  if (S.route) { status("A routed line already carries the router's turns (reset to turns brings back any you deleted)"); return; }
+  const keep = simplify(line, 6), cum = cumulative(line); let lastAt = -1e9, added = 0;
+  for (let k = 1; k < keep.length - 1; k++) {
+    const i = keep[k], a = line[keep[k - 1]], p = line[i], b = line[keep[k + 1]];
+    const ang = RC.turnAngle(RC.bearing(a, p), RC.bearing(p, b)), x = Math.abs(ang);
+    const t = x >= 150 ? "UTURN" : x >= 110 ? (ang < 0 ? "SHARP_LEFT" : "SHARP_RIGHT") : x >= 45 ? (ang < 0 ? "LEFT" : "RIGHT") : null;
+    if (!t || cum[i] - lastAt < 25) continue;
+    lastAt = cum[i];
+    if (S.cues.some(c => Math.abs(c.at - cum[i]) < 30)) continue;
+    S.cues.push({ lon: p[0], lat: p[1], turn: t, level: 0, text: "", auto: true, atHint: cum[i] }); added++;
+  }
+  renderCues();
+  status(added ? `Added ${added} turn${added > 1 ? "s" : ""} from the track's shape, marked auto` : "No turns found that are not already cues");
+  if (added) fetchJunctions(false);
+}
+/** Douglas–Peucker over the line in local metres; returns the indices kept. */
+function simplify(line, tol) {
+  const n = line.length; if (n < 3) return [...line.keys()];
+  const k = Math.cos(line[0][1] * Math.PI / 180) * 111320, xy = line.map(p => [p[0] * k, p[1] * 111320]);
+  const keep = new Uint8Array(n); keep[0] = keep[n - 1] = 1;
+  const stack = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop(); let best = -1, bd = tol;
+    const [ax, ay] = xy[a], [bx, by] = xy[b], dx = bx - ax, dy = by - ay, l = Math.hypot(dx, dy) || 1e-9;
+    for (let i = a + 1; i < b; i++) { const d = Math.abs((xy[i][0] - ax) * dy - (xy[i][1] - ay) * dx) / l; if (d > bd) { bd = d; best = i; } }
+    if (best > 0) { keep[best] = 1; stack.push([a, best], [best, b]); }
+  }
+  const out = []; for (let i = 0; i < n; i++) if (keep[i]) out.push(i); return out;
+}
+/** Cues from a file without a stored distance: on a loop, taken in the file's order, each at the first pass after the last. */
+function hintOrder(cues, line) {
+  const cum = RC.cumulative(line); let prev = 0;
+  for (const c of cues) {
+    if (c.rally && c.rally.at != null) { prev = c.rally.at; continue; }
+    const ps = RC.passes(line, cum, [c.lon, c.lat], 30);
+    if (ps.length < 2) { if (ps.length) prev = ps[0].at; continue; }
+    const next = ps.find(h => h.at >= prev - 50) || ps[ps.length - 1];
+    c.atHint = next.at; prev = next.at;
+  }
+}
+/** A reversed line: a stored distance, a drawn angle and roads, a CAP no longer apply; symbols swap sides. */
+const SLOT_FLIP = { la: "rb", ra: "lb", lb: "ra", rb: "la" };
+function reversedRally(c) {
+  c = { ...c }; delete c.atHint; delete c.junc;
+  if (!c.rally) return c;
+  const r = { ...c.rally }; delete r.at; delete r.exit; delete r.branches; delete r.cap;
+  if (r.symbols) r.symbols = r.symbols.map(s => ({ id: s.id, slot: SLOT_FLIP[s.slot] || s.slot }));
+  c.rally = RC.cleanRally(r) || undefined; if (!c.rally) delete c.rally;
+  return c;
+}
+
+// ---- the Roll chart tab of the cue editor -----------------------------------------------------------------------------------
+let rDraft = null, rOrig = "", rCtx = null;
+function canon(o) { if (Array.isArray(o)) return "[" + o.map(canon).join(",") + "]"; if (o && typeof o === "object") return "{" + Object.keys(o).sort().map(k => JSON.stringify(k) + ":" + canon(o[k])).join(",") + "}"; return JSON.stringify(o); }
+function showCueTab(tab) {
+  for (const b of document.querySelectorAll("#cueTabs button")) b.classList.toggle("on", b.dataset.tab === tab);
+  $("#cuePane").hidden = tab !== "cue"; $("#rallyPane").hidden = tab !== "rally";
+  if (tab === "rally") drawTulipEd();
+}
+document.querySelectorAll("#cueTabs button").forEach(b => b.onclick = () => showCueTab(b.dataset.tab));
+function setSeg(sel, v) { for (const b of document.querySelectorAll(sel + " button")) b.classList.toggle("on", Number(b.dataset.v) === v); }
+function rallyOpen(c) {
+  rDraft = JSON.parse(JSON.stringify((c && c.rally) || {})); delete rDraft.edited; delete rDraft.at;
+  rCtx = { cue: c, lon: c ? c.lon : editing.lon, lat: c ? c.lat : editing.lat, at: c ? c.at : editing.at };
+  const st = chartSettings();
+  $("#rPath").value = rDraft.path || "";
+  setSeg("#rCaution", rDraft.caution != null ? rDraft.caution : c && c.turn === "DANGER" ? c.level || 2 : 0);
+  $("#rInfo").value = rDraft.info || ""; $("#rInfo").placeholder = c && c.text ? c.text.toUpperCase().slice(0, 60) : "Printed words, in capitals";
+  $("#rSpeed").value = rDraft.speed || ""; $("#rSpeedUnit").textContent = st.units === "km" ? "km/h" : "mph";
+  $("#rSection").checked = !!rDraft.section; $("#rSecName").value = rDraft.section ? rDraft.section.name : ""; $("#rSecKind").value = rDraft.section ? rDraft.section.kind : "transit";
+  $("#rReset").checked = !!rDraft.reset;
+  $("#rCap").value = rDraft.cap != null ? rDraft.cap : "";
+  $("#rCapShow").checked = rDraft.capShow != null ? rDraft.capShow : rDraft.path === "offtrack";
+  $("#rZone").value = rDraft.zone || ""; $("#rWp").value = rDraft.wp ? rDraft.wp.type : ""; $("#rWpN").value = rDraft.wp && rDraft.wp.n ? rDraft.wp.n : "";
+  $("#rB").open = st.layout === "B";
+  readForm(); rOrig = canon(rDraft);
+  buildChips(st.layout); renderSyms();
+  if (c && !c.junc && !(c.rally && c.rally.branches)) fetchJunctions(false, [c]);
+}
+/** The form into the draft. Only what the person set is stored; everything else stays derived from the line. */
+function readForm() {
+  const d = rDraft; if (!d) return;
+  const path = $("#rPath").value; if (path) d.path = path; else delete d.path;
+  const info = $("#rInfo").value.replace(/\s+/g, " ").trim(); if (info) d.info = info; else delete d.info;
+  const sp = Math.round(Number($("#rSpeed").value)); if (sp > 0) d.speed = Math.min(300, sp); else delete d.speed;
+  if ($("#rSection").checked) d.section = { name: $("#rSecName").value.trim().slice(0, 40), kind: $("#rSecKind").value === "stage" ? "stage" : "transit" }; else delete d.section;
+  if ($("#rReset").checked) d.reset = true; else delete d.reset;
+  const cap = $("#rCap").value; if (cap !== "" && Number.isFinite(Number(cap))) d.cap = ((Math.round(Number(cap)) % 360) + 360) % 360; else delete d.cap;
+  const capDef = d.path === "offtrack", capOn = $("#rCapShow").checked;
+  if (d.capShow != null || capOn !== capDef) d.capShow = capOn;
+  const z = $("#rZone").value; if (z) d.zone = z; else delete d.zone;
+  const wp = $("#rWp").value; if (wp) { d.wp = { type: wp }; const n = Math.round(Number($("#rWpN").value)); if (n > 0) d.wp.n = n; } else delete d.wp;
+}
+/** undefined when the tab was not touched (the cue keeps what it had), else the cleaned rally object (null for none). */
+function rallyResult() {
+  if (!rDraft) return undefined;
+  readForm();
+  if (canon(rDraft) === rOrig) return undefined;
+  return RC.cleanRally(Object.assign({}, rDraft, { edited: true }));
+}
+document.querySelectorAll("#rCaution button").forEach(b => b.onclick = () => { rDraft.caution = Number(b.dataset.v); setSeg("#rCaution", rDraft.caution); drawTulipEd(); });
+$("#rallyPane").addEventListener("input", () => drawTulipEd());
+$("#rallyPane").addEventListener("change", () => drawTulipEd());
+function buildChips(layout) {
+  const box = $("#rChips"); box.innerHTML = "";
+  const groups = layout === "B" ? RC.CODES_B.map(([g, list]) => [g, list.map(([c, m]) => [c, m])]) : RC.CODES_A.map(([g, list]) => [g, list.map(c => [c, ""])]);
+  for (const [, list] of groups) for (const [code, meaning] of list) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = code; if (meaning) b.title = meaning;
+    b.onclick = () => { const i = $("#rInfo"); i.value = (i.value.trim() ? i.value.trim() + " " : "") + code; i.focus(); drawTulipEd(); };
+    box.appendChild(b);
+  }
+}
+const glyphSvg = (id, size) => RC.primsToSvg(RC.glyphPrims(id, 0.5, 0.5, 9, "#000000"), 10, 10);
+(function buildGlyphs() {
+  const box = $("#rGlyphs");
+  for (const [id, name] of RC.GLYPHS) {
+    const b = document.createElement("button"); b.type = "button"; b.title = name; b.innerHTML = glyphSvg(id);
+    b.onclick = () => { const list = (rDraft.symbols || []).slice(); if (list.length >= 6) { status("Six symbols at most on one row", true); return; } list.push({ id, slot: $("#rSlot").value }); rDraft.symbols = list; renderSyms(); drawTulipEd(); };
+    box.appendChild(b);
+  }
+})();
+function renderSyms() {
+  const box = $("#rSyms"); box.innerHTML = "";
+  (rDraft.symbols || []).forEach((sym, i) => {
+    const g = RC.GLYPH[sym.id]; if (!g) return;
+    const b = document.createElement("button"); b.type = "button"; b.title = `Remove ${g.name}`;
+    b.innerHTML = `<span>${glyphSvg(sym.id)}</span>${esc(g.name)} · ${{ ra: "right after", la: "left after", rb: "right before", lb: "left before" }[sym.slot]} ×`;
+    b.onclick = () => { const list = rDraft.symbols.slice(); list.splice(i, 1); if (list.length) rDraft.symbols = list; else delete rDraft.symbols; renderSyms(); drawTulipEd(); };
+    box.appendChild(b);
+  });
+}
+// the tulip editor works in the engine's tulip box scaled to 100: junction at (50, 55), stem from the bottom
+const TJ = [50, 55];
+const dv = deg => [Math.sin(deg * Math.PI / 180), -Math.cos(deg * Math.PI / 180)];
+function reach(p, v) { let t = Infinity; const box = [5, 5, 95, 95]; if (v[0] > 1e-9) t = Math.min(t, (box[2] - p[0]) / v[0]); if (v[0] < -1e-9) t = Math.min(t, (box[0] - p[0]) / v[0]); if (v[1] > 1e-9) t = Math.min(t, (box[3] - p[1]) / v[1]); if (v[1] < -1e-9) t = Math.min(t, (box[1] - p[1]) / v[1]); return Math.max(0, t); }
+function edTulip() {
+  const c = rCtx && rCtx.cue, line = lineCoords();
+  let comp = { exit: 0, arr: 0, dep: 0 }, sugg = [];
+  if (line && rCtx) {
+    const cum = cumulative(line), at = Number.isFinite(rCtx.at) ? rCtx.at : alongLine(line, [rCtx.lon, rCtx.lat]).at;
+    comp = RC.headings(line, cum, at, c && c.turn === "ROUNDABOUT");
+    const ex = rDraft.exit != null ? rDraft.exit : c && Number.isFinite(c.angle) && c.turn !== "NOTE" && c.turn !== "DANGER" ? Math.round(c.angle) : comp.exit;
+    if (c && c.junc && c.turn !== "ROUNDABOUT") sugg = RC.armsToBranches(c.junc.arms, comp.arr, (comp.arr + ex + 360) % 360);
+  }
+  const rb = c && c.turn === "ROUNDABOUT" ? Math.max(1, c.exit || 1) : 0;
+  const base = c && Number.isFinite(c.angle) && !rb && c.turn !== "NOTE" && c.turn !== "DANGER" ? Math.round(c.angle) : comp.exit;
+  return { exit: rDraft.exit != null ? rDraft.exit : base, branches: rDraft.branches || sugg, path: rDraft.path || "track", roundabout: rb, computed: comp.exit };
+}
+function tipOf(t) {
+  const e = t.roundabout ? Math.max(-165, Math.min(165, t.exit)) : t.exit;
+  if (Math.abs(e) > 150 && !t.roundabout) { const side = e < 0 ? -1 : 1; return [50 + side * 22, Math.min(43 + 32, 95)]; }
+  const rr = t.roundabout ? 12 : 0, v = dv(e), s = [TJ[0] + v[0] * rr, TJ[1] + v[1] * rr], len = Math.min(38, reach(s, v));
+  return [s[0] + v[0] * len, s[1] + v[1] * len];
+}
+function branchEnd(b) { const v = dv(b.deg), len = Math.min(34, reach(TJ, v)); return [TJ[0] + v[0] * len, TJ[1] + v[1] * len]; }
+function drawTulipEd() {
+  if (!rDraft || $("#rallyPane").hidden) return;
+  readForm();
+  const t = edTulip(), st = chartSettings();
+  const inner = RC.tulipSvg(t, "B", st.colour).replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "");
+  const tip = tipOf(t);
+  let h = t.branches.map((b, i) => { const e = branchEnd(b); return `<circle cx="${e[0].toFixed(1)}" cy="${e[1].toFixed(1)}" r="4.5" fill="rgba(0,0,0,.05)" stroke="#94a3b8" stroke-width=".6" data-h="b${i}"/>`; }).join("");
+  h += `<circle cx="${tip[0].toFixed(1)}" cy="${tip[1].toFixed(1)}" r="7.5" fill="rgba(37,99,235,.14)" stroke="#2563eb" stroke-width=".8" data-h="exit" style="cursor:grab"/>`;
+  const note = rDraft.exit != null || rDraft.branches ? "" : `<text x="100" y="102" font-size="5" text-anchor="end" fill="#94a3b8">${t.branches.length ? "roads from the map" : "from the line"}</text>`;
+  $("#tulipEd").innerHTML = `<rect x="-4" y="-4" width="108" height="108" fill="#fff"/>${inner}${h}${note}`;
+}
+const ed = $("#tulipEd"); let dragExit = false;
+function edPoint(e) { const r = ed.getBoundingClientRect(); return [-4 + (e.clientX - r.left) / r.width * 108, -4 + (e.clientY - r.top) / r.height * 108]; }
+const edAngle = p => Math.round(Math.atan2(p[0] - TJ[0], -(p[1] - TJ[1])) * 180 / Math.PI);
+function segDistXY(p, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy; const t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0; return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); }
+ed.addEventListener("pointerdown", e => {
+  if (!rDraft) return;
+  const p = edPoint(e), t = edTulip(), tip = tipOf(t);
+  if (Math.hypot(p[0] - tip[0], p[1] - tip[1]) < 10) { dragExit = true; ed.setPointerCapture(e.pointerId); return; }
+  // a road: click it to change its kind; past faint it goes
+  const bi = t.branches.findIndex(b => segDistXY(p, TJ, branchEnd(b)) < 4.5);
+  if (bi >= 0) {
+    const list = t.branches.map(b => ({ ...b })), k = list[bi].kind;
+    if (k === "road") list[bi].kind = "track"; else if (k === "track") list[bi].kind = "faint"; else list.splice(bi, 1);
+    rDraft.branches = list; drawTulipEd(); return;
+  }
+  // empty space beside the junction: a road at that angle, but not on the stem or the way out
+  if (Math.hypot(p[0] - TJ[0], p[1] - TJ[1]) < 9) return;
+  const a = edAngle(p);
+  if (Math.abs(RC.turnAngle(180, a)) < 20 || Math.abs(RC.turnAngle(t.exit, a)) < 15) return;
+  if (t.branches.length >= 8) { status("Eight roads at most at one junction", true); return; }
+  rDraft.branches = t.branches.map(b => ({ ...b })).concat([{ deg: a, kind: "track" }]); drawTulipEd();
+});
+ed.addEventListener("pointermove", e => { if (!dragExit) return; rDraft.exit = Math.max(-180, Math.min(180, edAngle(edPoint(e)))); drawTulipEd(); });
+ed.addEventListener("pointerup", () => { dragExit = false; });
+ed.addEventListener("pointercancel", () => { dragExit = false; });
+$("#tulipReset").onclick = () => { delete rDraft.exit; delete rDraft.branches; drawTulipEd(); };
+$("#tulipFind").onclick = () => { const c = rCtx && rCtx.cue; if (!c) { status("Save the cue first, then find its junction"); return; } delete c.junc; juncCache.delete(juncKey(c)); fetchJunctions(true, [c]); };
+
+// ---- export ---------------------------------------------------------------------------------------------------------------------
+let pdfLoading = null;
+function loadPdfWriter() {
+  if (window.RoadbookChartPdf) return Promise.resolve();
+  if (!pdfLoading) pdfLoading = new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "/chart-pdf.js"; sc.onload = ok; sc.onerror = () => { pdfLoading = null; no(new Error("the PDF writer did not load")); }; document.head.appendChild(sc); });
+  return pdfLoading;
+}
+$("#btnExport").onclick = openExport;
+function openExport() {
+  for (const sh of document.querySelectorAll(".sheet")) sh.hidden = true;
+  fillExport();
+  $("#exportSheet").hidden = false;
+  exportSummary();
+  loadPdfWriter().catch(() => {});
+}
+function fillExport() {
+  const st = chartSettings();
+  $("#xLayout").value = st.layout;
+  $("#xPreset").innerHTML = Object.entries(RC.PRESETS).filter(([, p]) => p.layout === st.layout).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("");
+  $("#xPreset").value = st.preset;
+  const rr = RC.ROLL_ROWS[st.layout];
+  $("#xRoll").innerHTML = [rr[1], rr[0], rr[2]].map(v => `<option value="${v}">${v}${v === rr[0] ? " (a manageable page)" : v === rr[2] ? " (longest page)" : " (short pages)"}</option>`).join("");
+  $("#xRoll").value = String(st.rollRows); $("#xRollRow").hidden = !RC.PRESETS[st.preset].roll;
+  $("#xUnits").value = st.units; $("#xDecimal").value = st.decimal; $("#xColour").checked = st.colour;
+  $("#xDecline").checked = st.decline; $("#xDeclineRow").hidden = st.layout !== "A";
+  $("#xTitle").value = S.chart.title || ""; $("#xTitle").placeholder = $("#name").value.trim() || "Roadbook";
+  $("#xScale").value = st.scale.toFixed(3);
+}
+$("#exportSheet").addEventListener("change", e => {
+  if (e.target.id === "xLayout") { setLayout($("#xLayout").value); fillExport(); }
+  else S.chart = RC.settings({ layout: S.chart.layout, preset: $("#xPreset").value, rollRows: Number($("#xRoll").value), units: $("#xUnits").value, decimal: $("#xDecimal").value, colour: $("#xColour").checked, decline: $("#xDecline").checked, title: $("#xTitle").value.trim(), scale: Number($("#xScale").value) || 1 });
+  $("#xRollRow").hidden = !RC.PRESETS[S.chart.preset].roll;
+  exportSummary(); if (S.chartOn) scheduleChart(); scheduleAutosave();
+});
+let exportT = 0;
+function exportSummary() { clearTimeout(exportT); exportT = setTimeout(() => {
+  const d = chartData(); if (!d) return;
+  const out = RC.layout(d.chart, d.st), s = out.stats, P = RC.PRESETS[d.st.preset];
+  const len = d.st.units === "km" || d.st.layout === "B" ? `${(s.stripMM / 1000).toFixed(2)} m` : `${(s.stripMM / 25.4 / 12).toFixed(1)} ft`;
+  $("#xSummary").innerHTML = `<b>${s.rows} rows</b> · a strip ${len} long${P.roll ? ` · ${out.pages.length} PDF page${out.pages.length > 1 ? "s" : ""} that butt into one roll` : ` · ${s.sheets} sheet${s.sheets > 1 ? "s" : ""}`}. ${esc(P.finish)}.`;
+  const issues = d.chart.warnings.concat(out.warnings); if (out.badChars.length) issues.push({ text: `Characters the PDF fonts cannot print (shown as “?”): ${out.badChars.join(" ")}` });
+  $("#xWarn").innerHTML = issues.map(w => `<li>${esc(w.text)}</li>`).join("");
+}, 120); }
+$("#xGo").onclick = async () => {
+  const btn = $("#xGo"); btn.disabled = true; btn.textContent = "Building…";
+  try {
+    await loadPdfWriter();
+    const d = chartData(); if (!d) throw new Error("there is no line");
+    const out = RC.layout(d.chart, d.st);
+    const bytes = await window.RoadbookChartPdf.toPdf(out.pages, { title: d.st.title });
+    const file = `${d.st.title} ${d.st.layout === "A" ? "scroll" : "roadbook"} ${d.st.preset.slice(2)}`.replace(/[^\w .-]+/g, "_") + ".pdf";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })); a.download = file; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    status(`Saved ${file}: ${out.stats.rows} rows. Print it at 100%.`);
+  } catch (e) { status("The PDF could not be made: " + e.message, true); }
+  btn.disabled = false; btn.textContent = "Download PDF";
+};
+
+// ---- a chart in progress survives a reload, in this browser only -------------------------------------------------------------
+const AUTOSAVE = "rb.chart.autosave";
+let autosaveT = 0;
+function scheduleAutosave() { clearTimeout(autosaveT); autosaveT = setTimeout(autosave, 2000); }
+function autosave() {
+  const line = lineCoords();
+  if (!line || !(S.track || S.cues.some(c => !c.auto || c.rally))) return;
+  try {
+    const gpx = gpxOut({ rally: true }); if (gpx.length > 4e6) return;     // a very long track would not fit the browser's allowance
+    localStorage.setItem(AUTOSAVE, JSON.stringify({ v: 1, t: Date.now(), name: $("#name").value.trim() || "Roadbook", cues: S.cues.length, chartOn: S.chartOn, gpx }));
+  } catch {}
+}
+function forgetAutosave() { clearTimeout(autosaveT); try { localStorage.removeItem(AUTOSAVE); } catch {} }
+function offerRestore() {
+  let saved = null; try { saved = JSON.parse(localStorage.getItem(AUTOSAVE) || "null"); } catch {}
+  if (!saved || typeof saved.gpx !== "string") return;
+  $("#restoreBody").textContent = `“${saved.name}”: ${saved.cues} cue${saved.cues === 1 ? "" : "s"}, saved in this browser ${new Date(saved.t).toLocaleString()}. It comes back as a track kept as recorded, with every cue and chart field.`;
+  $("#restoreSheet").hidden = false;
+  $("#restoreGo").onclick = () => { $("#restoreSheet").hidden = true; loadGpxText(saved.gpx, saved.name, { restore: true }); if (saved.chartOn) $("#btnChart").onclick(); };
+  $("#restoreNo").onclick = () => { $("#restoreSheet").hidden = true; forgetAutosave(); };
+}
+
 // ---- the URL carries the plan ------------------------------------------------------------------------------------------
 function saveHash() {
   const fb = document.getElementById("fb"); if (fb) fb.href = "mailto:wiley@machinenusa.com?subject=Planner%20feedback&body=" + encodeURIComponent("What happened:\n\n\nThe route I was looking at: " + location.href + "\n");
@@ -1301,6 +1707,6 @@ function restoreHash() {
 }
 
 window.addEventListener("beforeunload", e => { if (S.cues.some(c => !c.auto) || S.track) { e.preventDefault(); e.returnValue = ""; } });
-window.roadbookPlanner = { map, state: S, reroute, peekPois, inspect, climbCues };   // for the console and tests
+window.roadbookPlanner = { map, state: S, reroute, peekPois, inspect, climbCues, gpxOut, loadGpxText, chartData, fetchJunctions, renderChart };   // for the console and tests
 init().catch(e => { console.error(e); status("The planner could not start: " + e.message, true); });
 })();

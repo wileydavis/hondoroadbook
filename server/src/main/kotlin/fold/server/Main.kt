@@ -10,7 +10,7 @@ import java.util.concurrent.Executors
 import java.util.zip.GZIPOutputStream
 
 /**
- * fold-server: GET /route /snap /search /health. Configuration by environment:
+ * fold-server: GET /route /snap /junctions /search /health. Configuration by environment:
  *   PORT         listen port (8080)
  *   PACK_DIR     where graphs are cached on disk (./packs-cache)
  *   CATALOG_URL  the pack catalog (https://hondoroadbook.com/packs/catalog.json)
@@ -59,6 +59,7 @@ private fun handle(ex: HttpExchange, api: Api) {
             "/near" -> api.near(q)
             "/route" -> api.route(q)
             "/snap" -> api.snap(q)
+            "/junctions" -> api.junctions(q)
             "/search" -> api.search(q)
             else -> throw ApiError(404, "no such endpoint")
         }

@@ -14,7 +14,7 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Name", "Access-Control-Max-Age": "86400" }) });
   try {
-    if (path === "route" || path === "snap" || path === "search" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
+    if (path === "route" || path === "snap" || path === "junctions" || path === "search" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
     if (path === "park" && request.method === "POST") return await park(request, env, url);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);

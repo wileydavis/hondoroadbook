@@ -178,6 +178,65 @@ class Api(private val packs: PackSet) {
         )
     }
 
+    /**
+     * Junctions for a roll chart's tulips: for each point (up to 200) the graph node within 25 m and every way out
+     * of it — absolute bearing from the node along the edge's first 20 m, road class, surface. null where no node is
+     * that close (a bend, a field). The planner turns bearings into branches relative to the rider's arrival.
+     */
+    fun junctions(q: Map<String, String>): String = routing {
+        val raw = q["pts"] ?: throw ApiError(400, "pts=lon,lat;… is required")
+        val pts = raw.split(';', '|').filter { it.isNotBlank() }.map { t ->
+            val p = t.split(','); val lon = p.getOrNull(0)?.toDoubleOrNull(); val lat = p.getOrNull(1)?.toDoubleOrNull()
+            if (p.size != 2 || lon == null || lat == null || !lon.isFinite() || !lat.isFinite() || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw ApiError(400, "bad point")
+            doubleArrayOf(lat, lon)
+        }
+        if (pts.isEmpty()) throw ApiError(400, "no points")
+        if (pts.size > 200) throw ApiError(400, "at most 200 points")
+        var minLat = 90.0; var maxLat = -90.0; var minLon = 180.0; var maxLon = -180.0
+        for (p in pts) { minLat = minOf(minLat, p[0]); maxLat = maxOf(maxLat, p[0]); minLon = minOf(minLon, p[1]); maxLon = maxOf(maxLon, p[1]) }
+        if (maxLat - minLat > 12 || maxLon - minLon > 12) throw ApiError(400, "points too spread out")
+        val loaded = packs.forBbox(minLon - 0.02, minLat - 0.02, maxLon + 0.02, maxLat + 0.02)
+        if (loaded.isEmpty()) throw ApiError(404, "No map pack covers these points yet")
+        val mr = MultiRouter(loaded.map { it.router })
+        val out = pts.map { p -> junctionAt(mr, p[0], p[1]) ?: "null" }
+        Json.obj("junctions" to Json.arr(out))
+    }
+    private fun junctionAt(mr: MultiRouter, lat: Double, lon: Double): String? {
+        val cands = mr.snapCandidates(lat, lon, Profile.DIRT, 25.0, 6)
+        var best = -1; var bestPack = -1; var bestD = 25.0
+        for (s in cands) {
+            val g = mr.graph(s.pack)
+            for (n in intArrayOf(g.edgeFrom(s.edge), g.edgeTo(s.edge))) {
+                // a node with fewer than three ways out is a bend or an end, not a junction
+                if (g.adjEnd(n) - g.adjStart(n) < 3) continue
+                val d = Geo.fastDistance(lat, lon, g.nodeLat(n), g.nodeLon(n))
+                if (d <= bestD) { bestD = d; best = n; bestPack = s.pack }
+            }
+        }
+        if (best < 0) return null
+        val g = mr.graph(bestPack); val nLat = g.nodeLat(best); val nLon = g.nodeLon(best)
+        val arms = ArrayList<String>()
+        for (slot in g.adjStart(best) until g.adjEnd(best)) {
+            val e = g.adj(slot) shr 1
+            val f = g.edgeFlags(e)
+            val fwd = g.edgeFrom(e) == best
+            // the edge's own shape for its first ~20 m, so a curving road reads by its leaving direction
+            val n = g.edgePointCount(e); var k = if (fwd) 1 else n - 2; var d = 0.0
+            var pLat = nLat; var pLon = nLon
+            while (true) {
+                val qLat = g.edgePointLat(e, k); val qLon = g.edgePointLon(e, k)
+                d += Geo.fastDistance(pLat, pLon, qLat, qLon); pLat = qLat; pLon = qLon
+                if (d >= 20.0) break
+                val nk = if (fwd) k + 1 else k - 1
+                if (nk < 0 || nk >= n) break
+                k = nk
+            }
+            arms.add(Json.obj("bearing" to Json.num(Geo.bearing(nLat, nLon, pLat, pLon), 0), "cls" to Json.str(GraphFormat.CLASSES.getOrElse(f and GraphFormat.CLASS_MASK) { "road" }),
+                "unpaved" to (f and GraphFormat.UNPAVED != 0).toString(), "name" to Json.str(g.edgeName(e))))
+        }
+        return Json.obj("lon" to Json.num(nLon), "lat" to Json.num(nLat), "d" to Json.num(bestD, 1), "arms" to Json.arr(arms))
+    }
+
     /** What is under a point: the nearest road or trail of any kind and what the graph knows about it. */
     fun snap(q: Map<String, String>): String = routing {
         val lon = finite(q["lon"], 180.0) ?: throw ApiError(400, "lon required"); val lat = finite(q["lat"], 90.0) ?: throw ApiError(400, "lat required")
