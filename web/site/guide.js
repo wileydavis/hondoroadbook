@@ -158,7 +158,7 @@
       const body = hint ? `<div class="hint"><p><b>Click the map twice</b>: a start and an end. The route follows the mode above.</p><p><b>Drag the line</b> onto any road or trail to pull the route through it.</p><p><b>Click the line</b> to add a cue, inspect the spot, or add a stop.</p></div>`
         : `<div class="stats"><div class="big">${esc(dist)} <span>${esc(time)}</span></div><div class="surf"><i style="width:72%;background:#2b6cb0"></i><i style="width:18%;background:#e7b400"></i><i style="width:10%;background:#8a7a5a"></i></div>${profile ? '<svg class="prof" viewBox="0 0 160 40" preserveAspectRatio="none"><path d="M0 34 L30 30 L60 14 L80 10 L100 22 L130 18 L160 32 V40 H0 Z" fill="#cfc9bb"/><path d="M0 34 L30 30 L60 14 L80 10 L100 22 L130 18 L160 32" fill="none" stroke="#5a5a5a" stroke-width="1.2"/></svg><div class="muted">↑ 2,140 ft · ↓ 1,880 ft · high point 6,320 ft</div>' : ''}${legs ? `<div class="muted">${esc(legs)}</div>` : ''}</div>
            <div class="cues"><h4>Cues <span>(${cues.length})</span> <em>reset to turns</em></h4>${cues.map(c => `<div class="cue${c.user ? ' user' : ''}" data-cue="${esc(c.id || '')}"><b>${esc(c.g)}</b><span>${esc(c.text)}</span><i>${esc(c.at)}</i></div>`).join('')}</div>
-           <div class="actions"><span class="cta" data-b="gpx">Download GPX</span><span class="cta alt" data-b="phone">Send to phone</span><span class="cta alt" data-b="publish">Publish</span><div class="mini"><span data-b="clear">clear</span><span data-b="reverse">reverse</span><span data-b="loop">loop</span><span data-b="open">open GPX</span></div><div class="muted">Name: <u data-b="name">${esc(name)}</u></div></div>`;
+           <div class="actions"><span class="cta" data-b="gpx">Download GPX</span><span class="cta alt" data-b="phone">Send to phone</span><span class="cta alt" data-b="publish">Publish</span><span class="cta alt" data-b="chart">Roll chart</span><div class="mini"><span data-b="clear">clear</span><span data-b="reverse">reverse</span><span data-b="loop">loop</span><span data-b="open">open GPX</span></div><div class="muted">Name: <u data-b="name">${esc(name)}</u></div></div>`;
       const side = $('.pside', this.sc);
       side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div><div class="in ph" data-in>Find a town, road or trail</div><div class="modes">${modes}</div>${body}`;
       return side;
@@ -433,6 +433,47 @@
   const plannerIdle = (s, mode = 'ride') => { s.pside({ mode }); s.players({ terrain: true }); s.layer('hill', true); };
   const plannerRoute = (s, { cues = CUES0, dist = '54 mi', time = '1 h 15', path = P_DIRECT, name = 'Roadbook', profile = false, mode = 'ride' } = {}) => { s.pside({ mode, hint: false, dist, time, cues, name, profile }); s.clearRoutes(); s.route('p', path, MODES[mode][1], { draw: !s.fast }); };
 
+
+  // ---- roll charts: real rows from the planner's own chart engine (chart.js), on a made-up ranch loop ------------------
+  const RCg = () => window.RoadbookChart;
+  const chartCache = {};
+  function sampleChart(layout, edited) {
+    const C = RCg(); if (!C) return null;
+    const key = layout + (edited ? '1' : '0'); if (chartCache[key]) return chartCache[key];
+    const R = 6371000, RAD = Math.PI / 180; let p = [-111.2, 45.5]; const line = [p];
+    const dest = ([lon, lat], b, m) => { const d = m / R, br = b * RAD, p1 = lat * RAD, l1 = lon * RAD; const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(br)); return [(l1 + Math.atan2(Math.sin(br) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2))) / RAD, p2 / RAD]; };
+    for (const [b, m] of [[0, 800], [90, 1200], [45, 900], [300, 700], [115, 250], [120, 600]]) for (let k = 10; k <= m; k += 10) { p = dest(p, b, 10); line.push(p); }
+    const cum = C.cumulative(line);
+    const cue = (at, o) => { const q = C.pointAt(line, cum, at); return Object.assign({ lon: q[0], lat: q[1], turn: 'RIGHT', level: 0, text: '', at, id: Math.round(at), auto: true }, o); };
+    const cues = [
+      cue(800, edited ? { auto: false, rally: { branches: [{ deg: -90, kind: 'road' }, { deg: 0, kind: 'faint' }], caution: 1, info: 'R ON RANCH RD CATTLE GUARD', symbols: [{ id: 'cattle_guard', slot: 'ra' }], edited: true } } : { text: 'Ranch Rd', rally: { branches: [{ deg: -90, kind: 'road' }] } }),
+      cue(1500, { turn: 'DANGER', level: 2, text: 'Wash crossing, soft sand', auto: false, rally: { symbols: [{ id: 'wash', slot: 'la' }], speed: 25 } }),
+      cue(2000, { turn: 'SLIGHT_LEFT', auto: false, rally: { branches: [{ deg: 0, kind: 'track' }, { deg: 70, kind: 'faint' }], info: 'KEEP L FPP', cap: 315, capShow: true } }),
+      cue(2900, { turn: 'LEFT', auto: false, rally: { path: 'offtrack', info: 'HP CAP 300 BTW BUSHES', symbols: [{ id: 'bushes', slot: 'lb' }] } }),
+      cue(3600, { turn: 'UTURN', auto: false, rally: { caution: 3, info: 'DROP OFF, TURN BACK' } }),
+    ];
+    const st = C.settings({ layout, title: 'Copper Ridge' });
+    return (chartCache[key] = { st, chart: C.buildRows(line, cues, st, { cum }) });
+  }
+  function chartSide(s, layout, edited) {
+    const side = $('.pside', s.sc), d = sampleChart(layout, edited), C = RCg();
+    const rows = d ? d.chart.rows.slice(0, layout === 'A' ? 5 : 4).map(r => `<div class="gcrow" data-r="${r.n}">${C.rowSvg(r, d.st).svg}${r.auto ? '<i>auto</i>' : ''}</div>`).join('') : '';
+    side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div><div class="gchart"><h4>Roll chart <span>(${d ? d.chart.rows.length : 0} rows)</span> <em>cue list</em></h4><div class="gseg"><span data-l="A" class="${layout === 'A' ? 'on' : ''}">A · Stage-rally scroll</span><span data-l="B" class="${layout === 'B' ? 'on' : ''}">B · Rally-raid roadbook</span></div><div class="gcact"><span class="cta" data-b="export">Export PDF…</span><span class="m">suggest cues</span><span class="m">find junctions</span></div><div class="gcrows ${layout}">${rows}</div></div>`;
+  }
+  /** the tulip in the editor, with the arrowhead's handle where the planner puts it */
+  function tulipWithHandle(t) {
+    const C = RCg(); if (!C) return '';
+    const e = t.exit, v = [Math.sin(e * Math.PI / 180), -Math.cos(e * Math.PI / 180)], tip = [50 + v[0] * 38, 55 + v[1] * 38];
+    return C.tulipSvg(Object.assign({ path: 'track', roundabout: 0 }, t), 'B', true).replace('</svg>', `<circle data-tip cx="${tip[0].toFixed(1)}" cy="${tip[1].toFixed(1)}" r="7.5" fill="rgba(37,99,235,.15)" stroke="#2563eb" stroke-width=".8"/></svg>`);
+  }
+  function rallyTulip(s, t) { const b = $('[data-tulip]', s.sc); if (b) b.innerHTML = tulipWithHandle(t); }
+  async function rallyModal(s, t) {
+    const chips = ['L', 'R', 'KEEP L', 'KEEP R', 'ZERO ODO', 'CATTLE GUARD', 'GATE', 'CREST'].map(c => `<span data-chip="${c}">${c}</span>`).join('');
+    const glyphs = ['bump', 'dip', 'gate', 'cattle_guard', 'water', 'rocks', 'tree', 'fuel'].map(id => RCg() ? RCg().primsToSvg(RCg().glyphPrims(id, 0.5, 0.5, 9, '#000000'), 10, 10) : '').map(g => `<span>${g}</span>`).join('');
+    return s.modal('Edit cue', `<div class="gtabs"><span>Cue</span><span class="on">Roll chart</span></div><div class="grally"><div class="gtulip" data-tulip>${tulipWithHandle(t)}</div><div class="gform"><div class="lbl">Printed words</div><div class="in ph" data-in>The cue's words, in capitals</div><div class="gchips">${chips}</div><div class="lbl">Caution <span class="gcau"><span data-cau="0">none</span><span data-cau="1">!</span><span data-cau="2">!!</span><span data-cau="3">!!!</span></span></div><div class="lbl">Symbols</div><div class="gglyphs">${glyphs}</div></div></div><div class="grow" style="margin-top:8px"><div class="gbtn accent" data-b="save">Save</div></div>`);
+  }
+  function chartHead(layout) { const d = sampleChart(layout, true); return d ? RCg().headSvg(d.chart, d.st, '', new Date().toISOString().slice(0, 10)) : ''; }
+
   SECTIONS.push(
     { group: 'The planner', id: 'planner-route', title: 'Plan a route on the planner', short: true, device: 'planner',
       blurb: 'hondoroadbook.com/plan: the same router and the same maps as the phone, on a desk, with a mouse. Nothing you do there is stored unless you publish it.',
@@ -521,6 +562,25 @@
           run: async s => { const u = document.createElement('div'); u.className = 'purl'; u.textContent = 'hondoroadbook.com/plan.html#m=ride&p=45.68,-111.04;45.58,-111.69;45.35,-111.73'; s.sc.appendChild(u); await s.wait(200); u.classList.add('on'); await s.wait(1600); } },
         { c: `${K('open GPX')} goes the other way: open any GPX in the planner and choose — keep the track exactly as recorded and just edit its cues, or route it on roads. Switch either way later; whichever is on the map is what you download, send or publish.`,
           run: async s => { await s.tap(s.cursorOver('[data-b="open"]')); s.hideFinger(); await s.wait(800); } },
+      ]  },
+
+    { group: 'The planner', id: 'roll-chart', title: 'Print a rally roll chart', device: 'planner',
+      blurb: 'The route as a paper roll chart for a handlebar holder: the 2.25 in stage-rally scroll, or the 148 mm rally-raid roadbook. The rows here are drawn by the planner\'s own chart code.',
+      steps: [
+        { c: `With a route planned or a GPX opened, ${K('Roll chart')}. The cue list gives way to the chart: every row exactly as it will print, mileage over a tulip and the instruction. Rows still as generated carry a small ${K('auto')} tag that never prints.`,
+          run: async s => { plannerIdle(s); s.marker('start', 'start', ...P_BOZ); s.marker('pin', 'pin', ...P_ENN); plannerRoute(s, { name: 'Copper Ridge' }); s.fast || await s.wait(300); await s.tap(s.cursorOver('[data-b="chart"]')); chartSide(s, 'A'); s.hideFinger(); await s.wait(1400); } },
+        { c: `Two layouts from the same cues. ${K('A')} is the stage-rally scroll — NASA Rally Sport RallyMoto: 2.25 in wide, miles to hundredths, total and leg mileage, cautions as ! !! !!!. ${K('B')} is the rally-raid roadbook — FIA and FIM: 148 mm, kilometres, total | tulip | notes, with CAP headings, speed zones and waypoints.`,
+          run: async s => { await s.tap(s.cursorOver('[data-l="B"]')); chartSide(s, 'B'); s.hideFinger(); await s.wait(1600); await s.tap(s.cursorOver('[data-l="A"]')); chartSide(s, 'A'); s.hideFinger(); await s.wait(500); } },
+        { c: `Click a row and its cue opens on the ${K('Roll chart')} tab. The tulip enters from the bottom at the dot and leaves along the arrow at the true angle. Drag the arrowhead to change the way out.`,
+          run: async s => { await s.tap(s.cursorOver('.gcrow[data-r="2"]')); await rallyModal(s, { exit: 0, branches: [{ deg: -90, kind: 'road' }] }); const t = $('[data-tip]', s.sc); if (t) { const a = s.posOf(t), b = [a[0] + 32, a[1] + 26]; await s.moveTo(...a); s.finger.classList.add('press'); for (const e of [20, 45, 70, 90]) { rallyTulip(s, { exit: e, branches: [{ deg: -90, kind: 'road' }] }); await s.wait(120); } await s.moveTo(...b); s.finger.classList.remove('press'); } s.hideFinger(); await s.wait(700); } },
+        { c: `The other roads at a junction come from the map as a first draft. Click beside the junction to add one; click a road to change it: paved, then track, then faint, then gone. Unmapped two-track is normal on rally ground, so drawing it is one click.`,
+          run: async s => { const box = $('[data-tulip]', s.sc); if (box) { const r = s.posOf(box); await s.tap([r[0], r[1] - 40]); } rallyTulip(s, { exit: 90, branches: [{ deg: -90, kind: 'road' }, { deg: 0, kind: 'track' }] }); await s.wait(500); if (box) { const r = s.posOf(box); await s.tap([r[0], r[1] - 30]); } rallyTulip(s, { exit: 90, branches: [{ deg: -90, kind: 'road' }, { deg: 0, kind: 'faint' }] }); s.hideFinger(); await s.wait(900); } },
+        { c: `Below the tulip: the printed words (the usual abbreviations are one click — ${K('KEEP L')}, ${K('CATTLE GUARD')}, ${K('ZERO ODO')}), a caution of ! to !!!, a speed limit, symbols beside the tulip, a section start or an odometer reset. ${K('Save')}, and the row redraws.`,
+          run: async s => { await s.type($('[data-in]', s.sc), 'R ON RANCH RD'); await s.tap(s.cursorOver('[data-chip="CATTLE GUARD"]')); $('[data-in]', s.sc).textContent = 'R ON RANCH RD CATTLE GUARD'; await s.tap(s.cursorOver('[data-cau="1"]')); $('[data-cau="1"]', s.sc).classList.add('on'); await s.wait(300); await s.tap(s.btn('save')); $('.gsheet', s.sc).classList.remove('on'); chartSide(s, 'A', true); s.hideFinger(); await s.wait(1300); } },
+        { c: `${K('Export PDF')} picks the paper: a continuous roll for a receipt or roll printer, or strips on Letter, A4 or A5 sheets to cut and tape end to end. The PDF is made in your browser, at exact size, ready to print.`,
+          run: async s => { await s.tap(s.cursorOver('[data-b="export"]')); await s.modal('Export the roll chart', `<div class="xrow"><span>Layout</span><b>A · Stage-rally scroll, 2.25 in</b></div><div class="xrow"><span>Paper</span><b data-b="paper">Roll, 2.25 in</b></div><div class="xrow"><span>Units</span><b>miles · 0.85</b></div><div class="xrow"><span>Title</span><b>Copper Ridge</b></div><p class="sub"><b>7 rows</b> · a strip 1.2 ft long. None: print on 2¼ in roll paper.</p><div class="grow" style="margin-top:8px"><div class="gbtn accent" data-b="pdf">Download PDF</div></div>`); await s.wait(500); await s.tap(s.btn('paper')); s.btn('paper').textContent = 'US Letter, 3 strips'; $('.gsheet .sub', s.sc).innerHTML = '<b>7 rows</b> · 1 sheet. Cut the three strips apart and tape them end to end.'; await s.wait(600); await s.tap(s.btn('pdf')); $('.gsheet', s.sc).classList.remove('on'); s.hideFinger(); await s.toast('Saved Copper Ridge scroll letter.pdf', 1400); } },
+        { c: `Print at 100%, never “fit to page”: the head of every chart has a ruler and a legend of every mark and symbol it uses. For a track you actually rode, open it with ${K('Keep it as recorded')} so the mileage matches the ground, and ${K('suggest cues')} finds its turns. ${K('Download GPX')} keeps every chart field, and a chart in progress waits in your browser between visits.`,
+          run: async s => { await s.modal('The head of the chart', `<div class="gchead">${chartHead('A')}</div>`); await s.wait(1800); } },
       ] });
 
   // ---- narration: the caption read aloud by the browser's own voice (the way the app speaks on the phone) ---------
