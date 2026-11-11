@@ -248,12 +248,13 @@ class MainActivity : AppCompatActivity() {
         panelIdle = findViewById(R.id.panelIdle); panelPin = findViewById(R.id.panelPin); panelNav = findViewById(R.id.panelNav)
         pinLabel = findViewById(R.id.pinLabel); navRemaining = findViewById(R.id.navRemaining); navSpeed = findViewById(R.id.navSpeed)
         navEta = findViewById(R.id.navEta); navElev = findViewById(R.id.navElev); navScale = findViewById<ScaleView>(R.id.navScale).also { it.fixed = true }
-        applyOrientation()
-        hud.addOnLayoutChangeListener(hudLayoutWatcher); offPanel.addOnLayoutChangeListener(hudLayoutWatcher)
-        if (NavSession.menuOpen) { NavSession.menuOpen = false; findViewById<View>(R.id.root).post { openMenu() } }
         toastView = findViewById(R.id.toast)
         panelCompare = findViewById(R.id.panelCompare); compareRows = findViewById(R.id.compareRows)
         turnChip = findViewById(R.id.turnChip); hudCompass = findViewById(R.id.hudCompass)
+        // every view the orientation layout touches is bound by now (hudCompass last): lay out, and watch the HUD's height
+        applyOrientation()
+        hud.addOnLayoutChangeListener(hudLayoutWatcher); offPanel.addOnLayoutChangeListener(hudLayoutWatcher)
+        if (NavSession.menuOpen) { NavSession.menuOpen = false; findViewById<View>(R.id.root).post { openMenu() } }
         findViewById<Button>(R.id.btnStartNav).setOnClickListener { goWithSelected() }
         findViewById<Button>(R.id.btnCompareCancel).setOnClickListener { cancelCompare() }
         findViewById<Button>(R.id.btnStops).setOnClickListener { showStops() }
