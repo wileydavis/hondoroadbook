@@ -255,7 +255,7 @@ function buildModes() {
   for (const [id, label, color] of MODES) {
     const b = document.createElement("button"); b.textContent = label; b.style.setProperty("--c", color); b.dataset.mode = id; b.setAttribute("role", "radio");
     b.className = id === S.mode ? "on" : ""; b.title = id;
-    b.onclick = () => { S.mode = id; for (const x of el.children) x.className = x.dataset.mode === id ? "on" : ""; if (S.track) { status("Switching from a loaded track to routing: the line will be rebuilt between the points you add", false); } if (S.pts.length >= 2) reroute(); else applyStyle(); saveHash(); };
+    b.onclick = () => { S.mode = id; for (const x of el.children) x.className = x.dataset.mode === id ? "on" : ""; if (S.track) { status(S.imported ? `Kept as recorded — press “route it on roads” to rebuild it as ${label}` : "This is a loaded track", false); } if (S.pts.length >= 2) reroute(); else applyStyle(); saveHash(); };
     el.appendChild(b);
   }
 }
@@ -445,6 +445,7 @@ async function reroute() {
     // the points go back to the last route that worked, so what is shown and what is exported always agree
     if (S.pendingNotes.length) { S.pendingNotes = []; status("The stop could not be routed, so its note was not added", true); }
     if (S.lastGood) { S.pts = S.lastGood.pts.map(p => ({ ...p })); S.mode = S.lastGood.mode; buildModes(); renderPoints(); saveHash(); status(e.message + " — kept the previous route", true); }
+    else if (S.imported && S.imported.routed) { S.imported.merging = false; keepTrack(); status(e.message + " — kept the track as recorded", true); }
     else { S.pts = []; S.route = null; refreshRouteSources(); renderAll(); status(e.message, true); }
   }
 }
@@ -468,8 +469,11 @@ function setRoute(j, preview) {
   const line = j.coords;
   const kept = S.cues.filter(c => !c.auto).filter(c => nearLine(c, line) < 150);
   const dropped = S.cues.filter(c => !c.auto).length - kept.length;
+  // the opened file's own cues that fall off the routed line come back with "back to the track"
+  if (S.imported && S.imported.routed) for (const c of S.cues) if (!c.auto && c.imp && !kept.includes(c)) S.imported.merged.add(c.imp);
   const auto = j.cues.filter(c => !S.deletedAuto.some(d => dist([d.lon, d.lat], [c.lon, c.lat]) < 40)).map(c => ({ lon: c.lon, lat: c.lat, turn: c.turn, level: 0, exit: c.exit || 0, text: c.turn === "ROUNDABOUT" ? c.name : (c.name || ""), auto: true }));
   S.cues = [...auto, ...kept];
+  mergeImported();
   if (dropped) status(`${dropped} of your cues no longer touch the route and were dropped`, true);
   renderAll();
 }
@@ -483,10 +487,11 @@ function renderStats() {
   $("#btnLoop").textContent = isLoop() ? "open loop" : "loop";
   $("#btnLoop").title = isLoop() ? "Make the last stop the finish again" : "Finish where you started";
   $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have; $("#actions").hidden = !have;
-  if (!have) return;
+  if (!have) { $("#trackSwap").hidden = true; return; }
   const len = S.route ? S.route.length : lineLength(c);
   $("#dist").textContent = fmtDist(len);
   $("#time").textContent = S.route ? `about ${fmtTime(S.route.time)} · ${MODES.find(m => m[0] === S.route.mode)[1]}` : (S.track ? "loaded track" : "");
+  renderSwap();
   const bar = $("#surface"), key = $("#surfaceKey"); bar.innerHTML = ""; key.innerHTML = "";
   if (S.route) {
     const groups = new Map();
@@ -1078,7 +1083,8 @@ function gpxOut() {
   const out = ['<?xml version="1.0" encoding="UTF-8"?>', '<gpx version="1.1" creator="Roadbook Planner" xmlns="http://www.topografix.com/GPX/1/1">', `  <metadata><name>${esc(name)}</name><extensions><roadbook>${S.route ? `<mode>${S.route.mode}</mode><paved>${Math.round(paved)}</paved><unpaved>${Math.round(unpaved)}</unpaved>` : ""}<planner>1</planner></roadbook></extensions></metadata>`];
   for (const c of cues) { const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`; out.push(`  <wpt lat="${c.lat.toFixed(6)}" lon="${c.lon.toFixed(6)}"><name>${esc(c.text || WORDS[c.turn])}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link && /^https?:\/\//.test(c.link) ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type></wpt>`); }
   out.push(`  <trk><name>${esc(name)}</name><trkseg>`);
-  for (const p of line) out.push(`    <trkpt lat="${p[1].toFixed(6)}" lon="${p[0].toFixed(6)}"></trkpt>`);
+  // a kept track keeps the heights its file had; a routed line has none to give
+  for (const p of line) out.push(`    <trkpt lat="${p[1].toFixed(6)}" lon="${p[0].toFixed(6)}">${S.track && p.length > 2 ? `<ele>${p[2].toFixed(1)}</ele>` : ""}</trkpt>`);
   out.push("  </trkseg></trk>", "</gpx>", "");
   return out.join("\n");
 }
@@ -1104,7 +1110,7 @@ $("#btnPublish").onclick = async () => {
     } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
   };
 };
-$("#btnClear").onclick = () => { S.pts = []; S.cues = []; S.deletedAuto = []; S.pendingNotes = []; editing = null; $("#cueEd").hidden = true; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
+$("#btnClear").onclick = () => { S.imported = null; $("#openSheet").hidden = true; S.pts = []; S.cues = []; S.deletedAuto = []; S.pendingNotes = []; editing = null; $("#cueEd").hidden = true; S.track = null; S.route = null; S.lastGood = null; abortInflight(); refreshRouteSources(); renderAll(); applyStyle(); };
 const MIRROR = { LEFT: "RIGHT", RIGHT: "LEFT", SLIGHT_LEFT: "SLIGHT_RIGHT", SLIGHT_RIGHT: "SLIGHT_LEFT", SHARP_LEFT: "SHARP_RIGHT", SHARP_RIGHT: "SHARP_LEFT", KEEP_LEFT: "KEEP_RIGHT", KEEP_RIGHT: "KEEP_LEFT" };
 /** A loop: the finish is the start. With only two points that is an out-and-back; drag the line to make it a circuit. */
 function isLoop() { return S.pts.length >= 2 && Math.abs(S.pts[0].lon - S.pts[S.pts.length - 1].lon) < 1e-9 && Math.abs(S.pts[0].lat - S.pts[S.pts.length - 1].lat) < 1e-9; }
@@ -1119,12 +1125,14 @@ $("#btnReverse").onclick = () => {
   if (S.track) {
     // a new array, so every cached distance is rebuilt; turns mirror, the rest is the author's to check
     S.track = { ...S.track, coords: S.track.coords.slice().reverse() };
+    if (S.imported) S.imported.coords = S.track.coords;   // "back to the track" keeps the new direction
     let flagged = 0;
     S.cues = S.cues.map(c => { if (MIRROR[c.turn]) { if (c.text) flagged++; return { ...c, turn: MIRROR[c.turn] }; } if (c.turn === "ROUNDABOUT" || c.text) flagged++; return { ...c }; });
     refreshRouteSources(); renderAll();
     status(`Reversed: turns mirrored${flagged ? `; ${flagged} cue${flagged > 1 ? "s" : ""} with words or a roundabout exit need a look` : ""}`, flagged > 0);
     return;
   }
+  if (S.imported && S.imported.routed) S.imported.coords = S.imported.coords.slice().reverse();
   S.pts.reverse(); afterPointsChange();
 };
 $("#file").onchange = async e => {
@@ -1138,7 +1146,7 @@ function parseGpx(text) {
   if (!/<gpx[\s>]/.test(text)) throw new Error("That is not a GPX file");
   const coord = (attrs, k, max) => { const v = Number(new RegExp(`${k}\\s*=\\s*"([^"]*)"`).exec(attrs)?.[1]); return Number.isFinite(v) && Math.abs(v) <= max ? v : null; };
   const pts = [], rte = [];
-  for (const m of text.matchAll(/<trkpt\s+([^>]*?)(?:\/>|>[\s\S]*?<\/trkpt>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A track point has a bad coordinate"); if (pts.length >= IMPORT_LIMITS.points) throw new Error(`More than ${IMPORT_LIMITS.points.toLocaleString()} points; simplify the track first`); pts.push([lon, lat]); }
+  for (const m of text.matchAll(/<trkpt\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/trkpt>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A track point has a bad coordinate"); if (pts.length >= IMPORT_LIMITS.points) throw new Error(`More than ${IMPORT_LIMITS.points.toLocaleString()} points; simplify the track first`); const ele = Number(/<ele>\s*([-\d.eE+]+)\s*<\/ele>/.exec(m[2] || "")?.[1]); pts.push(Number.isFinite(ele) && Math.abs(ele) < 12000 ? [lon, lat, ele] : [lon, lat]); }
   for (const m of text.matchAll(/<rtept\s+([^>]*?)(?:\/>|>[\s\S]*?<\/rtept>)/g)) { const lat = coord(m[1], "lat", 90), lon = coord(m[1], "lon", 180); if (lat == null || lon == null) throw new Error("A route point has a bad coordinate"); rte.push({ lon, lat }); }
   const cues = []; for (const m of text.matchAll(/<wpt\s+([^>]*)>([\s\S]*?)<\/wpt>/g)) {
     const type = (/<type>([\s\S]*?)<\/type>/.exec(m[2])?.[1] || "").trim().toLowerCase();
@@ -1161,6 +1169,7 @@ function loadGpxText(text, fallbackName) {
   try { g = parseGpx(text); } catch (e) { status(e.message, true); return; }   // the current plan is untouched by a bad file
   if (g.pts.length < 2 && g.rte.length >= 2) {
     // a route file with no track: its points are routing controls, so plan it here
+    S.imported = null; $("#openSheet").hidden = true;
     S.track = null; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.pendingNotes = []; S.cues = g.cues;
     if (MODES.some(m => m[0] === g.mode)) { S.mode = g.mode; buildModes(); }
     let rte = g.rte, note = "";
@@ -1175,14 +1184,83 @@ function loadGpxText(text, fallbackName) {
     return;
   }
   if (g.pts.length < 2) { status("That file has no track", true); return; }
-  S.pts = []; S.route = null; S.lastGood = null; abortInflight(); S.deletedAuto = []; S.pendingNotes = [];
-  S.track = { coords: g.pts, name: g.name || fallbackName }; S.cues = g.cues;
-  $("#name").value = S.track.name || "Roadbook";
-  refreshRouteSources(); renderAll(); applyStyle();
+  // the file as it came, so the person can route it and still come back to it (and its cues) later
+  g.cues.forEach((c, i) => c.imp = i + 1);
+  S.imported = { coords: g.pts, name: g.name || fallbackName, cues: g.cues.map(c => ({ ...c })), mode: MODES.some(m => m[0] === g.mode) ? g.mode : null, merged: new Set() };
+  keepTrack(g.cues);
+  $("#name").value = S.imported.name || "Roadbook";
   const b = g.pts.reduce((bb, p) => [Math.min(bb[0], p[0]), Math.min(bb[1], p[1]), Math.max(bb[2], p[0]), Math.max(bb[3], p[1])], [180, 90, -180, -90]);
   map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 60, duration: 600 });
-  status(`Loaded “${S.track.name}”: ${fmtDist(lineLength(g.pts))}, ${g.cues.length} cues. Click the line to add cues.`);
+  for (const sh of document.querySelectorAll(".sheet")) sh.hidden = true;
+  $("#openTitle").textContent = `Opened “${S.imported.name}”`;
+  $("#openBody").textContent = `${fmtDist(lineLength(g.pts))} of track, ${g.cues.length} cue${g.cues.length === 1 ? "" : "s"}. Keep the line as it is, or route it on roads (${modeLabel()})?`;
+  $("#openSheet").hidden = false;
+  status(`Loaded “${S.imported.name}” as recorded. Click the line to add cues.`);
 }
+
+// ---- an opened track: kept as recorded, or routed on roads through stops taken from it ----------------------------------
+function modeLabel() { return (MODES.find(m => m[0] === S.mode) || MODES[0])[1]; }
+/** Show the opened file's own line; cues are the ones given, or the current cues that still sit on it plus any the merge took. */
+function keepTrack(cues) {
+  const imp = S.imported; if (!imp) return;
+  S.routeReq++; S.pts = []; S.route = null; S.lastGood = null; abortInflight(); setElastic(null); S.deletedAuto = []; S.pendingNotes = [];
+  if (!cues) {
+    const mine = S.cues.filter(c => !c.auto && nearLine(c, imp.coords) < 150);
+    const back = imp.cues.filter(c => imp.merged.has(c.imp) && !mine.some(m => m.imp === c.imp)).map(c => ({ ...c }));
+    const lost = S.cues.filter(c => !c.auto).length - mine.length;
+    cues = [...mine, ...back];
+    if (lost) status(`${lost} cue${lost > 1 ? "s" : ""} added on the routed line ${lost > 1 ? "are" : "is"} off the original track and ${lost > 1 ? "were" : "was"} left out`, true);
+  }
+  imp.merged = new Set(); imp.routed = false;
+  S.track = { coords: imp.coords, name: imp.name }; S.cues = cues;
+  renderPoints(); refreshRouteSources(); renderAll(); applyStyle();
+}
+/** Stops spread along the track by distance (the router takes 60), so the route follows the same way. */
+function stopsFromTrack(c) {
+  const total = lineLength(c), n = Math.max(2, Math.min(60, Math.round(total / 1500) + 1));
+  const step = total / (n - 1), out = [{ lon: c[0][0], lat: c[0][1] }];
+  let along = 0, next = step;
+  for (let i = 1; i < c.length && out.length < n - 1; i++) {
+    const d = dist(c[i - 1], c[i]);
+    while (d > 0 && along + d >= next && out.length < n - 1) { const t = (next - along) / d; out.push({ lon: c[i - 1][0] + (c[i][0] - c[i - 1][0]) * t, lat: c[i - 1][1] + (c[i][1] - c[i - 1][1]) * t }); next += step; }
+    along += d;
+  }
+  out.push({ lon: c[c.length - 1][0], lat: c[c.length - 1][1] });
+  return out;
+}
+function routeTrack() {
+  const imp = S.imported; if (!imp) return;
+  const cues = S.cues.filter(c => !c.auto);
+  S.track = null; S.deletedAuto = []; S.pendingNotes = []; S.lastGood = null;
+  S.cues = cues; imp.routed = true; imp.merging = true;
+  S.pts = stopsFromTrack(imp.coords);
+  afterPointsChange(); applyStyle();
+  status(`Routing “${imp.name}” on roads (${modeLabel()}) through ${S.pts.length} stops from the track`);
+}
+/** After the first route of an opened track: a plain turn cue from the file on a turn the router also found gives way to the
+ *  router's (one cue per turn); one with words keeps its words and takes the router's place. */
+function mergeImported() {
+  const imp = S.imported; if (!imp || !imp.merging) return; imp.merging = false;
+  const auto = S.cues.filter(c => c.auto), mine = S.cues.filter(c => !c.auto);
+  const keep = [];
+  for (const c of mine) {
+    const near = TURNS.includes(c.turn) && c.turn !== "DANGER" && c.turn !== "NOTE" ? auto.find(a => dist([a.lon, a.lat], [c.lon, c.lat]) < 40) : null;
+    if (!near) { keep.push(c); continue; }
+    const words = c.text && c.text.trim().toUpperCase().replace(/ /g, "_") !== c.turn && c.text.trim().toLowerCase() !== String(WORDS[c.turn] || "").toLowerCase();
+    if (words) { auto.splice(auto.indexOf(near), 1); keep.push(c); }
+    else if (c.imp) imp.merged.add(c.imp);
+  }
+  S.cues = [...auto, ...keep];
+}
+function renderSwap() {
+  const el = $("#trackSwap"), imp = S.imported;
+  if (!imp || (!S.track && !(imp.routed && S.route))) { el.hidden = true; return; }
+  el.hidden = false;
+  if (S.track) { $("#swapTxt").textContent = "Kept as recorded."; $("#swapBtn").textContent = `route it on roads (${modeLabel()})`; $("#swapBtn").onclick = routeTrack; }
+  else { $("#swapTxt").textContent = `Routed from “${imp.name}”.`; $("#swapBtn").textContent = "back to the track as recorded"; $("#swapBtn").onclick = () => { keepTrack(); status(`Back to “${imp.name}” as recorded`); }; }
+}
+$("#openKeep").onclick = () => { $("#openSheet").hidden = true; };
+$("#openRoute").onclick = () => { $("#openSheet").hidden = true; routeTrack(); };
 
 // ---- the library ---------------------------------------------------------------------------------------------------------
 async function loadLibrary() {

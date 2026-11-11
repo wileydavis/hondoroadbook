@@ -27,11 +27,12 @@
     <p><b>Click the map twice</b>: a start and an end. The route follows the mode above.</p>
     <p><b>Drag the line</b> onto any road or trail to pull the route through it. Drag a point to move it; click a point to delete it. Drop END onto START, or press <i>loop</i>, to finish where you started. Stops along the way are lettered A, B, C.</p>
     <p><b>Click the line</b> to add a cue, inspect the spot, or add a stop.</p>
-    <p class="muted">Or <label class="link" for="file">open a GPX</label> to edit its cues. <input id="file" type="file" accept=".gpx,application/gpx+xml" hidden></p>
+    <p class="muted">Or <label class="link" for="file">open a GPX</label>: keep its track as recorded and edit the cues, or route it on roads. <input id="file" type="file" accept=".gpx,application/gpx+xml" hidden></p>
   </section>
 
   <section id="stats" hidden>
     <div class="row big"><span id="dist">—</span><span id="time" class="muted"></span></div>
+    <div id="trackSwap" class="swap" hidden><span id="swapTxt"></span> <button id="swapBtn" class="mini"></button></div>
     <div id="surface" class="surface" title="Surface along the route"></div>
     <div id="surfaceKey" class="skey"></div>
     <canvas id="elev" width="340" height="90" hidden></canvas>
@@ -115,6 +116,17 @@
 <div id="codeSheet" class="sheet" hidden>
   <div class="sheet-head"><b id="codeTitle">On the phone</b><button class="icon" data-close>×</button></div>
   <div id="codeBody"></div>
+</div>
+
+<!-- an opened track: keep it, or route it -->
+<div id="openSheet" class="sheet" hidden>
+  <div class="sheet-head"><b id="openTitle">Opened a track</b><button class="icon" data-close>×</button></div>
+  <p id="openBody" class="small"></p>
+  <div class="choice">
+    <button id="openKeep" class="cta">Keep it as recorded</button>
+    <button id="openRoute" class="cta alt">Route it on roads</button>
+  </div>
+  <p class="muted small">Kept, the line stays exactly as the file has it and you add or edit cues on it. Routed, the planner rebuilds it along the roads in the mode above through stops taken from the track, and adds its turns. You can switch either way later, and Download GPX saves whichever is on the map.</p>
 </div>
 
 <!-- library item -->

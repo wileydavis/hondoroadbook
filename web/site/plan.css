@@ -36,6 +36,9 @@ button.icon:hover { border-color: var(--soft); }
 #elev { width: 100%; height: 90px; margin-top: 10px; display: block; }
 .small { font-size: 12px; }
 .legs { font-size: 13px; color: var(--soft); margin-top: 6px; }
+.swap { font-size: 13px; color: var(--soft); margin: 2px 0 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.choice { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+.choice .cta { flex: 1 1 140px; }
 .mini { font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 99px; border: 1px solid var(--rule); background: transparent; color: var(--soft); cursor: pointer; }
 .mini:hover { color: var(--ink); border-color: var(--soft); }
 .cues { list-style: none; margin: 0; padding: 0; }

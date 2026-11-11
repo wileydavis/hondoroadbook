@@ -519,7 +519,7 @@
           run: async s => { plannerIdle(s); s.marker('start', 'start', ...P_BOZ); s.marker('pin', 'pin', ...P_ENN); plannerRoute(s, { name: 'Madison divide' }); s.fast || await s.wait(300); await s.tap(s.cursorOver('[data-b="gpx"]')); s.hideFinger(); await s.toast('Downloaded madison-divide.gpx', 1400); } },
         { c: `The address bar carries your points and mode the whole time, so copying the URL shares the plan before it is ever saved — paste it to a friend and they see the same route, and can change it without touching yours.`,
           run: async s => { const u = document.createElement('div'); u.className = 'purl'; u.textContent = 'hondoroadbook.com/plan.html#m=ride&p=45.68,-111.04;45.58,-111.69;45.35,-111.73'; s.sc.appendChild(u); await s.wait(200); u.classList.add('on'); await s.wait(1600); } },
-        { c: `${K('open GPX')} goes the other way: open any GPX in the planner to edit its cues, then send it to the phone or publish it.`,
+        { c: `${K('open GPX')} goes the other way: open any GPX in the planner and choose — keep the track exactly as recorded and just edit its cues, or route it on roads. Switch either way later; whichever is on the map is what you download, send or publish.`,
           run: async s => { await s.tap(s.cursorOver('[data-b="open"]')); s.hideFinger(); await s.wait(800); } },
       ] });
 
