@@ -22,11 +22,12 @@ fun main(args: Array<String>) {
     if (opts.containsKey("tiles-only") && outFile != null && opts["bbox"] != null) {
         val t0 = System.currentTimeMillis()
         val log: (String) -> Unit = { println("[${(System.currentTimeMillis() - t0) / 1000}s] $it") }
-        val bbox = opts["bbox"]!!.split(',').map { it.trim().toDouble() }
-        require(bbox.size == 4) { "--bbox minLon,minLat,maxLon,maxLat" }
+        // one box, or several separated by ';' (minLon,minLat,maxLon,maxLat;minLon,…)
+        val boxes = opts["bbox"]!!.split(';').filter { it.isNotBlank() }.map { b -> b.split(',').map { it.trim().toDouble() }.toDoubleArray() }
+        require(boxes.isNotEmpty() && boxes.all { it.size == 4 }) { "--bbox minLon,minLat,maxLon,maxLat[;minLon,minLat,maxLon,maxLat…]" }
         val url = opts["tiles-url"] ?: PmTiles.resolveProtomapsBuild(log)
         val src: PmTiles.Source = if (url.startsWith("http")) PmTiles.HttpSource(url) else PmTiles.FileSource(File(url))
-        PmTiles.extract(src, bbox[0], bbox[1], bbox[2], bbox[3], outFile, log, opts["max-zoom"]?.toIntOrNull() ?: 7)
+        PmTiles.extract(src, boxes, outFile, log, opts["max-zoom"]?.toIntOrNull() ?: 7)
         log("done: ${outFile.length() / 1_000_000} MB"); return
     }
     if (pbf == null || !pbf.exists() || outFile == null) {
@@ -45,7 +46,7 @@ fun main(args: Array<String>) {
                            e.g. Baja from mexico-latest.osm.pbf: --bbox -118.5,22.8,-109.3,32.8
               --max-zoom   highest tile zoom to include (default 15 = full detail)
               --graph-only write graph.bin and search.tsv next to --out instead of a pack (for testing)
-              --tiles-only with --bbox and --max-zoom (default 7): only the basemap tiles, as a bare .pmtiles
+              --tiles-only with --bbox (one box, or several joined by ';') and --max-zoom (default 7): only the basemap tiles, as a bare .pmtiles
             """.trimIndent()
         )
         System.exit(2); return

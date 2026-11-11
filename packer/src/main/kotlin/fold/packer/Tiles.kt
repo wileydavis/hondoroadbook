@@ -130,7 +130,13 @@ object PmTiles {
     /**
      * Extract every tile intersecting [minLon,minLat,maxLon,maxLat] for zooms min..max into [out].
      */
-    fun extract(src: Source, minLon: Double, minLat: Double, maxLon: Double, maxLat: Double, out: File, log: (String) -> Unit, zoomCap: Int = 15) {
+    fun extract(src: Source, minLon: Double, minLat: Double, maxLon: Double, maxLat: Double, out: File, log: (String) -> Unit, zoomCap: Int = 15) =
+        extract(src, listOf(doubleArrayOf(minLon, minLat, maxLon, maxLat)), out, log, zoomCap)
+
+    /** Several boxes into one archive (the planner's overview: North America and Greece, without the ocean between). */
+    fun extract(src: Source, boxes: List<DoubleArray>, out: File, log: (String) -> Unit, zoomCap: Int = 15) {
+        require(boxes.isNotEmpty() && boxes.all { it.size == 4 })
+        val minLon = boxes.minOf { it[0] }; val minLat = boxes.minOf { it[1] }; val maxLon = boxes.maxOf { it[2] }; val maxLat = boxes.maxOf { it[3] }
         val head = src.read(0, 16384)
         val h = Header(head.copyOf(127))
         require(h.tileType == 1 || h.tileType == 6) { "source is not a vector tile archive" }
@@ -140,11 +146,11 @@ object PmTiles {
         val meta = decompress(src.read(h.metaOff, h.metaLen), h.internalCompression)
 
         // wanted tile ids
-        val wanted = ArrayList<Long>()
-        for (z in minZ..maxZ) {
+        val wanted = HashSet<Long>()
+        for (b in boxes) for (z in minZ..maxZ) {
             val n = 1L shl z
-            val x0 = lonToX(minLon, z).coerceIn(0, n - 1); val x1 = lonToX(maxLon, z).coerceIn(0, n - 1)
-            val y0 = latToY(maxLat, z).coerceIn(0, n - 1); val y1 = latToY(minLat, z).coerceIn(0, n - 1)
+            val x0 = lonToX(b[0], z).coerceIn(0, n - 1); val x1 = lonToX(b[2], z).coerceIn(0, n - 1)
+            val y0 = latToY(b[3], z).coerceIn(0, n - 1); val y1 = latToY(b[1], z).coerceIn(0, n - 1)
             for (x in x0..x1) for (y in y0..y1) wanted.add(zxyToTileId(z, x, y))
         }
         val wantedArr = wanted.toLongArray(); wantedArr.sort()

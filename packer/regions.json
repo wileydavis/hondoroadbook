@@ -489,5 +489,13 @@
     "pbf": "north-america/canada/yukon-latest.osm.pbf",
     "geofabrik": "canada/yukon",
     "terrain_zoom": 11
+  },
+  "greece": {
+    "name": "Greece",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/greece-latest.osm.pbf",
+    "geofabrik": "greece",
+    "notes": "the islands too; one pack"
   }
 }

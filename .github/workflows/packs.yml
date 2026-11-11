@@ -1,7 +1,7 @@
 # Builds map packs on GitHub's runners and publishes them where hondoroadbook.com/packs/ serves them.
 # Free for a public repository; every region × kind is its own job, so one failure never costs the others.
 #
-# Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California). Kinds:
+# Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California, Greece). Kinds:
 #   roads   — OSM extract → roads, routing graph, address index, vector tiles (fold-packer.jar)
 #   terrain — hillshade raster from AWS Terrain Tiles (packer/terrain/build_terrain.py)
 # Packs always go to the rolling GitHub release "packs" (no setup needed; the Worker proxies /packs/*
@@ -214,7 +214,7 @@ jobs:
         with: { name: fold-packer }
       - name: Continent overview tiles for the planner (zoom 0-7, one small file instead of fifty packs)
         run: |
-          java -jar fold-packer.jar --tiles-only yes --bbox -170,14,-50,72 --max-zoom 7 --out na-overview.pmtiles
+          java -jar fold-packer.jar --tiles-only yes --bbox "-170,14,-50,72;19,34.5,30,42" --max-zoom 7 --out na-overview.pmtiles   # North America; Greece
           gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber na-overview.pmtiles
       - name: Rebuild catalog.json from every sidecar on the release
         run: |
