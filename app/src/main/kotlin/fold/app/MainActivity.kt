@@ -2156,7 +2156,8 @@ class MainActivity : AppCompatActivity() {
                 val icon = ContextCompat.getDrawable(this@MainActivity, it.icon)?.mutate()?.apply { setBounds(0, 0, dp(34), dp(34)); setTint(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, if (it.on) R.color.accent else R.color.ink)) }
                 setCompoundDrawables(null, icon, null, null); compoundDrawablePadding = dp(6)
                 setPadding(dp(8), dp(14), dp(8), dp(12))
-                setOnClickListener { haptic(1); if (item.stay) { item.action(); if (findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) openMenu() } else { closeMenu(); item.action() } }
+                // (this@MainActivity: inside the button's apply block a bare findViewById would search the button itself)
+                setOnClickListener { haptic(1); if (item.stay) { item.action(); if (this@MainActivity.findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) openMenu() } else { closeMenu(); item.action() } }
             }
             val lp = android.widget.GridLayout.LayoutParams(android.widget.GridLayout.spec(i / cols, 1f), android.widget.GridLayout.spec(i % cols, 1f)).apply { width = 0; height = itemH; setMargins(dp(5), dp(5), dp(5), dp(5)) }
             grid.addView(b, lp)
