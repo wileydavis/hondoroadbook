@@ -236,10 +236,10 @@ class MainActivity : AppCompatActivity() {
         hud = findViewById(R.id.hud); arrow = findViewById(R.id.arrow)
         // keep the HUD and the off-route banner clear of the status bar and the camera cutout
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { v, insets ->
-            val top = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout()).top
-            (hud.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin = top + dp(16)
-            (offPanel.layoutParams as android.widget.FrameLayout.LayoutParams).topMargin = top + dp(16)
-            hud.requestLayout(); offPanel.requestLayout()
+            val bars = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            // held sideways the camera cutout (or a three-button bar) can sit on the left, under the HUD column
+            val side = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout())
+            if (bars.top != topInset || side.left != leftInset) { topInset = bars.top; leftInset = side.left; if (::hudCompass.isInitialized) applyOrientation() }
             insets
         }
         hudDistance = findViewById(R.id.hudDistance); hudStreet = findViewById(R.id.hudStreet); offTrack = findViewById(R.id.offTrack)
@@ -751,6 +751,9 @@ class MainActivity : AppCompatActivity() {
     private val isLandscape: Boolean get() = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
     /** landscape: the HUD, the nav card and the big button share one column at the left; the map has the rest */
     private val landColumn: Int get() = dp(236)
+    /** the status bar (and a cutout at the top), and whatever sits on the left edge: every layout here stays clear of them */
+    private var topInset = 0
+    private var leftInset = 0
 
     /**
      * Lays the riding screen out for the orientation: portrait stacks the HUD on top and the nav card along the bottom
@@ -760,12 +763,13 @@ class MainActivity : AppCompatActivity() {
     private fun applyOrientation() {
         val land = isLandscape
         fun frame(v: View, width: Int, gravity: Int, l: Int, t: Int, r: Int, b: Int) { v.layoutParams = (v.layoutParams as android.widget.FrameLayout.LayoutParams).also { it.width = width; it.gravity = gravity; it.setMargins(l, t, r, b) } }
-        frame(hud, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, dp(12), dp(12), dp(12), dp(12))
-        frame(offPanel, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, dp(12), dp(12), dp(12), dp(12))
+        val left = if (land) leftInset else 0
+        frame(hud, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, left + dp(12), hudTop(), dp(12), dp(12))
+        frame(offPanel, if (land) landColumn else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.TOP, left + dp(12), hudTop(), dp(12), dp(12))
         arrow.layoutParams = arrow.layoutParams.also { it.width = dp(if (land) 78 else 104); it.height = it.width }
         hudDistance.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 32f else 40f)
         hudCompass.layoutParams = (hudCompass.layoutParams as LinearLayout.LayoutParams).also { it.width = dp(if (land) 30 else 40); it.height = it.width }
-        frame(panelNav, if (land) landColumn + dp(12) else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.BOTTOM, 0, if (land) landCardTop() else 0, 0, 0)
+        frame(panelNav, if (land) landColumn + dp(12) else android.widget.FrameLayout.LayoutParams.MATCH_PARENT, if (land) android.view.Gravity.START or android.view.Gravity.TOP else android.view.Gravity.BOTTOM, left, if (land) landCardTop() else 0, 0, 0)
         panelNav.setPadding(dp(12), 0, if (land) 0 else dp(12), if (land) 0 else dp(12))
         findViewById<View>(R.id.navHole).layoutParams = findViewById<View>(R.id.navHole).layoutParams.also { it.width = dp(if (land) 10 else 104) }
         for (t in listOf(navRemaining, navSpeed)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 24f else 27f)
@@ -774,15 +778,18 @@ class MainActivity : AppCompatActivity() {
         // portrait: the card is 116 dp tall and the 96 dp button sits centred in it (12 dp padding + 58 dp to the
         // card's middle, less half the button); landscape: the card is the short stacked one and the button sits below it
         findViewById<LinearLayout>(R.id.navCard).minimumHeight = dp(if (land) 0 else 116)
-        frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 22))
+        frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) left + dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 22))
         mapView.post { if (mode == Mode.NAV && follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
     }
 
-    /** landscape: the nav card's top edge, just under whichever of the HUD and the off-track card is showing */
+    /** the top HUD's top edge: below the status bar */
+    private fun hudTop(): Int = topInset + dp(if (isLandscape) 10 else 16)
+    /** landscape: the nav panel's top edge, just under whichever of the HUD and the off-track card is showing (the
+     *  panel's first 12 dp hold the scale's ticks, standing above the card) */
     private fun landCardTop(): Int {
         val top = if (offPanel.visibility == View.VISIBLE) offPanel else hud
         val h = if (top.visibility == View.VISIBLE && top.height > 0) top.height else dp(110)
-        return dp(12) + h + dp(8)
+        return hudTop() + h + dp(4)
     }
     private val hudLayoutWatcher = View.OnLayoutChangeListener { _, _, t, _, b, _, ot, _, ob -> if (isLandscape && (b - t) != (ob - ot)) panelNav.post { (panelNav.layoutParams as android.widget.FrameLayout.LayoutParams).let { it.topMargin = landCardTop(); panelNav.layoutParams = it } } }
 
@@ -798,7 +805,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun mapWindow(): DoubleArray {
         val land = isLandscape
-        val left = if (land) (landColumn + dp(12)).toDouble() else 0.0
+        val left = if (land) (leftInset + landColumn + dp(12)).toDouble() else 0.0
         val top = if (land) 0.0 else when { hud.visibility == View.VISIBLE -> hud.bottom.toDouble(); offPanel.visibility == View.VISIBLE -> offPanel.bottom.toDouble(); else -> 0.0 }
         val cardTop = if (land) mapView.height.toDouble() else if (panelNav.visibility == View.VISIBLE && panelNav.height > 0) (panelNav.top + dp(0)).toDouble() else mapView.height * 0.9
         val puckY = top + 0.68 * (cardTop - top)
@@ -2145,7 +2152,8 @@ class MainActivity : AppCompatActivity() {
         val landscape = root.width > root.height
         val cols = if (landscape) 4 else 2
         grid.columnCount = cols
-        val top = (if (hud.visibility == View.VISIBLE) hud.bottom else hud.top) + dp(12)
+        // upright the sheet stops under the HUD; sideways the HUD is a column on the left, so the sheet can use the height
+        val top = if (landscape) topInset + dp(8) else (if (hud.visibility == View.VISIBLE) hud.bottom else hud.top) + dp(12)
         val avail = root.height - top - dp(16 + 10 + 24 + 76 + 18 + 12)
         val rows = (items.size + cols - 1) / cols
         val itemH = (avail / rows - dp(10)).coerceIn(if (landscape) dp(64) else dp(84), dp(132))
@@ -2157,8 +2165,9 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, R.color.ink))
                 stateListAnimator = null; gravity = android.view.Gravity.CENTER
                 val icon = ContextCompat.getDrawable(this@MainActivity, it.icon)?.mutate()?.apply { setBounds(0, 0, dp(34), dp(34)); setTint(if (it.accent) Color.WHITE else ContextCompat.getColor(this@MainActivity, if (it.on) R.color.accent else R.color.ink)) }
-                setCompoundDrawables(null, icon, null, null); compoundDrawablePadding = dp(6)
-                setPadding(dp(8), dp(14), dp(8), dp(12))
+                // sideways the buttons are short and wide: the icon beside the word, not above it, so the word always shows
+                if (landscape) { setCompoundDrawables(icon, null, null, null); compoundDrawablePadding = dp(10); setPadding(dp(14), dp(6), dp(10), dp(6)); textSize = 17f; maxLines = 2 }
+                else { setCompoundDrawables(null, icon, null, null); compoundDrawablePadding = dp(6); setPadding(dp(8), dp(14), dp(8), dp(12)) }
                 // (this@MainActivity: inside the button's apply block a bare findViewById would search the button itself)
                 setOnClickListener { haptic(1); if (item.stay) { item.action(); if (this@MainActivity.findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) openMenu() } else { closeMenu(); item.action() } }
             }
