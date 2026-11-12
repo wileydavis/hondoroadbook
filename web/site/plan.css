@@ -139,6 +139,11 @@ button.icon:hover { border-color: var(--soft); }
 .marker-pt.dot.snapped { border-color: var(--accent); }
 .marker-pt.dragging { cursor: grabbing; }
 .ghost-tag { position: absolute; left: 50%; top: -30px; transform: translateX(-50%); white-space: nowrap; background: var(--ink); color: var(--paper); font: 600 12px/1 var(--sans); padding: 5px 8px; border-radius: 8px; pointer-events: none; }
+/* the cue being edited: a ring round its marker (the marker's own transform positions it, so the pulse is on a child) */
+.cue-ring { z-index: 3; width: 52px; height: 52px; pointer-events: none; }
+.cue-ring i { display: block; width: 100%; height: 100%; border-radius: 50%; border: 3px solid #d8502f; box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 14px rgba(216,80,47,.55); animation: cuering 1.3s ease-out infinite; }
+@keyframes cuering { 0% { transform: scale(.8); opacity: 1; } 70% { transform: scale(1.12); opacity: .55; } 100% { transform: scale(1.12); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cue-ring i { animation: none; } }
 .marker-cue { z-index: 2; width: 30px; height: 30px; padding: 2px; border-radius: 15px; background: var(--card); border: 2px solid var(--ink); box-shadow: 0 1px 5px rgba(0,0,0,.3); cursor: pointer; --card: #fff; --ink: #1b1b1b; --accent: #d8502f; }
 .marker-cue.danger { border-color: var(--accent); }
 .marker-cue.user { border-color: var(--track); }

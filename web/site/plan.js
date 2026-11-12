@@ -593,6 +593,7 @@ function editCue(id, tab) {
   editing = { id };
   openCueEditor(c.turn, c.level, c.text, "Edit cue");
   rallyOpen(c); showCueTab(tab || (S.chartOn ? "rally" : "cue"));
+  showSelRing();
 }
 function newCue(lon, lat) {
   // where along the line it was clicked: on a loop that pins the pass, not just the place
@@ -601,7 +602,19 @@ function newCue(lon, lat) {
   editing = { lon, lat, at };
   openCueEditor("STRAIGHT", 0, "", "New cue");
   rallyOpen(null); showCueTab(S.chartOn ? "rally" : "cue");
+  showSelRing();
 }
+/** A ring on the map round the cue the editor has open (a new one before it is saved, too), gone when it closes. */
+let selRing = null;
+function showSelRing() {
+  const open = !$("#cueEd").hidden && editing;
+  const c = open && editing.id != null ? cueById(editing.id) : null;
+  const at = c ? [c.lon, c.lat] : open && editing.lon != null ? [editing.lon, editing.lat] : null;
+  if (!at) { if (selRing) { selRing.remove(); selRing = null; } return; }
+  if (!selRing) { const el = document.createElement("div"); el.className = "cue-ring"; el.innerHTML = "<i></i>"; selRing = new maplibregl.Marker({ element: el, anchor: "center" }); }
+  selRing.setLngLat(at).addTo(map);
+}
+new MutationObserver(showSelRing).observe($("#cueEd"), { attributes: true, attributeFilter: ["hidden"] });
 function openCueEditor(turn, level, text, title) {
   $("#cueEdTitle").textContent = title; $("#cueText").value = text || "";
   document.querySelectorAll("#cueEd [data-turn]").forEach(x => x.classList.toggle("on", x.dataset.turn === turn && (turn !== "DANGER" || Number(x.dataset.level) === (level || 2))));
