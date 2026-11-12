@@ -37,7 +37,8 @@ jobs:
       - name: Secrets present
         env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}", P8: "${{ secrets.ASC_KEY_P8 }}" }
         run: |
-          for v in TEAM KID ISS P8; do [ -n "${!v}" ] || { echo "::error::secret missing: see the comment at the top of testflight.yml"; exit 1; }; done
+          miss=""; for v in APPLE_TEAM_ID:TEAM ASC_KEY_ID:KID ASC_ISSUER_ID:ISS ASC_KEY_P8:P8; do [ -n "${!v#*:}" ] 2>/dev/null; n=${v#*:}; [ -n "${!n}" ] || miss="$miss ${v%%:*}"; done
+          [ -z "$miss" ] || { echo "::error::repository secrets missing or empty:$miss (Settings → Secrets and variables → Actions → Repository secrets)"; exit 1; }
           mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
       - name: The Xcode project
         run: brew install xcodegen && cd ios && xcodegen generate
