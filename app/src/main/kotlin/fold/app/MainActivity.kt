@@ -771,7 +771,10 @@ class MainActivity : AppCompatActivity() {
         for (t in listOf(navRemaining, navSpeed)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 24f else 27f)
         for (t in listOf(navEta, navElev)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 13f else 15f)
         val menu = findViewById<View>(R.id.btnMenu)
-        frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 16))
+        // portrait: the card is 116 dp tall and the 96 dp button sits centred in it (12 dp padding + 58 dp to the
+        // card's middle, less half the button); landscape: the card is the short stacked one and the button sits below it
+        findViewById<LinearLayout>(R.id.navCard).minimumHeight = dp(if (land) 0 else 116)
+        frame(menu, dp(96), if (land) android.view.Gravity.START or android.view.Gravity.BOTTOM else android.view.Gravity.CENTER_HORIZONTAL or android.view.Gravity.BOTTOM, if (land) dp(12) + (landColumn - dp(96)) / 2 else 0, 0, 0, dp(if (land) 12 else 22))
         mapView.post { if (mode == Mode.NAV && follow) lastFix?.let { moveCamera(it.lat, it.lon, animate = false) } }
     }
 

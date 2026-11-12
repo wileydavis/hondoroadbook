@@ -129,6 +129,10 @@ class ScaleView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.ink); strokeWidth = 2f * ctx.resources.displayMetrics.density; style = Paint.Style.STROKE }
     private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.card); strokeWidth = 6f * ctx.resources.displayMetrics.density; style = Paint.Style.STROKE }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.ink); textSize = 12f * ctx.resources.displayMetrics.scaledDensity; isFakeBoldText = true }
+    // the nav card's bar: heavy, square-ended, the label boxed in the middle of it
+    private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.ink); strokeWidth = 3.5f * ctx.resources.displayMetrics.density; style = Paint.Style.STROKE; strokeCap = Paint.Cap.BUTT; strokeJoin = Paint.Join.MITER }
+    private val barText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.ink); textSize = 13f * ctx.resources.displayMetrics.scaledDensity; typeface = android.graphics.Typeface.DEFAULT_BOLD; textAlign = Paint.Align.CENTER }
+    private val labelBox = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ctx.getColor(R.color.card); style = Paint.Style.FILL }
     private val textHalo = Paint(text).apply { color = ctx.getColor(R.color.card); style = Paint.Style.STROKE; strokeWidth = 4f * ctx.resources.displayMetrics.density }
     private var label = ""; private var px = 0f
     /** fixed mode: the bar is always one mile (one kilometre), only its length changes; it steps down when a mile would not fit */
@@ -141,9 +145,10 @@ class ScaleView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             val ladder = if (Units.metric) listOf(50.0 to "50 m", 100.0 to "100 m", 200.0 to "200 m", 500.0 to "500 m", 1000.0 to "1 km", 2000.0 to "2 km", 5000.0 to "5 km", 10000.0 to "10 km", 20000.0 to "20 km", 50000.0 to "50 km")
                 else listOf(30.48 to "100 ft", 76.2 to "250 ft", 152.4 to "500 ft", 402.336 to "¼ mi", 804.672 to "½ mi", 1609.344 to "1 mi", 3218.688 to "2 mi", 8046.72 to "5 mi", 16093.44 to "10 mi", 32186.88 to "20 mi", 80467.2 to "50 mi")
             var i = ladder.indexOfFirst { it.second == if (Units.metric) "1 km" else "1 mi" }
-            val room = (if (width > 0) width else context.resources.displayMetrics.widthPixels) - text.measureText("50 km") - 24 * d
+            // centred on the card with a margin each side; never so short that its label box covers it
+            val room = (if (width > 0) width else context.resources.displayMetrics.widthPixels) - 2 * 22 * d
             while (i > 0 && ladder[i].first / metersPerPx > room) i--
-            while (i < ladder.size - 1 && ladder[i].first / metersPerPx < 36 * d) i++
+            while (i < ladder.size - 1 && ladder[i].first / metersPerPx < barText.measureText(ladder[i].second) + 44 * d) i++
             px = (ladder[i].first / metersPerPx).toFloat(); label = ladder[i].second
             invalidate(); return
         }
@@ -164,11 +169,15 @@ class ScaleView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     override fun onMeasure(w: Int, h: Int) { if (fixed) setMeasuredDimension(MeasureSpec.getSize(w), MeasureSpec.getSize(h)) else setMeasuredDimension((px + text.measureText(label) + 16 * resources.displayMetrics.density).toInt().coerceAtLeast(40), MeasureSpec.getSize(h)) }
     override fun onDraw(c: Canvas) {
         if (fixed) {
-            // along the card's top edge: the bar from the left, ticks hanging down, the label just past its end
-            val y = 3f * resources.displayMetrics.density; val tick = height * 0.5f
-            c.drawLine(0f, y, px, y, line); c.drawLine(0f, y, 0f, y + tick, line); c.drawLine(px, y, px, y + tick, line)
-            val tx = px + 6 * resources.displayMetrics.density; val ty = y + text.textSize * 0.95f
-            c.drawText(label, tx, ty, text)
+            // on the card's top edge (12 dp down this view), centred, growing and shrinking from the middle:
+            // ticks standing up at the ends, the distance in a card-coloured box across the bar's centre
+            val d = resources.displayMetrics.density
+            val y = 12f * d; val cx = width / 2f; val half = px.coerceAtMost(width - 2 * 22 * d) / 2f; val tick = 9f * d
+            val path = android.graphics.Path().apply { moveTo(cx - half, y - tick); lineTo(cx - half, y); lineTo(cx + half, y); lineTo(cx + half, y - tick) }
+            c.drawPath(path, bar)
+            val tw = barText.measureText(label); val fm = barText.fontMetrics; val th = fm.descent - fm.ascent
+            c.drawRoundRect(cx - tw / 2 - 5 * d, y - th / 2 - 1 * d, cx + tw / 2 + 5 * d, y + th / 2 + 1 * d, 3 * d, 3 * d, labelBox)
+            c.drawText(label, cx, y - (fm.ascent + fm.descent) / 2, barText)
             return
         }
         val h = height.toFloat(); val y = h - 4f; val tick = h * 0.45f

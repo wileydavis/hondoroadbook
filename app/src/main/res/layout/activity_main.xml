@@ -242,9 +242,10 @@
         android:orientation="vertical"
         android:paddingStart="12dp" android:paddingEnd="12dp" android:paddingTop="0dp" android:paddingBottom="12dp"
         android:visibility="gone">
-        <LinearLayout android:id="@+id/navCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:background="@drawable/bg_card" android:elevation="4dp" android:clickable="true" android:focusable="true" android:paddingBottom="10dp">
-            <fold.app.ScaleView android:id="@+id/navScale" android:layout_width="match_parent" android:layout_height="20dp" android:layout_marginStart="14dp" android:layout_marginEnd="14dp" />
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="16dp" android:paddingTop="2dp">
+        <!-- the card, and the scale sitting on its top edge (drawn over it, centred) -->
+        <FrameLayout android:id="@+id/navWrap" android:layout_width="match_parent" android:layout_height="wrap_content" android:clipChildren="false" android:clipToPadding="false">
+        <LinearLayout android:id="@+id/navCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical" android:gravity="center_vertical" android:minHeight="116dp" android:background="@drawable/bg_card" android:elevation="4dp" android:clickable="true" android:focusable="true" android:paddingTop="12dp" android:paddingBottom="10dp">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="16dp" android:paddingEnd="16dp">
                 <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
                     <TextView android:id="@+id/navRemaining" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="27sp" android:textStyle="bold" android:maxLines="1" android:includeFontPadding="false" android:text="124 mi" />
                     <TextView android:id="@+id/navEta" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/ink_soft" android:textSize="15sp" android:maxLines="1" android:includeFontPadding="false" android:paddingTop="3dp" android:text="3:42 PM · 2 h 10 min" />
@@ -256,6 +257,8 @@
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
+            <fold.app.ScaleView android:id="@+id/navScale" android:layout_width="match_parent" android:layout_height="24dp" android:layout_gravity="top" android:elevation="5dp" />
+        </FrameLayout>
         <ImageButton android:id="@+id/btnNavCue" style="@style/RoundIcon" android:src="@drawable/ic_cue" android:contentDescription="Add cue here" android:visibility="gone" />
         <ImageButton android:id="@+id/btnSound" style="@style/RoundIcon" android:src="@drawable/ic_sound_off" android:contentDescription="Sound" android:visibility="gone" />
         <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="64dp" android:text="@string/end" android:visibility="gone" />

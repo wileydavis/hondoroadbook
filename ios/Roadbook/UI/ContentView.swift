@@ -193,7 +193,6 @@ struct NavPanel<Menu: View>: View {
     @ViewBuilder let menu: () -> Menu
     var body: some View {
         VStack(spacing: 4) {
-            NavScaleBar(hud: hud).frame(height: 18).padding(.horizontal, 2)
             if stacked {
                 HStack { Text(hud.remaining).font(.system(size: 24, weight: .bold)); Spacer(); Text(hud.speed).font(.system(size: 24, weight: .bold)) }.foregroundStyle(Theme.sInk).lineLimit(1).minimumScaleFactor(0.7)
                 HStack { Text(hud.eta).font(.system(size: 13)); Spacer(); Text(hud.elevation).font(.system(size: 13)) }.foregroundStyle(Theme.sInkSoft).lineLimit(1).minimumScaleFactor(0.7)
@@ -213,28 +212,34 @@ struct NavPanel<Menu: View>: View {
                 }
             }
         }
-        .padding(.horizontal, 14).padding(.top, 6).padding(.bottom, 10).glass()
+        .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10).glass()
+        // the scale sits on the card's top edge, centred, drawn over it
+        .overlay(alignment: .top) { NavScaleBar(hud: hud).frame(height: 24).offset(y: -12).allowsHitTesting(false) }
         .contentShape(Rectangle())
         .onTapGesture { if !model.isTrack { model.sheet = .turnList } }
     }
 }
 
-/// The nav card's scale: always a fixed distance (a mile, a kilometre), only its length changes with the zoom.
+/// The nav card's scale: always a fixed distance (a mile, a kilometre), only its length changes with the zoom. It sits
+/// on the card's top edge, centred, so it grows and shrinks from the middle: a heavy bar, ticks standing up at the ends,
+/// the distance in a card-coloured box across its centre.
 struct NavScaleBar: View {
     @ObservedObject var hud: HudState
     var body: some View {
-        // drawn inside whatever width the card gives it, never wider: a mile that does not fit is clipped, not pushed out
         GeometryReader { g in
-            let w = min(hud.navScalePx, max(1, g.size.width - 46))
-            HStack(alignment: .top, spacing: 6) {
-                Path { p in p.move(to: CGPoint(x: 0, y: 9)); p.addLine(to: CGPoint(x: 0, y: 1)); p.addLine(to: CGPoint(x: w, y: 1)); p.addLine(to: CGPoint(x: w, y: 9)) }
-                    .stroke(Theme.sInk, lineWidth: 2)
-                    .frame(width: max(1, w), height: 10)
-                Text(hud.navScaleLabel).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sInk).padding(.top, -3).lineLimit(1)
-                Spacer(minLength: 0)
+            let w = max(1, min(hud.navScalePx, g.size.width - 44)), cx = g.size.width / 2, y: CGFloat = 12
+            ZStack {
+                Path { p in
+                    p.move(to: CGPoint(x: cx - w / 2, y: y - 9)); p.addLine(to: CGPoint(x: cx - w / 2, y: y))
+                    p.addLine(to: CGPoint(x: cx + w / 2, y: y)); p.addLine(to: CGPoint(x: cx + w / 2, y: y - 9))
+                }
+                .stroke(Theme.sInk, style: StrokeStyle(lineWidth: 3.5, lineCap: .butt, lineJoin: .miter))
+                Text(hud.navScaleLabel).font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.sInk).lineLimit(1).fixedSize()
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Theme.sCard, in: RoundedRectangle(cornerRadius: 3))
+                    .position(x: cx, y: y)
             }
         }
-        .clipped()
     }
 }
 
