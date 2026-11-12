@@ -683,7 +683,7 @@ enum ShareCodeIO {
 struct ShareCodeSheet: View {
     @EnvironmentObject var model: AppModel
     let gpx: String
-    @State private var enc: QrShareEncoder? = nil
+    @State private var enc: QrShare.Encoder? = nil
     @State private var name = ""
     @State private var code: QrCode? = nil
     @State private var frame: Int32 = 0
@@ -722,7 +722,7 @@ struct ShareCodeSheet: View {
         .onAppear {
             guard let tr = try? Gpx.shared.parse(text: gpx) else { model.sheet = nil; model.showToast("Nothing to share in that file"); return }
             name = tr.name
-            let e = QrShareEncoder(message: QrShare.shared.message(t: tr, deflate: ShareCodeIO.deflate), chunk: QrShare.shared.chunkFor(version: 20))
+            let e = QrShare.Encoder(message: QrShare.shared.message(t: tr, deflate: ShareCodeIO.deflate), chunk: QrShare.shared.chunkFor(version: 20))
             enc = e; code = e.code(i: 0)
             savedBrightness = UIScreen.main.brightness; UIScreen.main.brightness = 1
             savedIdle = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
@@ -769,7 +769,7 @@ final class CodeScanner: NSObject, ObservableObject, AVCaptureMetadataOutputObje
     @Published var known = 0
     @Published var k = 0
     @Published var status = "Point the camera at the code on the other phone"
-    private let dec = QrShareDecoder()
+    private let dec = QrShare.Decoder()
     private var done: ((String, String) -> Void)?
     private var fail: ((String) -> Void)?
     private var finished = false

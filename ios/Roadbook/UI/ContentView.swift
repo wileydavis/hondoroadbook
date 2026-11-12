@@ -486,8 +486,8 @@ enum ChartDraw {
         let side = min(h - lineH - pad, w * 0.46)
         let tx = x0 + pad + 4, ty = y0 + lineH + 2
         ctx.fill(Path(roundedRect: CGRect(x: tx, y: ty, width: side, height: side), cornerRadius: 8), with: .color(paper))
-        let widths = ChartWidths(path: side * 0.05, road: side * 0.036, track: side * 0.022, dot: side * 0.1)
-        let shapes: [ChartShape] = r.kind == .cue ? Chart.shared.tulip(t: r.tulip!, s: side, w: widths) : Chart.shared.flag(finish: r.kind == .finish, s: side, w: widths)
+        let widths = Chart.Widths(path: side * 0.05, road: side * 0.036, track: side * 0.022, dot: side * 0.1)
+        let shapes: [Chart.Shape] = r.kind == .cue ? Chart.shared.tulip(t: r.tulip!, s: side, w: widths) : Chart.shared.flag(finish: r.kind == .finish, s: side, w: widths)
         draw(ctx, shapes, dx: tx, dy: ty, pathColor: r.kind == .cue && r.tulip?.path == "offtrack" ? Theme.sAccent : ink)
         // symbols in the tulip's corners, as on paper
         let g = side * 0.26, m = side * 0.04
@@ -514,7 +514,7 @@ enum ChartDraw {
             ctx.stroke(Path(ellipseIn: CGRect(x: c.x - sign / 2 + 2.5, y: c.y - sign / 2 + 2.5, width: sign - 5, height: sign - 5)), with: .color(red), lineWidth: 5)
             text(ctx, "\(r.speed)", 18, ink, at: c, anchor: .center)
         }
-        let pills = !r.zone.isEmpty || !r.wpType.isEmpty
+        let pills = !r.zone_.isEmpty || !r.wpType.isEmpty
         if !r.info.isEmpty && ww > 40 {
             let avail = ty + side - wy - (r.capShow && st.layout == "B" ? 34 : 0) - (pills ? 30 : 0)
             let tw = ww - (sign > 0 ? sign + 6 : 0)
@@ -532,7 +532,7 @@ enum ChartDraw {
         }
         // the zone and the waypoint, as pills at the foot
         var mx = x0 + w - pad
-        let labels = [r.zone, r.wpType.isEmpty ? "" : r.wpType + (r.wpN > 0 ? "\(r.wpN)" : "")].filter { !$0.isEmpty }
+        let labels: [String] = [r.zone_, r.wpType.isEmpty ? "" : r.wpType + (r.wpN > 0 ? "\(r.wpN)" : "")].filter { !$0.isEmpty }
         for label in labels {
             let tw = width(ctx, label, 13) + 14
             ctx.fill(Path(roundedRect: CGRect(x: mx - tw, y: y0 + h - 30, width: tw, height: 22), cornerRadius: 11), with: .color(label == "DZ" ? orange : label == "FZ" ? green : ink))
@@ -545,15 +545,15 @@ enum ChartDraw {
     }
 
     /// the core's shapes (lines, paths, circles) into the canvas
-    static func draw(_ ctx: GraphicsContext, _ shapes: [ChartShape], dx: CGFloat, dy: CGFloat, pathColor: Color) {
+    static func draw(_ ctx: GraphicsContext, _ shapes: [Chart.Shape], dx: CGFloat, dy: CGFloat, pathColor: Color) {
         for s in shapes {
             let col = s.role == "path" ? pathColor : Theme.sInk
-            if let l = s as? ChartLine {
+            if let l = s as? Chart.Line {
                 guard l.width > 0 else { continue }
                 var p = Path()
                 for (i, pt) in l.pts.enumerated() { let q = CGPoint(x: dx + pt.get(index: 0), y: dy + pt.get(index: 1)); if i == 0 { p.move(to: q) } else { p.addLine(to: q) } }
                 ctx.stroke(p, with: .color(col), style: StrokeStyle(lineWidth: l.width, lineCap: .butt, lineJoin: .round, dash: dash(l.dash)))
-            } else if let ps = s as? ChartPathShape {
+            } else if let ps = s as? Chart.PathShape {
                 var p = Path()
                 for op in ps.ops {
                     func pt(_ i: Int32) -> CGPoint { CGPoint(x: dx + op.get(index: i), y: dy + op.get(index: i + 1)) }
@@ -566,7 +566,7 @@ enum ChartDraw {
                 }
                 if ps.fill { ctx.fill(p, with: .color(col)) }
                 else if ps.width > 0 { ctx.stroke(p, with: .color(col), style: StrokeStyle(lineWidth: ps.width, lineCap: .butt, lineJoin: .round, dash: dash(ps.dash))) }
-            } else if let c = s as? ChartCircle {
+            } else if let c = s as? Chart.Circle {
                 let p = Path(ellipseIn: CGRect(x: dx + c.x - c.r, y: dy + c.y - c.r, width: c.r * 2, height: c.r * 2))
                 if c.fill { ctx.fill(p, with: .color(col)) } else { ctx.stroke(p, with: .color(col), lineWidth: c.width) }
             }
