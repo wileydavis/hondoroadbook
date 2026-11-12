@@ -115,6 +115,8 @@ class ChartRow(
     val sectionName: String = "", val sectionKind: String = "", val lengthH: Int = 0,
 ) {
     enum class Kind { BANNER, START, CUE, FINISH }
+    /** [zone] under a name Swift can see (NSObject's zone() hides the property there) */
+    val speedZone: String get() = zone
 }
 
 class ChartBuild(val rows: List<ChartRow>, val totalMeters: Double, val totalH: Int, val sections: Int, val settings: ChartSettings)

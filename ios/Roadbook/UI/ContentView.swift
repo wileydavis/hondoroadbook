@@ -514,7 +514,7 @@ enum ChartDraw {
             ctx.stroke(Path(ellipseIn: CGRect(x: c.x - sign / 2 + 2.5, y: c.y - sign / 2 + 2.5, width: sign - 5, height: sign - 5)), with: .color(red), lineWidth: 5)
             text(ctx, "\(r.speed)", 18, ink, at: c, anchor: .center)
         }
-        let pills = !r.zone_.isEmpty || !r.wpType.isEmpty
+        let pills = !r.speedZone.isEmpty || !r.wpType.isEmpty
         if !r.info.isEmpty && ww > 40 {
             let avail = ty + side - wy - (r.capShow && st.layout == "B" ? 34 : 0) - (pills ? 30 : 0)
             let tw = ww - (sign > 0 ? sign + 6 : 0)
@@ -532,7 +532,7 @@ enum ChartDraw {
         }
         // the zone and the waypoint, as pills at the foot
         var mx = x0 + w - pad
-        let labels: [String] = [r.zone_, r.wpType.isEmpty ? "" : r.wpType + (r.wpN > 0 ? "\(r.wpN)" : "")].filter { !$0.isEmpty }
+        let labels: [String] = [r.speedZone, r.wpType.isEmpty ? "" : r.wpType + (r.wpN > 0 ? "\(r.wpN)" : "")].filter { !$0.isEmpty }
         for label in labels {
             let tw = width(ctx, label, 13) + 14
             ctx.fill(Path(roundedRect: CGRect(x: mx - tw, y: y0 + h - 30, width: tw, height: 22), cornerRadius: 11), with: .color(label == "DZ" ? orange : label == "FZ" ? green : ink))
