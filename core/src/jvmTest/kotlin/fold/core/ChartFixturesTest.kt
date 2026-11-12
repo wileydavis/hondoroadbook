@@ -84,6 +84,9 @@ class ChartFixturesTest {
         // the rider is at a row: the meter reads that row's figure
         val row = chart.rows.indexOfLast { it.kind == ChartRow.Kind.CUE }
         m.setToRow(row); assertEquals(chart.rows[row].overall, m.readingH); assertEquals(row, m.rowIndex)
+        // following the route, the correction holds: 50 m further on the follower is 50 m past that row
+        m.onRoute(chart.rows[stage].at + 150); assertTrue(abs(m.readingH - chart.rows[row].overall - Chart.hundredths(50.0, chart.settings)) <= 1, "held the rider's place")
+        m.switchSource(TripMeter.Source.FREE); m.switchSource(TripMeter.Source.ROUTE)
         // the next row shows a little before it is reached
         m.onRoute(chart.rows[row].at - 300); assertEquals(row - 1, m.rowIndex); assertEquals(row, m.showRow(400.0)); assertEquals(row - 1, m.showRow(100.0))
     }

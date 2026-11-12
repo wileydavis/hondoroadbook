@@ -264,6 +264,14 @@
         <Button android:id="@+id/btnEnd" style="@style/BigButton" android:layout_width="64dp" android:text="@string/end" android:visibility="gone" />
     </LinearLayout>
 
+    <!-- The roll chart, read while following a track that carries one: rows from the core, the trip meter on top -->
+    <fold.app.ChartView
+        android:id="@+id/chartView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="7dp"
+        android:visibility="gone" />
+
     <!-- The one button a glove needs: a big translucent circle. Opens the menu. -->
     <ImageButton
         android:id="@+id/btnMenu"

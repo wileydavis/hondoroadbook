@@ -369,7 +369,9 @@ class TripMeter(private val chart: ChartBuild) {
     private var originAt = 0.0
 
     /** ROUTE source: the follower's distance along the line. */
-    fun onRoute(alongMeters: Double) { if (source == Source.ROUTE) { chartMeters = alongMeters; update() } }
+    fun onRoute(alongMeters: Double) { if (source == Source.ROUTE) { chartMeters = alongMeters + routeOffset; update() } }
+    /** ROUTE source: where the rider said they were, less where the follower put them (set by [setToRow]) */
+    private var routeOffset = 0.0
     /**
      * FREE source: a GPS fix. A fix only counts when it is good (accuracy ≤ 25 m) and has moved more than its own
      * uncertainty, so a phone at a standstill does not creep.
@@ -387,9 +389,12 @@ class TripMeter(private val chart: ChartBuild) {
     /** Set the meter to the row the rider is at: they are standing where that row is. */
     fun setToRow(i: Int) {
         val row = chart.rows.getOrNull(i) ?: return
+        if (source == Source.ROUTE) routeOffset += row.at - chartMeters
         correctionH = 0; chartMeters = row.at; lastLat = Double.NaN; update()
     }
-    fun switchSource(s: Source) { if (s == source) return; source = s; lastLat = Double.NaN; update() }
+    /** Take over another meter's state (the chart was rebuilt under it: a cue edited on the way). */
+    fun restoreFrom(o: TripMeter) { source = o.source; chartMeters = o.chartMeters; correctionH = o.correctionH; routeOffset = o.routeOffset; lastLat = o.lastLat; lastLon = o.lastLon; update() }
+    fun switchSource(s: Source) { if (s == source) return; source = s; lastLat = Double.NaN; if (s == Source.ROUTE) routeOffset = 0.0; update() }
 
     /** the meter as shown: hundredths from the current origin, with the scale and the correction */
     val readingH: Int get() = Chart.hundredths(chartMeters - originAt, st) + correctionH

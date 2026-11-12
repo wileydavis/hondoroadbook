@@ -111,6 +111,8 @@ class MainActivity : AppCompatActivity() {
         val trackCues = ArrayList<Cue>()
         /** the planner's roll-chart settings from the track's file, written back on save (each cue keeps its own chart fields) */
         var trackChart: String? = null
+        /** the chart reader: the followed track's roll chart, its trip meter, the track's distances, and whether it is on screen */
+        var chart: fold.core.ChartBuild? = null; var meter: fold.core.TripMeter? = null; var chartCum: DoubleArray? = null; var chartOn = false
         /** a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned */
         val editCues = ArrayList<Cue>()
         /** the modes the compare screen is limited to (a file is re-planned in its own mode); null = the rider's chosen set */
@@ -132,6 +134,7 @@ class MainActivity : AppCompatActivity() {
     private val worker = Executors.newSingleThreadExecutor()
 
     // views
+    private lateinit var chartView: ChartView
     private lateinit var hud: View; private lateinit var arrow: ArrowView
     private lateinit var hudDistance: TextView; private lateinit var hudStreet: TextView; private lateinit var offTrack: TextView; private lateinit var offPanel: View; private lateinit var btnReroute: Button
     private lateinit var panelIdle: View; private lateinit var panelPin: View; private lateinit var panelNav: View
@@ -237,6 +240,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         mapView = findViewById(R.id.map)
+        chartView = findViewById(R.id.chartView); chartView.onMeterTouched = { haptic(1) }
         hud = findViewById(R.id.hud); arrow = findViewById(R.id.arrow)
         // keep the HUD and the off-route banner clear of the status bar and the camera cutout
         androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.root)) { v, insets ->
@@ -723,6 +727,7 @@ class MainActivity : AppCompatActivity() {
         val fix = Fix(loc.latitude, loc.longitude, if (loc.hasSpeed()) loc.speed.toDouble() else -1.0, if (loc.hasBearing()) loc.bearing.toDouble() else -1.0, loc.elapsedRealtimeNanos / 1_000_000L, if (loc.hasAccuracy()) loc.accuracy.toDouble() else 50.0)
         val first = lastFix == null
         lastFix = fix
+        if (mode == Mode.NAV) NavSession.meter?.onFix(fix.lat, fix.lon, fix.accuracy, fix.speed)
         lastAltitude = when { android.os.Build.VERSION.SDK_INT >= 34 && loc.hasMslAltitude() -> loc.mslAltitudeMeters; loc.hasAltitude() -> loc.altitude; else -> lastAltitude }
         if (fix.speed > 1.5 && fix.bearing >= 0) heading = fix.bearing
         val f = follower
@@ -778,6 +783,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.navHole).layoutParams = findViewById<View>(R.id.navHole).layoutParams.also { it.width = dp(if (land) 10 else 104) }
         for (t in listOf(navRemaining, navSpeed)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 24f else 27f)
         for (t in listOf(navEta, navElev)) t.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (land) 13f else 15f)
+        chartView.setPadding(leftInset, topInset, 0, 0)
         val menu = findViewById<View>(R.id.btnMenu)
         // portrait: the card is 116 dp tall and the 96 dp button sits centred in it (12 dp padding + 58 dp to the
         // card's middle, less half the button); landscape: the card is the short stacked one and the button sits below it
@@ -1376,6 +1382,8 @@ class MainActivity : AppCompatActivity() {
             lastFix?.let { moveCamera(it.lat, it.lon, true) }
             ui.postDelayed({ if (mode == Mode.NAV && isTrack && zoomMode == ZoomMode.OVERVIEW) { zoomMode = ZoomMode.TURN; lastFix?.let { moveCamera(it.lat, it.lon, true) } } }, 5000)
         }
+        if (resumed == null || NavSession.chart == null) setupChart(fresh = resumed == null) else applyChart()
+        if (resumed == null && NavSession.chart != null) toast("This track has a roll chart: ROLL CHART in the menu")
         ui.removeCallbacks(hudTick); ui.post(hudTick)
     }
 
@@ -1471,6 +1479,7 @@ class MainActivity : AppCompatActivity() {
         ui.removeCallbacks(hudTick)
         offPanel.visibility = View.GONE
         trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear(); drawCues()
+        clearChart()
         switchMode(Mode.IDLE)
         lastFix?.let { updatePuck(it.lat, it.lon, heading); if (follow) moveCamera(it.lat, it.lon, true) }
     }
@@ -1529,6 +1538,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderHud(v: NavView) {
+        if (mode == Mode.NAV && isTrack) feedChart(v)
         darkText?.let { t -> if (dark?.visibility == View.VISIBLE) { val m = v.next; t.text = when { v.arrived -> getString(R.string.arrived); !v.onRoute -> getString(R.string.off_track); m == null -> Units.distance(v.remaining); else -> Units.cue(v.distToNext) + "\n" + (if (m.turn == Turn.ARRIVE) "Destination" else m.phrase()) } } }
         if (mode != Mode.NAV) { if (v.fixState == FixState.VALID || v.fixState == FixState.DEGRADED) updatePuck(v.lat, v.lon, if (v.speed > 1.5) v.heading else heading); return }
         if (v.arrived) {
@@ -1713,7 +1723,7 @@ class MainActivity : AppCompatActivity() {
         Speech.stop(); dim(false); NavService.stop(this); routeGeneration++
         route = null; isTrack = false; srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); ui.removeCallbacks(hudTick); offPanel.visibility = View.GONE
-        trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear()
+        trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear(); clearChart()
     }
 
     // ---------------------------------------------------------------- misc
@@ -1760,6 +1770,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.btnMenu).visibility = if ((m == Mode.IDLE || m == Mode.NAV) && !(keepMenu && menuUp)) View.VISIBLE else View.GONE
         if (!keepMenu) closeMenu(animate = false)
         updateRecStrip()
+        if (::chartView.isInitialized) applyChart()
         if (m != Mode.NAV) { hud.visibility = View.GONE; offPanel.visibility = View.GONE; turnChip.visibility = View.GONE; srcLead?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
         map?.uiSettings?.isCompassEnabled = m != Mode.NAV
         if (m != Mode.COMPARE) { srcCompare?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); srcTurns?.setGeoJson(FeatureCollection.fromFeatures(emptyArray())) }
@@ -1826,6 +1837,47 @@ class MainActivity : AppCompatActivity() {
         val c = NavController(r, true, trackName, profile.name, NavService.sink)
         old?.lastFix?.let { f -> c.update(f); old.follower.view(android.os.SystemClock.elapsedRealtime()).let { v -> if (v.onRoute) c.follower.resumeAt(v.along) } }
         NavService.start(this, c)
+        setupChart(fresh = false)
+    }
+
+    // ---- the chart reader
+
+    /** Build the reader's chart for the followed track, if its file carries one. A rebuild (a cue edited on the way)
+     *  keeps the meter: its source, the rider's correction and where it stands. */
+    private fun setupChart(fresh: Boolean) {
+        val la = trackLats; val lo = trackLons
+        if (!isTrack || la == null || lo == null || la.size < 2 || !fold.core.Chart.hasChart(trackCues, trackChart)) { clearChart(); return }
+        val b = try { fold.core.Chart.forTrack(la, lo, trackCues.sortedBy { trackOffset(it) }, trackChart) } catch (_: Throwable) { clearChart(); return }
+        val old = if (fresh) null else NavSession.meter
+        val m = fold.core.TripMeter(b)
+        if (old != null) {
+            m.restoreFrom(old)
+        }
+        NavSession.chart = b; NavSession.meter = m; NavSession.chartCum = fold.core.Chart.cumulative(la, lo)
+        if (fresh) NavSession.chartOn = false
+        applyChart()
+    }
+    private fun clearChart() { NavSession.chart = null; NavSession.meter = null; NavSession.chartCum = null; NavSession.chartOn = false; if (::chartView.isInitialized) applyChart() }
+    /** show or hide the reader; while it is up the menu button stands above it */
+    private fun applyChart() {
+        val on = mode == Mode.NAV && NavSession.chartOn && NavSession.chart != null
+        if (chartView.chart !== NavSession.chart) chartView.chart = NavSession.chart
+        chartView.meter = NavSession.meter
+        chartView.visibility = if (on) View.VISIBLE else View.GONE
+        findViewById<View>(R.id.btnMenu).elevation = dp(if (on) 8 else 6).toFloat()
+    }
+    /** the meter follows the rider along the track; the reader scrolls to the row ahead */
+    private fun feedChart(v: NavView) {
+        val m = NavSession.meter ?: return
+        val cum = NavSession.chartCum; val la = trackLats; val lo = trackLons
+        if (cum != null && la != null && lo != null && cum.size == la.size) {
+            if (v.arrived) m.onRoute(cum.last())
+            else if (v.onRoute && v.segment in 0 until la.size - 1) m.onRoute(cum[v.segment] + fold.core.Chart.dist(lo[v.segment], la[v.segment], v.lon, v.lat))
+        }
+        if (chartView.visibility != View.VISIBLE) return
+        chartView.status = when { v.fixState == FixState.NONE -> "WAITING FOR GPS"; v.fixState == FixState.STALE -> "NO GPS · " + Units.time(v.fixAge); v.arrived -> null; !v.onRoute -> "OFF TRACK"; else -> null }
+        // the next row comes up a little before it: further ahead at speed
+        chartView.refresh((150.0 + maxOf(0.0, v.speed) * 8.0).coerceAtMost(400.0))
     }
 
     private fun openEditor(tr: Gpx.Track, uri: Uri?) {
@@ -2125,6 +2177,14 @@ class MainActivity : AppCompatActivity() {
         val items = ArrayList<MenuItem>()
         if (nav) {
             items.add(MenuItem("END", R.drawable.ic_end, accent = true) { endNavigation() })
+            if (NavSession.chart != null) {
+                items.add(MenuItem(if (NavSession.chartOn) "MAP" else "ROLL CHART", if (NavSession.chartOn) R.drawable.ic_maps else R.drawable.ic_list, on = NavSession.chartOn) { NavSession.chartOn = !NavSession.chartOn; applyChart() })
+                val free = NavSession.meter?.source == fold.core.TripMeter.Source.FREE
+                items.add(MenuItem(if (free) "ODO: GPS" else "ODO: ROUTE", R.drawable.ic_track, on = free, stay = true) {
+                    NavSession.meter?.switchSource(if (free) fold.core.TripMeter.Source.ROUTE else fold.core.TripMeter.Source.FREE)
+                    toast(if (free) "The trip meter follows the track" else "The trip meter counts the distance you ride")
+                })
+            }
             items.add(MenuItem(if (prefs.sound) "SOUND ON" else "SOUND OFF", if (prefs.sound) R.drawable.ic_sound_on else R.drawable.ic_sound_off, on = prefs.sound, stay = true) { findViewById<ImageButton>(R.id.btnSound).performClick() })
             items.add(MenuItem(if (prefs.batterySaver) "BATTERY SAVER ON" else "BATTERY SAVER", R.drawable.ic_lock, on = prefs.batterySaver, stay = true) { setBatterySaver(!prefs.batterySaver) })
             if (isTrack) items.add(MenuItem("ADD CUE HERE", R.drawable.ic_cue) { addCueHere() })

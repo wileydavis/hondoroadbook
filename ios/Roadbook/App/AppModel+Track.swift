@@ -178,6 +178,7 @@ extension AppModel {
         if let o = old, let f = o.lastFix { c.update(fix: f); let v = o.follower.view(nowMs: nowMs()); if v.onRoute { c.follower.resumeAt(alongMeters: v.along) } }
         map.drawRoute(r, color: Theme.track)
         ride.start(c)
+        setupChart(fresh: false)
     }
 
     func openEditor(_ tr: GpxTrack, _ url: URL?) {

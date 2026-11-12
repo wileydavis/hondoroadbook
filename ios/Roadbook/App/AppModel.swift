@@ -8,6 +8,16 @@ import UIKit
 
 /// What the HUD draws, refreshed twenty times a second while navigating. Its own object so the rest of the
 /// screen does not redraw with it.
+/// The chart reader's live state: what the meter reads and which row is up (its own object, so only the chart redraws)
+final class ChartState: ObservableObject {
+    @Published var reading = ""
+    @Published var shown = 0
+    @Published var status: String? = nil
+    @Published var free = false
+    /// bumped when the chart is rebuilt (a cue edited on the way)
+    @Published var version = 0
+}
+
 final class HudState: ObservableObject {
     @Published var visible = false
     @Published var turn: Turn = .straight
@@ -86,6 +96,10 @@ final class AppModel: ObservableObject, MapEvents {
     let marks = MarkStore()
     let map = MapController()
     let hud = HudState()
+    let chartState = ChartState()
+    /// the chart reader: the followed track's roll chart, its trip meter, the track's distances, and whether it is on screen
+    var chart: ChartBuild? = nil; var meter: TripMeter? = nil; var chartCum: [Double]? = nil
+    @Published var chartOn = false
     let ride = RideSession.shared
     let recorder = Recorder.shared
 
@@ -342,6 +356,7 @@ final class AppModel: ObservableObject, MapEvents {
         let fix = Fix(l)
         let first = lastFix == nil
         lastFix = fix
+        if mode == .nav { meter?.onFix(lat: fix.lat, lon: fix.lon, accuracy: fix.accuracy, speed: fix.speed) }
         if l.verticalAccuracy >= 0 { lastAltitude = l.altitude }
         if fix.speed > 1.5 && fix.bearing >= 0 { heading = fix.bearing }
         if let f = follower {
@@ -677,6 +692,7 @@ final class AppModel: ObservableObject, MapEvents {
     }
 
     private func renderHud(_ v: NavView) {
+        if mode == .nav && isTrack { feedChart(v) }
         if dimmed {
             let m = v.next
             hud.darkText = v.arrived ? "ARRIVED" : !v.onRoute ? "OFF TRACK" : m == nil ? Units.distance(v.remaining) : Units.cue(v.distToNext) + "\n" + (m!.turn == .arrive ? "Destination" : m!.phrase())

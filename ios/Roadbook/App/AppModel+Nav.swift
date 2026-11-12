@@ -30,6 +30,8 @@ extension AppModel {
             if let f = lastFix { moveCamera(f.lat, f.lon, animate: true) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [self] in if mode == .nav && isTrack && zoomMode == .overview { zoomMode = .turn; if let f = lastFix { moveCamera(f.lat, f.lon, animate: true) } } }
         }
+        if resumed == nil || chart == nil { setupChart(fresh: resumed == nil) }
+        if resumed == nil && chart != nil { showToast("This track has a roll chart: ROLL CHART in the menu") }
         startHudTimer()
     }
 
@@ -38,7 +40,7 @@ extension AppModel {
         Speech.shared.stop(); dim(false); ride.stop(); routeGeneration += 1
         route = nil; isTrack = false; map.clear("route-src")
         UIApplication.shared.isIdleTimerDisabled = false; stopHudTimer(); hud.offVisible = false
-        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []
+        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; clearChart()
     }
 
     /// A ride a dead process left behind: offer to pick it up where it was.
@@ -70,9 +72,53 @@ extension AppModel {
         UIApplication.shared.isIdleTimerDisabled = false
         stopHudTimer()
         hud.offVisible = false
-        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; drawCues()
+        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; drawCues(); clearChart()
         switchMode(.idle)
         if let f = lastFix { map.updatePuck(f.lat, f.lon, heading: heading); if follow { moveCamera(f.lat, f.lon, animate: true) } }
+    }
+
+    // ---- the chart reader
+
+    /// Build the reader's chart for the followed track, if its file carries one. A rebuild (a cue edited on the way)
+    /// keeps the meter: its source, the rider's correction and where it stands.
+    func setupChart(fresh: Bool) {
+        guard isTrack, let la = trackLats, let lo = trackLons, la.count >= 2, Chart.shared.hasChart(cues: trackCues, chartJson: trackChart) else { clearChart(); return }
+        let lats = KotlinDoubleArray.of(la), lons = KotlinDoubleArray.of(lo)
+        let b = Chart.shared.forTrack(lats: lats, lons: lons, cues: trackCues.sorted { trackOffset($0) < trackOffset($1) }, chartJson: trackChart)
+        let m = TripMeter(chart: b)
+        if !fresh, let o = meter { m.restoreFrom(o: o) }
+        chart = b; meter = m; chartCum = Chart.shared.cumulative(lats: lats, lons: lons).swift
+        if fresh { chartOn = false }
+        chartState.free = m.source == .free; chartState.reading = m.reading; chartState.version += 1
+    }
+    func clearChart() { chart = nil; meter = nil; chartCum = nil; if chartOn { chartOn = false } }
+    func toggleChart() { if chart != nil { chartOn.toggle() } }
+    func toggleOdometer() {
+        guard let m = meter else { return }
+        let free = m.source == .free
+        m.switchSource(s: free ? .route : .free); chartState.free = !free
+        showToast(free ? "The trip meter follows the track" : "The trip meter counts the distance you ride")
+    }
+    /// − / +: a hundredth either way; the long press: "I am at this row"
+    func nudgeMeter(_ h: Int32) { meter?.nudge(hundredths: h); haptic(1); if let m = meter { chartState.reading = m.reading } }
+    func setMeterToRow(_ i: Int) { meter?.setToRow(i: Int32(i)); haptic(1, long: true); if let m = meter { chartState.reading = m.reading; chartState.shown = i } }
+
+    /// the meter follows the rider along the track; the reader scrolls to the row ahead
+    func feedChart(_ v: NavView) {
+        guard let m = meter else { return }
+        if let cum = chartCum, let la = trackLats, let lo = trackLons, cum.count == la.count {
+            let seg = Int(v.segment)
+            if v.arrived { m.onRoute(alongMeters: cum[cum.count - 1]) }
+            else if v.onRoute && seg >= 0 && seg < la.count - 1 { m.onRoute(alongMeters: cum[seg] + Chart.shared.dist(lon1: lo[seg], lat1: la[seg], lon2: v.lon, lat2: v.lat)) }
+        }
+        guard chartOn else { return }
+        let status: String? = v.fixState == FixState.none ? "WAITING FOR GPS" : v.fixState == FixState.stale ? "NO GPS · " + Units.time(v.fixAge) : v.arrived ? nil : !v.onRoute ? "OFF TRACK" : nil
+        // the next row comes up a little before it: further ahead at speed
+        let show = Int(m.showRow(leadMeters: min(400, 150 + max(0, v.speed) * 8)))
+        let s = chartState
+        if s.reading != m.reading { s.reading = m.reading }
+        if s.shown != show { s.shown = show }
+        if s.status != status { s.status = status }
     }
 
     // ---- battery saver: the screen dims to a dark HUD and may lock; the lock screen carries the next cue and lights for it;

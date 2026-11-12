@@ -22,6 +22,11 @@ struct GloveMenuInner: View {
         var items: [Item] = []
         if model.mode == .nav {
             items.append(Item(label: "END", icon: "xmark.circle.fill", accent: true) { model.endNavigation() })
+            if model.chart != nil {
+                items.append(Item(label: model.chartOn ? "MAP" : "ROLL CHART", icon: model.chartOn ? "map" : "list.number", on: model.chartOn) { model.toggleChart() })
+                let free = model.chartState.free
+                items.append(Item(label: free ? "ODO: GPS" : "ODO: ROUTE", icon: "gauge.with.dots.needle.33percent", on: free, stay: true) { model.toggleOdometer() })
+            }
             items.append(Item(label: p.sound ? "SOUND ON" : "SOUND OFF", icon: p.sound ? "speaker.wave.2.fill" : "speaker.slash.fill", on: p.sound, stay: true) { model.toggleSound() })
             items.append(Item(label: p.batterySaver ? "BATTERY SAVER ON" : "BATTERY SAVER", icon: "battery.25percent", on: p.batterySaver, stay: true) { model.setBatterySaver(!p.batterySaver) })
             if model.isTrack { items.append(Item(label: "ADD CUE HERE", icon: "plus.circle") { model.addCueHere() }) }
