@@ -1337,9 +1337,10 @@
     "name": "Canary Islands",
     "group": "Spain",
     "path": "eu",
-    "pbf": "europe/spain/canary-islands-latest.osm.pbf",
-    "geofabrik": "spain/canary-islands",
-    "max_zoom": 14
+    "pbf": "africa/canary-islands-latest.osm.pbf",
+    "geofabrik": "canary-islands",
+    "max_zoom": 14,
+    "notes": "Geofabrik files the Canaries under Africa"
   },
   "pl-dolnoslaskie": {
     "name": "Lower Silesia",
