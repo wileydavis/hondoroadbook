@@ -23,7 +23,7 @@ extension AppModel {
         switchMode(.nav)
         UIApplication.shared.isIdleTimerDisabled = true
         if let f = lastFix { moveCamera(f.lat, f.lon, animate: true) }
-        if !track { trackLats = nil; trackLons = nil; trackURL = nil; trackCues = []; drawCues() }
+        if !track { trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; drawCues() }
         if track {
             // show the whole track first so the rider knows where it starts, then settle into the turn view
             zoomMode = .overview; overviewDone = false
@@ -38,7 +38,7 @@ extension AppModel {
         Speech.shared.stop(); dim(false); ride.stop(); routeGeneration += 1
         route = nil; isTrack = false; map.clear("route-src")
         UIApplication.shared.isIdleTimerDisabled = false; stopHudTimer(); hud.offVisible = false
-        trackLats = nil; trackLons = nil; trackURL = nil; trackCues = []
+        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []
     }
 
     /// A ride a dead process left behind: offer to pick it up where it was.
@@ -51,7 +51,7 @@ extension AppModel {
                 destName = c.destName; destination = c.isTrack ? nil : r.coordinate(ofVertex: n)
                 if c.isTrack {
                     trackLats = r.lats.swift; trackLons = r.lons.swift; trackName = c.destName; trackURL = nil
-                    trackCues = r.maneuverList.filter { $0.turn != .depart && $0.turn != .arrive }.map { m in Cue(lat: r.lats.get(index: m.vertex), lon: r.lons.get(index: m.vertex), turn: m.turn, note: m.note, level: m.level) }
+                    trackCues = r.maneuverList.filter { $0.turn != .depart && $0.turn != .arrive }.map { m -> Cue in let c = Cue(lat: r.lats.get(index: m.vertex), lon: r.lons.get(index: m.vertex), turn: m.turn, note: m.note, level: m.level); c.rally = m.rally; return c }
                     drawCues()
                 }
                 startNavigation(r, track: c.isTrack, resumed: c)
@@ -70,7 +70,7 @@ extension AppModel {
         UIApplication.shared.isIdleTimerDisabled = false
         stopHudTimer()
         hud.offVisible = false
-        trackLats = nil; trackLons = nil; trackURL = nil; trackCues = []; drawCues()
+        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; drawCues()
         switchMode(.idle)
         if let f = lastFix { map.updatePuck(f.lat, f.lon, heading: heading); if follow { moveCamera(f.lat, f.lon, animate: true) } }
     }

@@ -130,6 +130,8 @@ final class AppModel: ObservableObject, MapEvents {
     /// the track being followed or edited, with its authored cues (Roadbook)
     var trackLats: [Double]?; var trackLons: [Double]?; var trackName = "Track"; var trackURL: URL?
     @Published var trackCues: [Cue] = []
+    /// the planner's roll-chart settings from the track's file, written back on save (each cue keeps its own chart fields)
+    var trackChart: String? = nil
     /// a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned
     var editCues: [Cue] = []
     /// the cue sheet is open on a plan-mode template (a new note on the line, or one of the router's turns to reword), not an existing cue

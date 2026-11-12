@@ -199,4 +199,4 @@ function attr(attrs, k) { const m = new RegExp(`${k}\\s*=\\s*"([^"]*)"`).exec(at
 function num(s) { if (s == null || s === "") return null; const v = Number(s); return Number.isFinite(v) ? v : null; }
 function round(v) { return Math.round(v * 1e5) / 1e5; }
 export function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
-function unesc(s) { return String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"); }
+function unesc(s) { return String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&amp;/g, "&"); }

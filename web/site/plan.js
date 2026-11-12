@@ -1219,7 +1219,7 @@ function parseGpx(text) {
   const cx = /<roadbook>[\s\S]*?<chart>([\s\S]*?)<\/chart>/.exec(text); const chart = cx ? RC.parseSettings(unesc(cx[1])) : null;
   return { pts, rte, cues, name, mode, chart, wpts };
 }
-function unesc(s) { return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"); }
+function unesc(s) { return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;|&#39;/g, "'").replace(/&amp;/g, "&"); }   // esc() writes &#39;
 function loadGpxText(text, fallbackName, opts) {
   opts = opts || {};
   let g;

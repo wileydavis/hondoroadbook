@@ -27,6 +27,8 @@ class Maneuver(
     /** danger level 1–3, 0 for none */
     val level: Int = 0
 ) {
+    /** the roll-chart fields of the cue this came from, as the file had them (see [Cue.rally]) */
+    var rally: String? = null
     /** What to say when the cue comes into range. */
     fun phrase(): String {
         val base = when (turn) {
@@ -41,7 +43,16 @@ class Maneuver(
 
 /** An authored cue read from a GPX waypoint. */
 class Cue(val lat: Double, val lon: Double, val turn: Turn, val note: String, val level: Int = 0) {
+    /**
+     * The planner's roll-chart fields for this cue (tulip, printed words, symbols, mileage marks): the JSON text of the
+     * waypoint's <rally> element, kept exactly as read and written back on save, so a chart survives being opened and
+     * edited on a phone. Not a constructor parameter: Swift sees every one, and most cues have none. An edit that
+     * replaces a cue carries it over.
+     */
+    var rally: String? = null
     companion object {
+        /** A <rally> element's text, if it looks like a JSON object of a sane size; anything else is dropped. */
+        fun cleanRally(s: String?): String? { val t = s?.trim() ?: return null; return if (t.length in 2..4000 && t.startsWith("{") && t.endsWith("}")) t else null }
         /**
          * The GPX convention: a waypoint's <type> names the cue — "cue:LEFT", "cue:SHARP_RIGHT", "danger:2", "note" —
          * and <desc> (or <name>) carries the words. Waypoints with no recognised type are ignored, so marks
@@ -293,7 +304,7 @@ class Route(val lats: DoubleArray, val lons: DoubleArray, val maneuvers: List<Ma
                 if (bi < 0 || best > 150.0) continue
                 val vertex = if (bt < 0.5) bi else bi + 1
                 val at = cum[bi] + bt * (cum[bi + 1] - cum[bi])
-                out.add(Maneuver(c.turn, at, vertex, name, 0.0, note = c.note, level = c.level))
+                out.add(Maneuver(c.turn, at, vertex, name, 0.0, note = c.note, level = c.level).also { it.rally = c.rally })
             }
             return out
         }

@@ -11,6 +11,8 @@ object Gpx {
     class Track(val name: String, val lats: DoubleArray, val lons: DoubleArray, val rteLats: DoubleArray, val rteLons: DoubleArray, val mode: String?, val cues: List<Cue> = emptyList(),
                 /** the route points' names (a waypoint at the same spot: "Start", "Lolo Pass", "End"), "" where there is none; as long as [rteLats] or empty */
                 val rteNames: List<String> = emptyList()) {
+        /** the planner's roll-chart settings (layout, units, paper…), the JSON text of <roadbook><chart>, kept to write back */
+        var chart: String? = null
         val hasTrack get() = lats.size >= 2
         val hasRoute get() = rteLats.size >= 2
         /** the name of route point [i], or "" */
@@ -20,7 +22,7 @@ object Gpx {
     @Throws(Throwable::class) fun parse(text: String): Track? {
         val lats = ArrayList<Double>(); val lons = ArrayList<Double>()
         val rl = ArrayList<Double>(); val ro = ArrayList<Double>()
-        var name = ""; var mode: String? = null
+        var name = ""; var mode: String? = null; var chart: String? = null
         val cues = ArrayList<Cue>()
         // plain named waypoints (no cue type): a stop's name when one sits on a route point
         val wpLat = ArrayList<Double>(); val wpLon = ArrayList<Double>(); val wpName = ArrayList<String>()
@@ -45,7 +47,12 @@ object Gpx {
                 if (lat != null && lon != null && close > 0) {
                     val body = text.substring(i, close)
                     fun inner(t: String): String { val a = body.indexOf("<$t>"); if (a < 0) return ""; val b = body.indexOf("</$t>", a); return if (b < 0) "" else unesc(body.substring(a + t.length + 2, b).trim()) }
-                    val cue = Cue.fromWaypoint(lat, lon, inner("type"), inner("name"), inner("desc"))
+                    val rally = Cue.cleanRally(inner("rally").ifEmpty { null })
+                    // a chart-only note (the planner's words live in the rally fields) is still a cue
+                    val chartNote = rally != null && inner("type").trim().lowercase() == "note" && inner("desc").isEmpty()
+                    val cue = if (chartNote) Cue(lat, lon, Turn.NOTE, inner("name").takeIf { it != Turn.NOTE.spoken && it != "NOTE" } ?: "")
+                        else Cue.fromWaypoint(lat, lon, inner("type"), inner("name"), inner("desc"))
+                    cue?.rally = rally
                     if (cue != null) cues.add(cue) else inner("name").let { nm -> if (nm.isNotEmpty()) { wpLat.add(lat); wpLon.add(lon); wpName.add(nm) } }
                     i = close + 6
                 }
@@ -55,6 +62,9 @@ object Gpx {
             } else if (name.isEmpty() && tag == "name") {
                 val close = text.indexOf("</name>", i)
                 if (close > 0) { name = unesc(text.substring(i, close).trim()); i = close + 7 }
+            } else if (tag == "chart") {
+                val close = text.indexOf("</chart>", i)
+                if (close > 0) { chart = Cue.cleanRally(unesc(text.substring(i, close))); i = close + 8 }
             } else if (tag == "fold:mode") {
                 val close = text.indexOf("</fold:mode>", i)
                 if (close > 0) { mode = text.substring(i, close).trim(); i = close + 12 }
@@ -66,20 +76,25 @@ object Gpx {
             for (w in wpLat.indices) { val d = Geo.fastDistance(rl[k], ro[k], wpLat[w], wpLon[w]); if (d < bd) { bd = d; best = w } }
             if (best >= 0) wpName[best] else ""
         }
-        return Track(name.ifEmpty { "Track" }, lats.toDoubleArray(), lons.toDoubleArray(), rl.toDoubleArray(), ro.toDoubleArray(), mode, cues, names)
+        return Track(name.ifEmpty { "Track" }, lats.toDoubleArray(), lons.toDoubleArray(), rl.toDoubleArray(), ro.toDoubleArray(), mode, cues, names).also { it.chart = chart }
     }
 
     /**
      * Writes a planned route: its points (start, vias, destination) as a GPX route, and the full
      * geometry as a track, thinned to [maxPoints] so the file stays small.
      */
-    fun cueXml(c: Cue): String = "  <wpt lat=\"" + c.lat + "\" lon=\"" + c.lon + "\"><name>" + esc(c.note.ifEmpty { c.turn.spoken }) + "</name>" + (if (c.note.isNotEmpty()) "<desc>" + esc(c.note) + "</desc>" else "") + "<type>" + Cue.typeString(c.turn, c.level) + "</type></wpt>\n"
+    fun cueXml(c: Cue): String = "  <wpt lat=\"" + c.lat + "\" lon=\"" + c.lon + "\"><name>" + esc(c.note.ifEmpty { c.turn.spoken }) + "</name>" + (if (c.note.isNotEmpty()) "<desc>" + esc(c.note) + "</desc>" else "") + "<type>" + Cue.typeString(c.turn, c.level) + "</type>" + (c.rally?.let { "<extensions><rally>" + esc(it) + "</rally></extensions>" } ?: "") + "</wpt>\n"
 
     /** A recorded or edited track with its authored cues. */
-    fun writeTrack(name: String, lats: DoubleArray, lons: DoubleArray, times: LongArray?, cues: List<Cue>): String {
+    fun writeTrack(name: String, lats: DoubleArray, lons: DoubleArray, times: LongArray?, cues: List<Cue>): String = writeTrackChart(name, lats, lons, times, cues, null)
+
+    /** The same, keeping the planner's roll-chart settings ([Track.chart]) so a chart opened on the phone and saved stays a chart. */
+    fun writeTrackChart(name: String, lats: DoubleArray, lons: DoubleArray, times: LongArray?, cues: List<Cue>, chart: String?): String {
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Roadbook\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
-        sb.append("  <metadata><name>").append(esc(name)).append("</name></metadata>\n")
+        sb.append("  <metadata><name>").append(esc(name)).append("</name>")
+        if (chart != null) sb.append("<extensions><roadbook><chart>").append(esc(chart)).append("</chart></roadbook></extensions>")
+        sb.append("</metadata>\n")
         for (c in cues) sb.append(cueXml(c))
         sb.append("  <trk><name>").append(esc(name)).append("</name><trkseg>\n")
         for (i in lats.indices) { sb.append("    <trkpt lat=\"").append(lats[i]).append("\" lon=\"").append(lons[i]).append("\">"); if (times != null) sb.append("<time>").append(isoTime(times[i])).append("</time>"); sb.append("</trkpt>\n") }
@@ -106,7 +121,8 @@ object Gpx {
     }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    private fun unesc(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+    // the planner (and most writers) also escape quotes and apostrophes: "Bob&#39;s gate" must read as Bob's gate
+    private fun unesc(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&#39;", "'").replace("&amp;", "&")
 
     private fun attr(tag: String, key: String): Double? {
         val k = tag.indexOf("$key=")

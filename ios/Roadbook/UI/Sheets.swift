@@ -374,7 +374,7 @@ struct TrackLoadedSheet: View {
                 Button("FOLLOW") { model.sheet = nil; model.followTrack(track, url) }.buttonStyle(BigButton(accent: true))
                 Button("EDIT CUES") { model.sheet = nil; model.openEditor(track, url) }.buttonStyle(BigButton())
                 if track.hasRoute { Button("EDIT ROUTE") { model.sheet = nil; model.rerouteGpx(track) }.buttonStyle(BigButton()) }
-                Button("PUBLISH TO THE LIBRARY") { model.sheet = .publish(name: track.name, gpx: Gpx.shared.writeTrack(name: track.name, lats: track.lats, lons: track.lons, times: nil, cues: track.cues), recorded: true) }.buttonStyle(BigButton(compact: true))
+                Button("PUBLISH TO THE LIBRARY") { model.sheet = .publish(name: track.name, gpx: Gpx.shared.writeTrackChart(name: track.name, lats: track.lats, lons: track.lons, times: nil, cues: track.cues, chart: track.chart), recorded: true) }.buttonStyle(BigButton(compact: true))
                 Spacer()
             }
             .padding()

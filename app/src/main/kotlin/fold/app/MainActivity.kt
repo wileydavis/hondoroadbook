@@ -77,6 +77,8 @@ class MainActivity : AppCompatActivity() {
     private var trackUri: Uri?
         get() = NavSession.trackUri; set(v) { NavSession.trackUri = v }
     private val trackCues: ArrayList<Cue> get() = NavSession.trackCues
+    private var trackChart: String?
+        get() = NavSession.trackChart; set(v) { NavSession.trackChart = v }
     private val editCues: ArrayList<Cue> get() = NavSession.editCues
     private var compareModes: List<Profile>?
         get() = NavSession.compareModes; set(v) { NavSession.compareModes = v }
@@ -107,6 +109,8 @@ class MainActivity : AppCompatActivity() {
         /** the track being followed or edited, with its authored cues */
         var trackLats: DoubleArray? = null; var trackLons: DoubleArray? = null; var trackName = "Track"; var trackUri: Uri? = null
         val trackCues = ArrayList<Cue>()
+        /** the planner's roll-chart settings from the track's file, written back on save (each cue keeps its own chart fields) */
+        var trackChart: String? = null
         /** a file's own cues, carried through EDIT ROUTE and laid back onto whatever gets planned */
         val editCues = ArrayList<Cue>()
         /** the modes the compare screen is limited to (a file is re-planned in its own mode); null = the rider's chosen set */
@@ -1365,7 +1369,7 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         if (android.os.Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) askNavNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
         lastFix?.let { moveCamera(it.lat, it.lon, animate = true) }
-        if (!track) { trackLats = null; trackLons = null; trackUri = null; trackCues.clear(); drawCues() }
+        if (!track) { trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear(); drawCues() }
         if (track) {
             // show the whole track first so the rider knows where it starts, then settle into the turn view
             zoomMode = ZoomMode.OVERVIEW; overviewDone = false
@@ -1387,7 +1391,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton("RESUME") { _, _ ->
                 val r = c.route; val n = r.size - 1
                 destName = c.destName; destination = if (c.isTrack) null else LatLng(r.lats[n], r.lons[n])
-                if (c.isTrack) { trackLats = r.lats; trackLons = r.lons; trackName = c.destName; trackUri = null; trackCues.clear(); trackCues.addAll(r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, m.note, m.level) }); drawCues() }
+                if (c.isTrack) { trackLats = r.lats; trackLons = r.lons; trackName = c.destName; trackUri = null; trackCues.clear(); trackCues.addAll(r.maneuvers.filter { it.turn != Turn.DEPART && it.turn != Turn.ARRIVE }.map { m -> Cue(r.lats[m.vertex], r.lons[m.vertex], m.turn, m.note, m.level).also { it.rally = m.rally } }); drawCues() }
                 startNavigation(r, c.isTrack, c)
             }
             .setNegativeButton("DISCARD") { _, _ -> NavService.checkpointFile(this).delete() }
@@ -1466,7 +1470,7 @@ class MainActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         ui.removeCallbacks(hudTick)
         offPanel.visibility = View.GONE
-        trackLats = null; trackLons = null; trackUri = null; trackCues.clear(); drawCues()
+        trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear(); drawCues()
         switchMode(Mode.IDLE)
         lastFix?.let { updatePuck(it.lat, it.lon, heading); if (follow) moveCamera(it.lat, it.lon, true) }
     }
@@ -1653,7 +1657,7 @@ class MainActivity : AppCompatActivity() {
             val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
             body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute) "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." else "") })
             var dlgRef: androidx.appcompat.app.AlertDialog? = null
-            body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrack(tr.name, tr.lats, tr.lons, null, tr.cues), recorded = true) } })
+            body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrackChart(tr.name, tr.lats, tr.lons, null, tr.cues, tr.chart), recorded = true) } })
             dlgRef = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name).setView(body)
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
                 .setNeutralButton("EDIT CUES") { _, _ -> openEditor(tr, uri) }
@@ -1667,7 +1671,7 @@ class MainActivity : AppCompatActivity() {
     private fun trackLength(tr: Gpx.Track): Double { var d = 0.0; for (i in 1 until tr.lats.size) d += Geo.fastDistance(tr.lats[i - 1], tr.lons[i - 1], tr.lats[i], tr.lons[i]); return d }
 
     private fun followTrack(tr: Gpx.Track, uri: Uri?) {
-        trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackCues.clear(); trackCues.addAll(tr.cues)
+        trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackChart = tr.chart; trackCues.clear(); trackCues.addAll(tr.cues)
         val r = Route.fromTrack(tr.lats, tr.lons, tr.name, tr.cues); destination = null; startNavigation(r, true); drawCues()
         toast("Following track (${Units.distance(r.length)})" + if (tr.cues.isNotEmpty()) " · ${tr.cues.size} cues" else "")
     }
@@ -1709,7 +1713,7 @@ class MainActivity : AppCompatActivity() {
         Speech.stop(); dim(false); NavService.stop(this); routeGeneration++
         route = null; isTrack = false; srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); ui.removeCallbacks(hudTick); offPanel.visibility = View.GONE
-        trackLats = null; trackLons = null; trackUri = null; trackCues.clear()
+        trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear()
     }
 
     // ---------------------------------------------------------------- misc
@@ -1801,6 +1805,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun editCue(c: Cue) {
         CueDialog.show(this, c.lat, c.lon, c, { n ->
+            n.rally = c.rally   // the words or the turn changed; its tulip, symbols and mileage marks stay
             val i = trackCues.indexOf(c); if (i >= 0) trackCues[i] = n; drawCues(); if (mode == Mode.NAV) rebuildTrackRoute()
         }, onDelete = { trackCues.remove(c); drawCues(); if (mode == Mode.NAV) rebuildTrackRoute(); toast("Cue deleted") })
     }
@@ -1825,7 +1830,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openEditor(tr: Gpx.Track, uri: Uri?) {
         if (mode == Mode.NAV) endNavigation()
-        trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackCues.clear(); trackCues.addAll(tr.cues)
+        trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackChart = tr.chart; trackCues.clear(); trackCues.addAll(tr.cues)
         val r = Route.fromTrack(tr.lats, tr.lons, tr.name, tr.cues)
         route = r; isTrack = true; drawRoute(r); drawCues()
         follow = false
@@ -1840,7 +1845,7 @@ class MainActivity : AppCompatActivity() {
     private fun leaveEdit() {
         route = null; isTrack = false
         srcRoute?.setGeoJson(FeatureCollection.fromFeatures(emptyArray()))
-        trackLats = null; trackLons = null; trackUri = null; trackCues.clear(); drawCues()
+        trackLats = null; trackLons = null; trackUri = null; trackChart = null; trackCues.clear(); drawCues()
         switchMode(Mode.IDLE)
     }
 
@@ -1860,7 +1865,7 @@ class MainActivity : AppCompatActivity() {
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle("$trackName · ${Units.distance(r.length)}").setView(android.widget.ScrollView(this).apply { addView(tv) }).setNegativeButton("CLOSE", null).show()
     }
 
-    private fun trackGpx(): String { val la = trackLats!!; val lo = trackLons!!; return Gpx.writeTrack(trackName, la, lo, null, trackCues.sortedBy { trackOffset(it) }) }
+    private fun trackGpx(): String { val la = trackLats!!; val lo = trackLons!!; return Gpx.writeTrackChart(trackName, la, lo, null, trackCues.sortedBy { trackOffset(it) }, trackChart) }
 
     /** Writes the track with its cues back over the file it came from, or as a new file in your folder. */
     private fun saveTrack() {

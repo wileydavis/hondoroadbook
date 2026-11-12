@@ -9,6 +9,7 @@ build/
 .kotlin/
 *.apk
 !dist/roadbook.apk
+!dist/roadbook-beta.apk
 *.apk.idsig
 *.mappack
 *.osm.pbf

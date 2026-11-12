@@ -73,7 +73,7 @@ extension AppModel {
     }
 
     func followTrack(_ tr: GpxTrack, _ url: URL?) {
-        trackLats = tr.lats.swift; trackLons = tr.lons.swift; trackName = tr.name; trackURL = url; trackCues = tr.cueList
+        trackLats = tr.lats.swift; trackLons = tr.lons.swift; trackName = tr.name; trackURL = url; trackChart = tr.chart; trackCues = tr.cueList
         do {
             let r = try Route.companion.fromTrack(lats: tr.lats, lons: tr.lons, name: tr.name, cues: tr.cues)
             destination = nil; startNavigation(r, track: true); drawCues()
@@ -137,6 +137,7 @@ extension AppModel {
     func cueSaved(_ c: Cue, replacing old: Cue?) {
         if mode == .compare { planCueSaved(c, replacing: old); return }
         if let o = old {
+            c.rally = o.rally   // the words or the turn changed; its tulip, symbols and mileage marks stay
             if let i = trackCues.firstIndex(where: { $0 === o }) { trackCues[i] = c }
             drawCues(); if mode == .nav { rebuildTrackRoute() }
             return
@@ -181,7 +182,7 @@ extension AppModel {
 
     func openEditor(_ tr: GpxTrack, _ url: URL?) {
         if mode == .nav { endNavigation() }
-        trackLats = tr.lats.swift; trackLons = tr.lons.swift; trackName = tr.name; trackURL = url; trackCues = tr.cueList
+        trackLats = tr.lats.swift; trackLons = tr.lons.swift; trackName = tr.name; trackURL = url; trackChart = tr.chart; trackCues = tr.cueList
         guard let r = try? Route.companion.fromTrack(lats: tr.lats, lons: tr.lons, name: tr.name, cues: tr.cues) else { showToast("Track failed"); return }
         route = r; isTrack = true; map.drawRoute(r, color: Theme.track); drawCues()
         follow = false
@@ -199,7 +200,7 @@ extension AppModel {
     func leaveEdit() {
         route = nil; isTrack = false
         map.clear("route-src")
-        trackLats = nil; trackLons = nil; trackURL = nil; trackCues = []; drawCues()
+        trackLats = nil; trackLons = nil; trackURL = nil; trackChart = nil; trackCues = []; drawCues()
         switchMode(.idle)
     }
 
@@ -218,7 +219,7 @@ extension AppModel {
 
     func trackGpx() -> String {
         guard let la = trackLats, let lo = trackLons else { return "" }
-        return Gpx.shared.writeTrack(name: trackName, lats: KotlinDoubleArray.of(la), lons: KotlinDoubleArray.of(lo), times: nil, cues: trackCues.sorted { trackOffset($0) < trackOffset($1) })
+        return Gpx.shared.writeTrackChart(name: trackName, lats: KotlinDoubleArray.of(la), lons: KotlinDoubleArray.of(lo), times: nil, cues: trackCues.sorted { trackOffset($0) < trackOffset($1) }, chart: trackChart)
     }
 
     /// Writes the track with its cues back over the file it came from (when it is one of ours in Documents), or as a new file.
