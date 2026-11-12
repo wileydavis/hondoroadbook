@@ -1445,6 +1445,8 @@ class MainActivity : AppCompatActivity() {
                 root.addView(d, root.indexOfChild(mapView) + 1, android.widget.FrameLayout.LayoutParams(android.widget.FrameLayout.LayoutParams.MATCH_PARENT, android.widget.FrameLayout.LayoutParams.MATCH_PARENT))
                 dark = d; darkText = t
             }
+            // over the chart reader too (it stands above the map), still under the menu button
+            dark?.elevation = if (chartView.visibility == View.VISIBLE) dp(7) + 1f else 0f
             dark?.visibility = View.VISIBLE; hud.visibility = View.GONE
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             window.attributes = window.attributes.apply { screenBrightness = 0.01f }
