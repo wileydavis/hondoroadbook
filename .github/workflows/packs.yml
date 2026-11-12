@@ -1,7 +1,7 @@
 # Builds map packs on GitHub's runners and publishes them where hondoroadbook.com/packs/ serves them.
 # Free for a public repository; every region × kind is its own job, so one failure never costs the others.
 #
-# Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California, Greece). Kinds:
+# Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California, the EU). Kinds:
 #   roads   — OSM extract → roads, routing graph, address index, vector tiles (fold-packer.jar)
 #   terrain — hillshade raster from AWS Terrain Tiles (packer/terrain/build_terrain.py)
 # Packs always go to the rolling GitHub release "packs" (no setup needed; the Worker proxies /packs/*
@@ -68,6 +68,14 @@ jobs:
           echo "terrain=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
           echo "has_roads=$([[ " $KINDS " == *" roads "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_terrain=$([[ " $KINDS " == *" terrain "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          # every extract asked for must exist at Geofabrik before a hundred jobs start: a misspelt slug fails here, by name
+          curl -fsSL --retry 5 --retry-all-errors -o index.json https://download.geofabrik.de/index-v1-nogeom.json
+          missing=""
+          for r in $WANT; do
+            pbf=$(jq -r --arg r "$r" '.[$r].pbf // empty' packer/regions.json); [ -n "$pbf" ] || { missing="$missing $r(not in regions.json)"; continue; }
+            jq -e --arg p "/$pbf" 'any(.features[]; (.properties.urls.pbf // "") | endswith($p))' index.json >/dev/null || missing="$missing $r($pbf)"
+          done
+          [ -z "$missing" ] || { echo "::error::No Geofabrik extract for:$missing"; exit 1; }
 
   roads:
     needs: [packer, plan]
@@ -214,7 +222,7 @@ jobs:
         with: { name: fold-packer }
       - name: Continent overview tiles for the planner (zoom 0-7, one small file instead of fifty packs)
         run: |
-          java -jar fold-packer.jar --tiles-only yes --bbox "-170,14,-50,72;19,34.5,30,42" --max-zoom 7 --out na-overview.pmtiles   # North America; Greece
+          java -jar fold-packer.jar --tiles-only yes --bbox "-170,14,-50,72;-25,27,45,72" --max-zoom 7 --out na-overview.pmtiles   # North America; Europe (the name stays: the planner asks for it)
           gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber na-overview.pmtiles
       - name: Rebuild catalog.json from every sidecar on the release
         run: |

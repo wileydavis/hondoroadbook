@@ -394,7 +394,7 @@
     "pbf": "north-america/canada/british-columbia-latest.osm.pbf",
     "geofabrik": "canada/british-columbia",
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: a million km\u00b2, like Alaska",
+    "notes": "terrain at zoom 10: a million km², like Alaska",
     "max_zoom": 13
   },
   "manitoba": {
@@ -427,7 +427,7 @@
     "pbf": "north-america/canada/northwest-territories-latest.osm.pbf",
     "geofabrik": "canada/northwest-territories",
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: 1.3 million km\u00b2",
+    "notes": "terrain at zoom 10: 1.3 million km²",
     "max_zoom": 13
   },
   "nova-scotia": {
@@ -444,7 +444,7 @@
     "pbf": "north-america/canada/nunavut-latest.osm.pbf",
     "geofabrik": "canada/nunavut",
     "terrain_zoom": 9,
-    "notes": "terrain at zoom 9: two million km\u00b2 and almost no roads",
+    "notes": "terrain at zoom 9: two million km² and almost no roads",
     "max_zoom": 12
   },
   "ontario": {
@@ -497,5 +497,1072 @@
     "pbf": "europe/greece-latest.osm.pbf",
     "geofabrik": "greece",
     "notes": "the islands too; one pack"
+  },
+  "bulgaria": {
+    "name": "Bulgaria",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/bulgaria-latest.osm.pbf",
+    "geofabrik": "bulgaria",
+    "terrain_zoom": 12
+  },
+  "croatia": {
+    "name": "Croatia",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/croatia-latest.osm.pbf",
+    "geofabrik": "croatia"
+  },
+  "cyprus": {
+    "name": "Cyprus",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/cyprus-latest.osm.pbf",
+    "geofabrik": "cyprus"
+  },
+  "estonia": {
+    "name": "Estonia",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/estonia-latest.osm.pbf",
+    "geofabrik": "estonia"
+  },
+  "hungary": {
+    "name": "Hungary",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/hungary-latest.osm.pbf",
+    "geofabrik": "hungary"
+  },
+  "latvia": {
+    "name": "Latvia",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/latvia-latest.osm.pbf",
+    "geofabrik": "latvia"
+  },
+  "lithuania": {
+    "name": "Lithuania",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/lithuania-latest.osm.pbf",
+    "geofabrik": "lithuania"
+  },
+  "luxembourg": {
+    "name": "Luxembourg",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/luxembourg-latest.osm.pbf",
+    "geofabrik": "luxembourg"
+  },
+  "malta": {
+    "name": "Malta",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/malta-latest.osm.pbf",
+    "geofabrik": "malta"
+  },
+  "romania": {
+    "name": "Romania",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/romania-latest.osm.pbf",
+    "geofabrik": "romania",
+    "terrain_zoom": 12
+  },
+  "slovakia": {
+    "name": "Slovakia",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/slovakia-latest.osm.pbf",
+    "geofabrik": "slovakia"
+  },
+  "slovenia": {
+    "name": "Slovenia",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/slovenia-latest.osm.pbf",
+    "geofabrik": "slovenia"
+  },
+  "belgium": {
+    "name": "Belgium",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/belgium-latest.osm.pbf",
+    "geofabrik": "belgium",
+    "max_zoom": 14
+  },
+  "denmark": {
+    "name": "Denmark",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/denmark-latest.osm.pbf",
+    "geofabrik": "denmark",
+    "max_zoom": 14
+  },
+  "portugal": {
+    "name": "Portugal",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/portugal-latest.osm.pbf",
+    "geofabrik": "portugal",
+    "max_zoom": 14
+  },
+  "ireland": {
+    "name": "Ireland",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/ireland-and-northern-ireland-latest.osm.pbf",
+    "geofabrik": "ireland-and-northern-ireland",
+    "max_zoom": 14,
+    "notes": "with Northern Ireland"
+  },
+  "sweden-south": {
+    "name": "Southern Sweden (Götaland)",
+    "group": "Sweden",
+    "path": "eu",
+    "pbf": "europe/sweden-latest.osm.pbf",
+    "geofabrik": "sweden",
+    "bbox": [
+      10.5,
+      55.2,
+      19.5,
+      58.6
+    ],
+    "max_zoom": 14,
+    "terrain_zoom": 12,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "sweden-central": {
+    "name": "Central Sweden (Svealand)",
+    "group": "Sweden",
+    "path": "eu",
+    "pbf": "europe/sweden-latest.osm.pbf",
+    "geofabrik": "sweden",
+    "bbox": [
+      10.5,
+      58.4,
+      19.5,
+      61.7
+    ],
+    "max_zoom": 14,
+    "terrain_zoom": 12,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "sweden-north": {
+    "name": "Northern Sweden (Norrland)",
+    "group": "Sweden",
+    "path": "eu",
+    "pbf": "europe/sweden-latest.osm.pbf",
+    "geofabrik": "sweden",
+    "bbox": [
+      11.0,
+      61.5,
+      24.3,
+      69.2
+    ],
+    "max_zoom": 14,
+    "terrain_zoom": 10,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "finland-south": {
+    "name": "Southern Finland",
+    "group": "Finland",
+    "path": "eu",
+    "pbf": "europe/finland-latest.osm.pbf",
+    "geofabrik": "finland",
+    "bbox": [
+      19.0,
+      59.5,
+      31.7,
+      63.1
+    ],
+    "max_zoom": 14,
+    "terrain_zoom": 11,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "finland-north": {
+    "name": "Northern Finland",
+    "group": "Finland",
+    "path": "eu",
+    "pbf": "europe/finland-latest.osm.pbf",
+    "geofabrik": "finland",
+    "bbox": [
+      20.5,
+      62.9,
+      31.7,
+      70.2
+    ],
+    "max_zoom": 14,
+    "terrain_zoom": 10,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "austria-west": {
+    "name": "Western Austria",
+    "group": "Austria",
+    "path": "eu",
+    "pbf": "europe/austria-latest.osm.pbf",
+    "geofabrik": "austria",
+    "bbox": [
+      9.4,
+      46.3,
+      13.6,
+      48.1
+    ],
+    "max_zoom": 14,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "austria-east": {
+    "name": "Eastern Austria",
+    "group": "Austria",
+    "path": "eu",
+    "pbf": "europe/austria-latest.osm.pbf",
+    "geofabrik": "austria",
+    "bbox": [
+      13.4,
+      46.3,
+      17.2,
+      49.1
+    ],
+    "max_zoom": 14,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "czechia-west": {
+    "name": "Western Czechia (Bohemia)",
+    "group": "Czechia",
+    "path": "eu",
+    "pbf": "europe/czech-republic-latest.osm.pbf",
+    "geofabrik": "czech-republic",
+    "bbox": [
+      12.0,
+      48.5,
+      15.9,
+      51.1
+    ],
+    "max_zoom": 14,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "czechia-east": {
+    "name": "Eastern Czechia (Moravia)",
+    "group": "Czechia",
+    "path": "eu",
+    "pbf": "europe/czech-republic-latest.osm.pbf",
+    "geofabrik": "czech-republic",
+    "bbox": [
+      15.7,
+      48.5,
+      18.9,
+      50.5
+    ],
+    "max_zoom": 14,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "de-berlin": {
+    "name": "Berlin",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/berlin-latest.osm.pbf",
+    "geofabrik": "germany/berlin",
+    "max_zoom": 14
+  },
+  "de-brandenburg": {
+    "name": "Brandenburg",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/brandenburg-latest.osm.pbf",
+    "geofabrik": "germany/brandenburg",
+    "max_zoom": 14
+  },
+  "de-bremen": {
+    "name": "Bremen",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bremen-latest.osm.pbf",
+    "geofabrik": "germany/bremen",
+    "max_zoom": 14
+  },
+  "de-hamburg": {
+    "name": "Hamburg",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/hamburg-latest.osm.pbf",
+    "geofabrik": "germany/hamburg",
+    "max_zoom": 14
+  },
+  "de-hessen": {
+    "name": "Hesse",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/hessen-latest.osm.pbf",
+    "geofabrik": "germany/hessen",
+    "max_zoom": 14
+  },
+  "de-mecklenburg-vorpommern": {
+    "name": "Mecklenburg-Vorpommern",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/mecklenburg-vorpommern-latest.osm.pbf",
+    "geofabrik": "germany/mecklenburg-vorpommern",
+    "max_zoom": 14
+  },
+  "de-niedersachsen": {
+    "name": "Lower Saxony",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/niedersachsen-latest.osm.pbf",
+    "geofabrik": "germany/niedersachsen",
+    "max_zoom": 14
+  },
+  "de-rheinland-pfalz": {
+    "name": "Rhineland-Palatinate",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/rheinland-pfalz-latest.osm.pbf",
+    "geofabrik": "germany/rheinland-pfalz",
+    "max_zoom": 14
+  },
+  "de-saarland": {
+    "name": "Saarland",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/saarland-latest.osm.pbf",
+    "geofabrik": "germany/saarland",
+    "max_zoom": 14
+  },
+  "de-sachsen": {
+    "name": "Saxony",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/sachsen-latest.osm.pbf",
+    "geofabrik": "germany/sachsen",
+    "max_zoom": 14
+  },
+  "de-sachsen-anhalt": {
+    "name": "Saxony-Anhalt",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/sachsen-anhalt-latest.osm.pbf",
+    "geofabrik": "germany/sachsen-anhalt",
+    "max_zoom": 14
+  },
+  "de-schleswig-holstein": {
+    "name": "Schleswig-Holstein",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/schleswig-holstein-latest.osm.pbf",
+    "geofabrik": "germany/schleswig-holstein",
+    "max_zoom": 14
+  },
+  "de-thueringen": {
+    "name": "Thuringia",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/thueringen-latest.osm.pbf",
+    "geofabrik": "germany/thueringen",
+    "max_zoom": 14
+  },
+  "de-oberbayern": {
+    "name": "Bavaria: Upper Bavaria",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/oberbayern-latest.osm.pbf",
+    "geofabrik": "germany/bayern/oberbayern",
+    "max_zoom": 14
+  },
+  "de-niederbayern": {
+    "name": "Bavaria: Lower Bavaria",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/niederbayern-latest.osm.pbf",
+    "geofabrik": "germany/bayern/niederbayern",
+    "max_zoom": 14
+  },
+  "de-oberpfalz": {
+    "name": "Bavaria: Upper Palatinate",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/oberpfalz-latest.osm.pbf",
+    "geofabrik": "germany/bayern/oberpfalz",
+    "max_zoom": 14
+  },
+  "de-oberfranken": {
+    "name": "Bavaria: Upper Franconia",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/oberfranken-latest.osm.pbf",
+    "geofabrik": "germany/bayern/oberfranken",
+    "max_zoom": 14
+  },
+  "de-mittelfranken": {
+    "name": "Bavaria: Middle Franconia",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/mittelfranken-latest.osm.pbf",
+    "geofabrik": "germany/bayern/mittelfranken",
+    "max_zoom": 14
+  },
+  "de-unterfranken": {
+    "name": "Bavaria: Lower Franconia",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/unterfranken-latest.osm.pbf",
+    "geofabrik": "germany/bayern/unterfranken",
+    "max_zoom": 14
+  },
+  "de-schwaben": {
+    "name": "Bavaria: Swabia (Bavaria)",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/bayern/schwaben-latest.osm.pbf",
+    "geofabrik": "germany/bayern/schwaben",
+    "max_zoom": 14
+  },
+  "de-arnsberg": {
+    "name": "North Rhine-Westphalia: Arnsberg",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/nordrhein-westfalen/arnsberg-regbez-latest.osm.pbf",
+    "geofabrik": "germany/nordrhein-westfalen/arnsberg-regbez",
+    "max_zoom": 14
+  },
+  "de-detmold": {
+    "name": "North Rhine-Westphalia: Detmold",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/nordrhein-westfalen/detmold-regbez-latest.osm.pbf",
+    "geofabrik": "germany/nordrhein-westfalen/detmold-regbez",
+    "max_zoom": 14
+  },
+  "de-duesseldorf": {
+    "name": "North Rhine-Westphalia: Düsseldorf",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/nordrhein-westfalen/duesseldorf-regbez-latest.osm.pbf",
+    "geofabrik": "germany/nordrhein-westfalen/duesseldorf-regbez",
+    "max_zoom": 14
+  },
+  "de-koeln": {
+    "name": "North Rhine-Westphalia: Cologne",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/nordrhein-westfalen/koeln-regbez-latest.osm.pbf",
+    "geofabrik": "germany/nordrhein-westfalen/koeln-regbez",
+    "max_zoom": 14
+  },
+  "de-muenster": {
+    "name": "North Rhine-Westphalia: Münster",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/nordrhein-westfalen/muenster-regbez-latest.osm.pbf",
+    "geofabrik": "germany/nordrhein-westfalen/muenster-regbez",
+    "max_zoom": 14
+  },
+  "de-freiburg": {
+    "name": "Baden-Württemberg: Freiburg",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/baden-wuerttemberg/freiburg-regbez-latest.osm.pbf",
+    "geofabrik": "germany/baden-wuerttemberg/freiburg-regbez",
+    "max_zoom": 14
+  },
+  "de-karlsruhe": {
+    "name": "Baden-Württemberg: Karlsruhe",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/baden-wuerttemberg/karlsruhe-regbez-latest.osm.pbf",
+    "geofabrik": "germany/baden-wuerttemberg/karlsruhe-regbez",
+    "max_zoom": 14
+  },
+  "de-stuttgart": {
+    "name": "Baden-Württemberg: Stuttgart",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/baden-wuerttemberg/stuttgart-regbez-latest.osm.pbf",
+    "geofabrik": "germany/baden-wuerttemberg/stuttgart-regbez",
+    "max_zoom": 14
+  },
+  "de-tuebingen": {
+    "name": "Baden-Württemberg: Tübingen",
+    "group": "Germany",
+    "path": "eu",
+    "pbf": "europe/germany/baden-wuerttemberg/tuebingen-regbez-latest.osm.pbf",
+    "geofabrik": "germany/baden-wuerttemberg/tuebingen-regbez",
+    "max_zoom": 14
+  },
+  "fr-alsace": {
+    "name": "Alsace",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/alsace-latest.osm.pbf",
+    "geofabrik": "france/alsace",
+    "max_zoom": 14
+  },
+  "fr-aquitaine": {
+    "name": "Aquitaine",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/aquitaine-latest.osm.pbf",
+    "geofabrik": "france/aquitaine",
+    "max_zoom": 14
+  },
+  "fr-auvergne": {
+    "name": "Auvergne",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/auvergne-latest.osm.pbf",
+    "geofabrik": "france/auvergne",
+    "max_zoom": 14
+  },
+  "fr-basse-normandie": {
+    "name": "Basse-Normandie",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/basse-normandie-latest.osm.pbf",
+    "geofabrik": "france/basse-normandie",
+    "max_zoom": 14
+  },
+  "fr-bourgogne": {
+    "name": "Burgundy",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/bourgogne-latest.osm.pbf",
+    "geofabrik": "france/bourgogne",
+    "max_zoom": 14
+  },
+  "fr-bretagne": {
+    "name": "Brittany",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/bretagne-latest.osm.pbf",
+    "geofabrik": "france/bretagne",
+    "max_zoom": 14
+  },
+  "fr-centre": {
+    "name": "Centre-Val de Loire",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/centre-latest.osm.pbf",
+    "geofabrik": "france/centre",
+    "max_zoom": 14
+  },
+  "fr-champagne-ardenne": {
+    "name": "Champagne-Ardenne",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/champagne-ardenne-latest.osm.pbf",
+    "geofabrik": "france/champagne-ardenne",
+    "max_zoom": 14
+  },
+  "fr-corse": {
+    "name": "Corsica",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/corse-latest.osm.pbf",
+    "geofabrik": "france/corse",
+    "max_zoom": 14
+  },
+  "fr-franche-comte": {
+    "name": "Franche-Comté",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/franche-comte-latest.osm.pbf",
+    "geofabrik": "france/franche-comte",
+    "max_zoom": 14
+  },
+  "fr-haute-normandie": {
+    "name": "Haute-Normandie",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/haute-normandie-latest.osm.pbf",
+    "geofabrik": "france/haute-normandie",
+    "max_zoom": 14
+  },
+  "fr-ile-de-france": {
+    "name": "Île-de-France",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/ile-de-france-latest.osm.pbf",
+    "geofabrik": "france/ile-de-france",
+    "max_zoom": 14
+  },
+  "fr-languedoc-roussillon": {
+    "name": "Languedoc-Roussillon",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/languedoc-roussillon-latest.osm.pbf",
+    "geofabrik": "france/languedoc-roussillon",
+    "max_zoom": 14
+  },
+  "fr-limousin": {
+    "name": "Limousin",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/limousin-latest.osm.pbf",
+    "geofabrik": "france/limousin",
+    "max_zoom": 14
+  },
+  "fr-lorraine": {
+    "name": "Lorraine",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/lorraine-latest.osm.pbf",
+    "geofabrik": "france/lorraine",
+    "max_zoom": 14
+  },
+  "fr-midi-pyrenees": {
+    "name": "Midi-Pyrénées",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/midi-pyrenees-latest.osm.pbf",
+    "geofabrik": "france/midi-pyrenees",
+    "max_zoom": 14
+  },
+  "fr-nord-pas-de-calais": {
+    "name": "Nord-Pas-de-Calais",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/nord-pas-de-calais-latest.osm.pbf",
+    "geofabrik": "france/nord-pas-de-calais",
+    "max_zoom": 14
+  },
+  "fr-pays-de-la-loire": {
+    "name": "Pays de la Loire",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/pays-de-la-loire-latest.osm.pbf",
+    "geofabrik": "france/pays-de-la-loire",
+    "max_zoom": 14
+  },
+  "fr-picardie": {
+    "name": "Picardy",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/picardie-latest.osm.pbf",
+    "geofabrik": "france/picardie",
+    "max_zoom": 14
+  },
+  "fr-poitou-charentes": {
+    "name": "Poitou-Charentes",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/poitou-charentes-latest.osm.pbf",
+    "geofabrik": "france/poitou-charentes",
+    "max_zoom": 14
+  },
+  "fr-provence-alpes-cote-d-azur": {
+    "name": "Provence-Alpes-Côte d'Azur",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/provence-alpes-cote-d-azur-latest.osm.pbf",
+    "geofabrik": "france/provence-alpes-cote-d-azur",
+    "max_zoom": 14
+  },
+  "fr-rhone-alpes": {
+    "name": "Rhône-Alpes",
+    "group": "France",
+    "path": "eu",
+    "pbf": "europe/france/rhone-alpes-latest.osm.pbf",
+    "geofabrik": "france/rhone-alpes",
+    "max_zoom": 14
+  },
+  "it-nord-ovest": {
+    "name": "Northwest Italy",
+    "group": "Italy",
+    "path": "eu",
+    "pbf": "europe/italy/nord-ovest-latest.osm.pbf",
+    "geofabrik": "italy/nord-ovest",
+    "max_zoom": 14
+  },
+  "it-nord-est": {
+    "name": "Northeast Italy",
+    "group": "Italy",
+    "path": "eu",
+    "pbf": "europe/italy/nord-est-latest.osm.pbf",
+    "geofabrik": "italy/nord-est",
+    "max_zoom": 14
+  },
+  "it-centro": {
+    "name": "Central Italy",
+    "group": "Italy",
+    "path": "eu",
+    "pbf": "europe/italy/centro-latest.osm.pbf",
+    "geofabrik": "italy/centro",
+    "max_zoom": 14
+  },
+  "it-sud": {
+    "name": "Southern Italy",
+    "group": "Italy",
+    "path": "eu",
+    "pbf": "europe/italy/sud-latest.osm.pbf",
+    "geofabrik": "italy/sud",
+    "max_zoom": 14
+  },
+  "it-isole": {
+    "name": "Sicily and Sardinia",
+    "group": "Italy",
+    "path": "eu",
+    "pbf": "europe/italy/isole-latest.osm.pbf",
+    "geofabrik": "italy/isole",
+    "max_zoom": 14
+  },
+  "es-andalucia": {
+    "name": "Andalusia",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/andalucia-latest.osm.pbf",
+    "geofabrik": "spain/andalucia",
+    "max_zoom": 14
+  },
+  "es-aragon": {
+    "name": "Aragon",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/aragon-latest.osm.pbf",
+    "geofabrik": "spain/aragon",
+    "max_zoom": 14
+  },
+  "es-asturias": {
+    "name": "Asturias",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/asturias-latest.osm.pbf",
+    "geofabrik": "spain/asturias",
+    "max_zoom": 14
+  },
+  "es-cantabria": {
+    "name": "Cantabria",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/cantabria-latest.osm.pbf",
+    "geofabrik": "spain/cantabria",
+    "max_zoom": 14
+  },
+  "es-castilla-la-mancha": {
+    "name": "Castilla-La Mancha",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/castilla-la-mancha-latest.osm.pbf",
+    "geofabrik": "spain/castilla-la-mancha",
+    "max_zoom": 14
+  },
+  "es-castilla-y-leon": {
+    "name": "Castilla y León",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/castilla-y-leon-latest.osm.pbf",
+    "geofabrik": "spain/castilla-y-leon",
+    "max_zoom": 14
+  },
+  "es-cataluna": {
+    "name": "Catalonia",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/cataluna-latest.osm.pbf",
+    "geofabrik": "spain/cataluna",
+    "max_zoom": 14
+  },
+  "es-extremadura": {
+    "name": "Extremadura",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/extremadura-latest.osm.pbf",
+    "geofabrik": "spain/extremadura",
+    "max_zoom": 14
+  },
+  "es-galicia": {
+    "name": "Galicia",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/galicia-latest.osm.pbf",
+    "geofabrik": "spain/galicia",
+    "max_zoom": 14
+  },
+  "es-islas-baleares": {
+    "name": "Balearic Islands",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/islas-baleares-latest.osm.pbf",
+    "geofabrik": "spain/islas-baleares",
+    "max_zoom": 14
+  },
+  "es-la-rioja": {
+    "name": "La Rioja",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/la-rioja-latest.osm.pbf",
+    "geofabrik": "spain/la-rioja",
+    "max_zoom": 14
+  },
+  "es-madrid": {
+    "name": "Madrid",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/madrid-latest.osm.pbf",
+    "geofabrik": "spain/madrid",
+    "max_zoom": 14
+  },
+  "es-murcia": {
+    "name": "Murcia",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/murcia-latest.osm.pbf",
+    "geofabrik": "spain/murcia",
+    "max_zoom": 14
+  },
+  "es-navarra": {
+    "name": "Navarre",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/navarra-latest.osm.pbf",
+    "geofabrik": "spain/navarra",
+    "max_zoom": 14
+  },
+  "es-pais-vasco": {
+    "name": "Basque Country",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/pais-vasco-latest.osm.pbf",
+    "geofabrik": "spain/pais-vasco",
+    "max_zoom": 14
+  },
+  "es-valencia": {
+    "name": "Valencia",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/valencia-latest.osm.pbf",
+    "geofabrik": "spain/valencia",
+    "max_zoom": 14
+  },
+  "es-canary-islands": {
+    "name": "Canary Islands",
+    "group": "Spain",
+    "path": "eu",
+    "pbf": "europe/spain/canary-islands-latest.osm.pbf",
+    "geofabrik": "spain/canary-islands",
+    "max_zoom": 14
+  },
+  "pl-dolnoslaskie": {
+    "name": "Lower Silesia",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/dolnoslaskie-latest.osm.pbf",
+    "geofabrik": "poland/dolnoslaskie",
+    "max_zoom": 14
+  },
+  "pl-kujawsko-pomorskie": {
+    "name": "Kuyavia-Pomerania",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/kujawsko-pomorskie-latest.osm.pbf",
+    "geofabrik": "poland/kujawsko-pomorskie",
+    "max_zoom": 14
+  },
+  "pl-lodzkie": {
+    "name": "Łódź",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/lodzkie-latest.osm.pbf",
+    "geofabrik": "poland/lodzkie",
+    "max_zoom": 14
+  },
+  "pl-lubelskie": {
+    "name": "Lublin",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/lubelskie-latest.osm.pbf",
+    "geofabrik": "poland/lubelskie",
+    "max_zoom": 14
+  },
+  "pl-lubuskie": {
+    "name": "Lubusz",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/lubuskie-latest.osm.pbf",
+    "geofabrik": "poland/lubuskie",
+    "max_zoom": 14
+  },
+  "pl-malopolskie": {
+    "name": "Lesser Poland",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/malopolskie-latest.osm.pbf",
+    "geofabrik": "poland/malopolskie",
+    "max_zoom": 14
+  },
+  "pl-mazowieckie": {
+    "name": "Masovia",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/mazowieckie-latest.osm.pbf",
+    "geofabrik": "poland/mazowieckie",
+    "max_zoom": 14
+  },
+  "pl-opolskie": {
+    "name": "Opole",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/opolskie-latest.osm.pbf",
+    "geofabrik": "poland/opolskie",
+    "max_zoom": 14
+  },
+  "pl-podkarpackie": {
+    "name": "Subcarpathia",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/podkarpackie-latest.osm.pbf",
+    "geofabrik": "poland/podkarpackie",
+    "max_zoom": 14
+  },
+  "pl-podlaskie": {
+    "name": "Podlaskie",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/podlaskie-latest.osm.pbf",
+    "geofabrik": "poland/podlaskie",
+    "max_zoom": 14
+  },
+  "pl-pomorskie": {
+    "name": "Pomerania",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/pomorskie-latest.osm.pbf",
+    "geofabrik": "poland/pomorskie",
+    "max_zoom": 14
+  },
+  "pl-slaskie": {
+    "name": "Silesia",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/slaskie-latest.osm.pbf",
+    "geofabrik": "poland/slaskie",
+    "max_zoom": 14
+  },
+  "pl-swietokrzyskie": {
+    "name": "Holy Cross",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/swietokrzyskie-latest.osm.pbf",
+    "geofabrik": "poland/swietokrzyskie",
+    "max_zoom": 14
+  },
+  "pl-warminsko-mazurskie": {
+    "name": "Warmia-Masuria",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/warminsko-mazurskie-latest.osm.pbf",
+    "geofabrik": "poland/warminsko-mazurskie",
+    "max_zoom": 14
+  },
+  "pl-wielkopolskie": {
+    "name": "Greater Poland",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/wielkopolskie-latest.osm.pbf",
+    "geofabrik": "poland/wielkopolskie",
+    "max_zoom": 14
+  },
+  "pl-zachodniopomorskie": {
+    "name": "West Pomerania",
+    "group": "Poland",
+    "path": "eu",
+    "pbf": "europe/poland/zachodniopomorskie-latest.osm.pbf",
+    "geofabrik": "poland/zachodniopomorskie",
+    "max_zoom": 14
+  },
+  "nl-drenthe": {
+    "name": "Drenthe",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/drenthe-latest.osm.pbf",
+    "geofabrik": "netherlands/drenthe",
+    "max_zoom": 14
+  },
+  "nl-flevoland": {
+    "name": "Flevoland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/flevoland-latest.osm.pbf",
+    "geofabrik": "netherlands/flevoland",
+    "max_zoom": 14
+  },
+  "nl-friesland": {
+    "name": "Friesland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/friesland-latest.osm.pbf",
+    "geofabrik": "netherlands/friesland",
+    "max_zoom": 14
+  },
+  "nl-gelderland": {
+    "name": "Gelderland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/gelderland-latest.osm.pbf",
+    "geofabrik": "netherlands/gelderland",
+    "max_zoom": 14
+  },
+  "nl-groningen": {
+    "name": "Groningen",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/groningen-latest.osm.pbf",
+    "geofabrik": "netherlands/groningen",
+    "max_zoom": 14
+  },
+  "nl-limburg": {
+    "name": "Limburg (NL)",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/limburg-latest.osm.pbf",
+    "geofabrik": "netherlands/limburg",
+    "max_zoom": 14
+  },
+  "nl-noord-brabant": {
+    "name": "North Brabant",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/noord-brabant-latest.osm.pbf",
+    "geofabrik": "netherlands/noord-brabant",
+    "max_zoom": 14
+  },
+  "nl-noord-holland": {
+    "name": "North Holland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/noord-holland-latest.osm.pbf",
+    "geofabrik": "netherlands/noord-holland",
+    "max_zoom": 14
+  },
+  "nl-overijssel": {
+    "name": "Overijssel",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/overijssel-latest.osm.pbf",
+    "geofabrik": "netherlands/overijssel",
+    "max_zoom": 14
+  },
+  "nl-utrecht": {
+    "name": "Utrecht",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/utrecht-latest.osm.pbf",
+    "geofabrik": "netherlands/utrecht",
+    "max_zoom": 14
+  },
+  "nl-zeeland": {
+    "name": "Zeeland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/zeeland-latest.osm.pbf",
+    "geofabrik": "netherlands/zeeland",
+    "max_zoom": 14
+  },
+  "nl-zuid-holland": {
+    "name": "South Holland",
+    "group": "Netherlands",
+    "path": "eu",
+    "pbf": "europe/netherlands/zuid-holland-latest.osm.pbf",
+    "geofabrik": "netherlands/zuid-holland",
+    "max_zoom": 14
   }
 }
