@@ -42,4 +42,9 @@ dependencies {
     implementation("org.maplibre.gl:android-sdk-opengl:13.7.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.core:core-ktx:1.16.0")
+    // the share code: the camera (SCAN A CODE) and a QR reader; the codes themselves are drawn by the core
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.zxing:core:3.5.3")
 }

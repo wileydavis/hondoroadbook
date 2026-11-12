@@ -213,7 +213,7 @@ extension AppModel {
         ask("Route: " + (destName.isEmpty ? "route" : destName),
             Units.distance(r.length) + " · " + Units.time(r.timeSeconds) + " · " + profile.label + "\n\nSaved as a GPX file: any map app opens it; Roadbook re-routes it on the recipient's own maps.",
             [Dialog.Btn(label: "SAVE TO FILES") { [self] in safe { let u = try Files.write(routeFileName(), routeGpx(r)); showToast("Saved \(u.lastPathComponent) — it will show under TRACK", 5) } },
-             Dialog.Btn(label: "SHARE…") { [self] in Files.shareText(routeFileName(), routeGpx(r)) },
+             Dialog.Btn(label: "SHARE…") { [self] in shareChooser(routeFileName(), routeGpx(r)) },
              Dialog.Btn(label: "Cancel", role: .cancel) {}])
     }
 

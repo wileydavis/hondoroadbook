@@ -44,6 +44,8 @@
 		<string>location</string>
 		<string>audio</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera reads a route shown as a moving code on another phone (TRACK → SCAN A CODE). It is used for nothing else, and nothing it sees leaves this phone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Roadbook shows where you are on your own maps and guides you along a route. Your position never leaves the phone.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

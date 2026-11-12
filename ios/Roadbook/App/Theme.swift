@@ -53,8 +53,11 @@ struct BigButton: ButtonStyle {
         configuration.label
             .font(.system(size: compact ? 14 : 16, weight: .bold))
             .tracking(0.5)
+            // a row of short words (STOPS, MODES, SAVE) shrinks a little on a narrow phone rather than break a word in two
+            .lineLimit(compact ? 1 : nil)
+            .minimumScaleFactor(compact ? 0.7 : 1)
             .foregroundStyle(accent ? Color.white : Theme.sButtonText)
-            .padding(.horizontal, compact ? 14 : 20).padding(.vertical, compact ? 10 : 14)
+            .padding(.horizontal, compact ? 12 : 20).padding(.vertical, compact ? 10 : 14)
             .frame(maxWidth: compact ? nil : .infinity)
             .background(accent ? Theme.sAccent : Theme.sButton, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .opacity(configuration.isPressed ? 0.7 : 1)

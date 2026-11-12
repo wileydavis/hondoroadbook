@@ -59,12 +59,12 @@ object FilePicker {
     /**
      * Shows the picker. [onChooseFolder] must launch the system folder chooser; the caller calls [show] again afterwards.
      */
-    fun show(act: Activity, title: String, extensions: List<String>, what: String, onChooseFolder: () -> Unit, onPick: (Entry) -> Unit, onPickAll: ((List<Entry>) -> Unit)? = null, onSystemPicker: (() -> Unit)? = null, extra: Pair<String, () -> Unit>? = null) {
+    fun show(act: Activity, title: String, extensions: List<String>, what: String, onChooseFolder: () -> Unit, onPick: (Entry) -> Unit, onPickAll: ((List<Entry>) -> Unit)? = null, onSystemPicker: (() -> Unit)? = null, extra: Pair<String, () -> Unit>? = null, extra2: Pair<String, () -> Unit>? = null) {
         val ctx = act
         val tree = folder(ctx)
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(ctx, 20), dp(ctx, 8), dp(ctx, 20), 0) }
         var dlgRef: AlertDialog? = null
-        if (extra != null) root.addView(android.widget.Button(ctx).apply { text = extra.first; textSize = 14f; setOnClickListener { dlgRef?.dismiss(); extra.second() } })
+        for (x in listOfNotNull(extra, extra2)) root.addView(android.widget.Button(ctx).apply { text = x.first; textSize = 14f; setOnClickListener { dlgRef?.dismiss(); x.second() } })
         if (tree == null) {
             root.addView(TextView(ctx).apply { textSize = 16f; text = "Choose the folder on this phone where your $what are (Downloads works well). Fold will remember it and list the files here from now on." })
             val b0 = AlertDialog.Builder(ctx).setTitle(title).setView(root)

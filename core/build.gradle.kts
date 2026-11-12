@@ -17,7 +17,7 @@ kotlin {
         val jvmCommon by creating { dependsOn(commonMain) }
         val jvmMain by getting { dependsOn(jvmCommon) }
         val androidMain by getting { dependsOn(jvmCommon) }
-        val jvmTest by getting { dependencies { implementation(kotlin("test")) } }
+        val jvmTest by getting { dependencies { implementation(kotlin("test")); implementation("com.google.zxing:core:3.5.3") } }
     }
 }
 

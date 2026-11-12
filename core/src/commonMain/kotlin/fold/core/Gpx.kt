@@ -102,6 +102,38 @@ object Gpx {
         return sb.toString()
     }
 
+    /**
+     * Everything [parse] reads, written back: the name, the routing mode, the chart settings, the route's points with
+     * their names, the cues (with their chart fields) and the line. A track shared phone to phone ([QrShare]) is saved
+     * with this, and reads back as the same track.
+     */
+    fun writeShared(t: Track): String {
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"Roadbook\" xmlns=\"http://www.topografix.com/GPX/1/1\" xmlns:fold=\"https://fold.app/gpx\">\n")
+        sb.append("  <metadata><name>").append(esc(t.name)).append("</name>")
+        if (t.mode != null || t.chart != null) {
+            sb.append("<extensions>")
+            t.mode?.let { sb.append("<fold:mode>").append(esc(it)).append("</fold:mode>") }
+            t.chart?.let { sb.append("<roadbook><chart>").append(esc(it)).append("</chart></roadbook>") }
+            sb.append("</extensions>")
+        }
+        sb.append("</metadata>\n")
+        for (k in t.rteLats.indices) { val nm = t.rteName(k); if (nm.isNotEmpty()) sb.append("  <wpt lat=\"").append(t.rteLats[k]).append("\" lon=\"").append(t.rteLons[k]).append("\"><name>").append(esc(nm)).append("</name></wpt>\n") }
+        for (c in t.cues) sb.append(cueXml(c))
+        if (t.hasRoute) {
+            sb.append("  <rte><name>").append(esc(t.name)).append("</name>\n")
+            for (k in t.rteLats.indices) sb.append("    <rtept lat=\"").append(t.rteLats[k]).append("\" lon=\"").append(t.rteLons[k]).append("\"/>\n")
+            sb.append("  </rte>\n")
+        }
+        if (t.lats.isNotEmpty()) {
+            sb.append("  <trk><name>").append(esc(t.name)).append("</name><trkseg>\n")
+            for (i in t.lats.indices) sb.append("    <trkpt lat=\"").append(t.lats[i]).append("\" lon=\"").append(t.lons[i]).append("\"/>\n")
+            sb.append("  </trkseg></trk>\n")
+        }
+        sb.append("</gpx>\n")
+        return sb.toString()
+    }
+
     fun writeRoute(name: String, mode: String, ptLats: DoubleArray, ptLons: DoubleArray, ptNames: List<String>, lineLats: DoubleArray, lineLons: DoubleArray, maxPoints: Int = 4000): String {
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")

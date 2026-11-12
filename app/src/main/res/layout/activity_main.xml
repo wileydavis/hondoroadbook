@@ -148,8 +148,8 @@
         android:paddingStart="14dp" android:paddingEnd="8dp" android:paddingTop="8dp" android:paddingBottom="8dp"
         android:visibility="gone">
         <TextView android:id="@+id/recStatus" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:text="● REC 0:00 · 0 mi · 0 cues" />
-        <Button android:id="@+id/btnRecCue" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="64dp" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:textSize="19sp" android:paddingStart="26dp" android:paddingEnd="26dp" android:text="CUE" android:layout_marginEnd="8dp" />
-        <Button android:id="@+id/btnRecStop" style="@style/BigButton" android:layout_width="wrap_content" android:layout_height="64dp" android:textSize="17sp" android:paddingStart="18dp" android:paddingEnd="18dp" android:text="STOP" />
+        <Button android:id="@+id/btnRecCue" style="@style/BigButton" android:autoSizeTextType="none" android:layout_width="wrap_content" android:layout_height="64dp" android:background="@drawable/bg_accent" android:textColor="#FFFFFF" android:textSize="19sp" android:paddingStart="26dp" android:paddingEnd="26dp" android:text="CUE" android:layout_marginEnd="8dp" />
+        <Button android:id="@+id/btnRecStop" style="@style/BigButton" android:autoSizeTextType="none" android:layout_width="wrap_content" android:layout_height="64dp" android:textSize="17sp" android:paddingStart="18dp" android:paddingEnd="18dp" android:text="STOP" />
     </LinearLayout>
 
     <!-- Bottom: editing a track's cues -->

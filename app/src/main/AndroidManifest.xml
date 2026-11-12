@@ -16,6 +16,9 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
+    <!-- The camera only films a share code on SCAN A CODE: asked for then, used for nothing else -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
 
     <application
@@ -50,5 +53,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".ShareCodeActivity" android:exported="false" android:screenOrientation="unspecified" />
+        <activity android:name=".ScanCodeActivity" android:exported="false" android:screenOrientation="unspecified" />
     </application>
 </manifest>

@@ -304,12 +304,20 @@ extension AppModel {
                 // the recovery file lives until the save is on disk; cancel or a failed write keeps it
                 askNameAndWrite(recorder.defaultName(), { [self] in recorder.gpx(recorder.defaultName()) }) { [self] ok in if ok { recorder.discard(); updateRecStrip() } else { showToast("Recording kept — tap ● to save it later", 5) } }
             },
-             Dialog.Btn(label: "SHARE…") { [self] in Files.shareText(recorder.defaultName().fileSafe + ".gpx", recorder.gpx(recorder.defaultName())); showToast("Recording kept until you SAVE or DISCARD it", 5) },
+             Dialog.Btn(label: "SHARE…") { [self] in shareChooser(recorder.defaultName().fileSafe + ".gpx", recorder.gpx(recorder.defaultName())); showToast("Recording kept until you SAVE or DISCARD it", 5) },
              Dialog.Btn(label: "DISCARD", role: .destructive) { [self] in ask("Discard this recording?", "There is no undo.", [Dialog.Btn(label: "Discard", role: .destructive) { [self] in recorder.discard(); updateRecStrip() }, Dialog.Btn(label: "Cancel", role: .cancel) {}]) }],
             cancelable: false)
     }
 
     // ---------------------------------------------------------------- the library
+
+    /// How to share a GPX: as a moving code for a phone beside you (offline), or the file through the share sheet.
+    func shareChooser(_ fileName: String, _ gpx: String) {
+        ask("Share", "",
+            [Dialog.Btn(label: "SHARE BY CODE — to a phone beside you, offline") { [self] in sheet = .shareCode(gpx) },
+             Dialog.Btn(label: "SEND THE FILE…") { Files.shareText(fileName, gpx) },
+             Dialog.Btn(label: "Cancel", role: .cancel) {}])
+    }
 
     /// A roadbook fetched by code: saved into Documents, then offered like any track.
     func onFetchedGpx(_ name: String, _ text: String) {

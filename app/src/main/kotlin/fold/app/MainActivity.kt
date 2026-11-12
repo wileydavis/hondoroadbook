@@ -214,7 +214,22 @@ class MainActivity : AppCompatActivity() {
     private val browseGpx = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) loadGpx(uri) }
     private fun showTrackPicker() {
         FilePicker.show(this, "Follow a track", listOf(".gpx"), "GPX tracks", { chooseFolder { showTrackPicker() } }, { e -> loadGpx(e.uri) }, null, { safe { browseGpx.launch(arrayOf("*/*")) } },
-            extra = "FETCH CODE FROM THE PLANNER" to { Library.fetchCode(this) { name, text -> onFetchedGpx(name, text) } })
+            extra = "FETCH CODE FROM THE PLANNER" to { Library.fetchCode(this) { name, text -> onFetchedGpx(name, text) } },
+            extra2 = "SCAN A CODE FROM ANOTHER PHONE" to { safe { scanCode.launch(android.content.Intent(this, ScanCodeActivity::class.java)) } })
+    }
+    /** a route shown as a moving code by another phone, read by the camera: saved to the folder and opened like a fetched one */
+    private val scanCode = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+        val data = res.data
+        if (res.resultCode == RESULT_OK && data != null) {
+            val text = try { java.io.File(data.getStringExtra("file") ?: "").readText() } catch (_: Throwable) { null }
+            if (text != null) onFetchedGpx(data.getStringExtra("name") ?: "Shared route", text)
+        } else data?.getStringExtra("error")?.let { toast(it, 5000) }
+    }
+    /** how to share a GPX: as a moving code for a phone beside you (offline), or the file through the system's share sheet */
+    private fun shareChooser(fileName: String, gpx: String) {
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Share")
+            .setItems(arrayOf("SHARE BY CODE — to a phone beside you, offline", "SEND THE FILE…")) { _, w -> if (w == 0) ShareCode.show(this, gpx) else shareFile(fileName, gpx) }
+            .setNegativeButton(R.string.cancel, null).show()
     }
     private fun showPackPicker() {
         FilePicker.show(this, "Import map packs", listOf(".mappack", ".zip"), "map packs", { chooseFolder { showPackPicker() } }, { e -> importPacks(listOf(e.uri)) }, { all -> importPacks(all.map { it.uri }) }, { safe { browsePack.launch(arrayOf("*/*")) } })
@@ -1305,7 +1320,7 @@ class MainActivity : AppCompatActivity() {
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Route: " + destName.ifEmpty { "route" })
             .setMessage(Units.distance(r.length) + " · " + Units.time(r.timeSeconds) + " · " + profile.label + "\n\nSaved as a GPX file: any map app opens it; Fold re-routes it on the recipient's own maps.")
             .setPositiveButton("SAVE TO FOLDER") { _, _ -> val tree = FilePicker.folder(this); if (tree == null) chooseFolder { writeRouteToFolder(r) } else writeRouteToFolder(r) }
-            .setNeutralButton("SHARE…") { _, _ -> shareRoute(r) }
+            .setNeutralButton("SHARE…") { _, _ -> shareChooser(routeFileName(), routeGpx(r)) }
             .setNegativeButton(R.string.cancel, null).show()
     }
 
@@ -1318,17 +1333,6 @@ class MainActivity : AppCompatActivity() {
             contentResolver.openOutputStream(doc)?.use { it.write(routeGpx(r).toByteArray()) } ?: throw IllegalStateException("Could not write file")
             toast("Saved $name — it will show under TRACK", 5000)
         } catch (e: Throwable) { toast("Save failed: ${e.message}", 6000) }
-    }
-
-    private fun shareRoute(r: Route) {
-        try {
-            val dir = java.io.File(cacheDir, "share").apply { mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }
-            val f = java.io.File(dir, routeFileName()); f.writeText(routeGpx(r))
-            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
-            val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type = "application/gpx+xml"; putExtra(android.content.Intent.EXTRA_STREAM, uri); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            startActivity(android.content.Intent.createChooser(send, "Share route"))
-        } catch (e: Throwable) { toast("Share failed: ${e.message}", 6000) }
     }
 
     /** The written directions, plus save/share, from the bottom card while navigating. */
@@ -1670,6 +1674,7 @@ class MainActivity : AppCompatActivity() {
             body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute) "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." else "") })
             var dlgRef: androidx.appcompat.app.AlertDialog? = null
             if (n > 0) body.addView(Button(this).apply { text = "FOLLOW AS ROLL CHART"; textSize = 15f; setOnClickListener { dlgRef?.dismiss(); followTrack(tr, uri, chart = true) } })
+            body.addView(Button(this).apply { text = "SHARE BY CODE"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); ShareCode.show(this@MainActivity, Gpx.writeShared(tr)) } })
             body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrackChart(tr.name, tr.lats, tr.lons, null, tr.cues, tr.chart), recorded = true) } })
             dlgRef = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name).setView(body)
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
@@ -2076,12 +2081,12 @@ class MainActivity : AppCompatActivity() {
                 // the recovery file lives until the save is on disk; cancel or a failed write keeps it
                 askNameAndWrite(Recorder.defaultName(), { Recorder.gpx(Recorder.defaultName()) }) { ok -> if (ok) { Recorder.discard(this); updateRecStrip() } else toast("Recording kept — tap ● to save it later", 5000) }
             }
-            .setNeutralButton("SHARE…") { _, _ -> shareText(Recorder.defaultName().replace(Regex("[^A-Za-z0-9 .-]"), "") + ".gpx", Recorder.gpx(Recorder.defaultName())); toast("Recording kept until you SAVE or DISCARD it", 5000) }
+            .setNeutralButton("SHARE…") { _, _ -> shareChooser(Recorder.defaultName().replace(Regex("[^A-Za-z0-9 .-]"), "") + ".gpx", Recorder.gpx(Recorder.defaultName())); toast("Recording kept until you SAVE or DISCARD it", 5000) }
             .setNegativeButton("DISCARD") { _, _ -> androidx.appcompat.app.AlertDialog.Builder(this).setMessage("Discard this recording? There is no undo.").setPositiveButton("Discard") { _, _ -> Recorder.discard(this); updateRecStrip() }.setNegativeButton(R.string.cancel, null).show() }
             .setCancelable(false).show()
     }
 
-    private fun shareText(fileName: String, text: String) {
+    private fun shareFile(fileName: String, text: String) {
         try {
             val dir = java.io.File(cacheDir, "share").apply { mkdirs() }
             val f = java.io.File(dir, fileName); f.writeText(text)

@@ -3,6 +3,7 @@ import SwiftUI
 import UIKit
 import FoldCore
 import UniformTypeIdentifiers
+import AVFoundation
 
 /// Routes a Sheet value to its view.
 struct SheetHost: View {
@@ -26,6 +27,8 @@ struct SheetHost: View {
         case .libraryItem(let it): LibraryItemSheet(item: it)
         case .fileName(let suggest, let body, let done): FileNameSheet(suggest: suggest, body: body, done: done)
         case .trackLoaded(let tr, let url): TrackLoadedSheet(track: tr, url: url)
+        case .shareCode(let gpx): ShareCodeSheet(gpx: gpx)
+        case .scanCode: ScanCodeSheet()
         }
     }
 }
@@ -313,6 +316,7 @@ struct TrackPickerSheet: View {
             List {
                 Section {
                     Button("FETCH CODE FROM THE PLANNER") { model.sheet = .fetchCode }.buttonStyle(BigButton())
+                    Button("SCAN A CODE FROM ANOTHER PHONE") { model.sheet = .scanCode }.buttonStyle(BigButton())
                     Button("BROWSE FILES…") { browsing = true }.buttonStyle(BigButton())
                 }
                 Section("GPX tracks in Roadbook's folder") {
@@ -375,6 +379,7 @@ struct TrackLoadedSheet: View {
                 if n > 0 { Button("FOLLOW AS ROLL CHART") { model.sheet = nil; model.followTrack(track, url, chart: true) }.buttonStyle(BigButton()) }
                 Button("EDIT CUES") { model.sheet = nil; model.openEditor(track, url) }.buttonStyle(BigButton())
                 if track.hasRoute { Button("EDIT ROUTE") { model.sheet = nil; model.rerouteGpx(track) }.buttonStyle(BigButton()) }
+                Button("SHARE BY CODE") { model.sheet = .shareCode(Gpx.shared.writeShared(t: track)) }.buttonStyle(BigButton(compact: true))
                 Button("PUBLISH TO THE LIBRARY") { model.sheet = .publish(name: track.name, gpx: Gpx.shared.writeTrackChart(name: track.name, lats: track.lats, lons: track.lons, times: nil, cues: track.cues, chart: track.chart), recorded: true) }.buttonStyle(BigButton(compact: true))
                 Spacer()
             }
@@ -662,4 +667,161 @@ struct FileNameSheet: View {
         .interactiveDismissDisabled()
         .presentationDetents([.medium])
     }
+}
+
+// ---- SHARE BY CODE: a route as a moving QR code for a phone beside this one, read by the camera; offline ----------
+
+/// DEFLATE for the share code (raw RFC 1951, the same as Android's Deflater/Inflater with nowrap), and byte arrays across to the core.
+enum ShareCodeIO {
+    static func bytes(_ a: KotlinByteArray) -> Data { var d = Data(count: Int(a.size)); for i in 0..<a.size { d[Int(i)] = UInt8(bitPattern: a.get(index: i)) }; return d }
+    static func kotlin(_ d: Data) -> KotlinByteArray { let a = KotlinByteArray(size: Int32(d.count)); for (i, b) in d.enumerated() { a.set(index: Int32(i), value: Int8(bitPattern: b)) }; return a }
+    static let deflate: (KotlinByteArray) -> KotlinByteArray? = { b in (try? (bytes(b) as NSData).compressed(using: .zlib)).map { kotlin($0 as Data) } }
+    static let inflate: (KotlinByteArray) -> KotlinByteArray? = { b in (try? (bytes(b) as NSData).decompressed(using: .zlib)).map { kotlin($0 as Data) } }
+}
+
+/// The code on screen: big, bright, a few frames a second until DONE.
+struct ShareCodeSheet: View {
+    @EnvironmentObject var model: AppModel
+    let gpx: String
+    @State private var enc: QrShareEncoder? = nil
+    @State private var name = ""
+    @State private var code: QrCode? = nil
+    @State private var frame: Int32 = 0
+    /// frames a second: a phone camera reads 6 easily; slower helps an old phone, faster a long track
+    @State private var fps = 6
+    @State private var savedBrightness: CGFloat = 0.5
+    @State private var savedIdle = false
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(name).font(.system(size: 20, weight: .bold)).foregroundStyle(.black)
+            Text("On the other phone: ≡ → TRACK → SCAN A CODE, and point it here. Works offline, Android or iPhone.").font(.system(size: 14)).foregroundStyle(Color(white: 0.27)).multilineTextAlignment(.center)
+            Canvas { ctx, size in
+                guard let q = code else { return }
+                let n = CGFloat(q.size + 8), m = floor(min(size.width, size.height) / n)
+                guard m > 0 else { return }
+                let ox = (size.width - m * n) / 2 + 4 * m, oy = (size.height - m * n) / 2 + 4 * m
+                var p = Path()
+                for y in 0..<q.size { for x in 0..<q.size where q.dark(x: x, y: y) { p.addRect(CGRect(x: ox + CGFloat(x) * m, y: oy + CGFloat(y) * m, width: m, height: m)) } }
+                ctx.fill(p, with: .color(.black))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let e = enc {
+                Text("\(e.k) \(e.k == 1 ? "frame" : "frames") · \(String(format: "%.1f", Double(e.message.size) / 1024)) kB · " + (Double(e.k + 3) / Double(fps) < 2 ? "a second or two" : "about \(Int(ceil(Double(e.k + 3) / Double(fps)))) s") + " to read · \(fps) a second")
+                    .font(.system(size: 13)).foregroundStyle(Color(white: 0.27))
+            }
+            HStack(spacing: 10) {
+                Button("SLOWER") { fps = max(2, fps - 2) }.buttonStyle(BigButton(compact: true))
+                Button("FASTER") { fps = min(12, fps + 2) }.buttonStyle(BigButton(compact: true))
+                Button("DONE") { model.sheet = nil }.buttonStyle(BigButton(accent: true, compact: true))
+            }
+        }
+        .padding()
+        .background(Color.white.ignoresSafeArea())
+        .presentationDetents([.large])
+        .onAppear {
+            guard let tr = try? Gpx.shared.parse(text: gpx) else { model.sheet = nil; model.showToast("Nothing to share in that file"); return }
+            name = tr.name
+            let e = QrShareEncoder(message: QrShare.shared.message(t: tr, deflate: ShareCodeIO.deflate), chunk: QrShare.shared.chunkFor(version: 20))
+            enc = e; code = e.code(i: 0)
+            savedBrightness = UIScreen.main.brightness; UIScreen.main.brightness = 1
+            savedIdle = UIApplication.shared.isIdleTimerDisabled; UIApplication.shared.isIdleTimerDisabled = true
+        }
+        .onDisappear { UIScreen.main.brightness = savedBrightness; UIApplication.shared.isIdleTimerDisabled = savedIdle }
+        .task(id: fps) {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(1_000_000_000 / max(1, fps)))
+                guard let e = enc else { continue }
+                frame += 1
+                code = e.code(i: frame)
+            }
+        }
+    }
+}
+
+/// The camera, reading frames until the message is whole; the GPX is then saved and opened like a fetched one.
+struct ScanCodeSheet: View {
+    @EnvironmentObject var model: AppModel
+    @StateObject private var scan = CodeScanner()
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.black.ignoresSafeArea()
+            CameraPreview(session: scan.session).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 8) {
+                Text(scan.status).font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                ProgressView(value: Double(scan.known), total: Double(max(1, scan.k))).tint(Theme.sAccent)
+                Button("CANCEL") { model.sheet = nil }.buttonStyle(BigButton(compact: true))
+            }
+            .padding()
+            .background(Color.black.opacity(0.8))
+        }
+        .presentationDetents([.large])
+        .onAppear {
+            scan.start(done: { name, gpx in model.sheet = nil; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { model.onFetchedGpx(name, gpx) } },
+                       fail: { msg in model.sheet = nil; model.showToast(msg, 5) })
+        }
+        .onDisappear { scan.stop() }
+    }
+}
+
+final class CodeScanner: NSObject, ObservableObject, AVCaptureMetadataOutputObjectsDelegate {
+    let session = AVCaptureSession()
+    @Published var known = 0
+    @Published var k = 0
+    @Published var status = "Point the camera at the code on the other phone"
+    private let dec = QrShareDecoder()
+    private var done: ((String, String) -> Void)?
+    private var fail: ((String) -> Void)?
+    private var finished = false
+    private var configured = false
+
+    func start(done: @escaping (String, String) -> Void, fail: @escaping (String) -> Void) {
+        self.done = done; self.fail = fail
+        AVCaptureDevice.requestAccess(for: .video) { ok in
+            DispatchQueue.main.async { if ok { self.configure() } else { fail("Scanning a code needs the camera: allow it in Settings → Roadbook") } }
+        }
+    }
+    private func configure() {
+        guard !configured else { return }
+        guard let dev = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back), let input = try? AVCaptureDeviceInput(device: dev) else { fail?("The camera did not start"); return }
+        session.beginConfiguration()
+        if session.canSetSessionPreset(.hd1920x1080) { session.sessionPreset = .hd1920x1080 }
+        guard session.canAddInput(input) else { session.commitConfiguration(); fail?("The camera did not start"); return }
+        session.addInput(input)
+        let out = AVCaptureMetadataOutput()
+        guard session.canAddOutput(out) else { session.commitConfiguration(); fail?("The camera did not start"); return }
+        session.addOutput(out)
+        out.setMetadataObjectsDelegate(self, queue: .main)
+        out.metadataObjectTypes = [.qr]
+        session.commitConfiguration()
+        configured = true
+        DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
+    }
+    func stop() { let s = session; DispatchQueue.global(qos: .userInitiated).async { if s.isRunning { s.stopRunning() } } }
+
+    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput objects: [AVMetadataObject], from connection: AVCaptureConnection) {
+        guard !finished else { return }
+        for case let m as AVMetadataMachineReadableCodeObject in objects {
+            if let s = m.stringValue, dec.add(text: s) { known = Int(dec.known); k = Int(dec.k); status = "Reading… \(known) of \(k)" }
+        }
+        guard let msg = dec.message else { return }
+        finished = true
+        do {
+            let tr = try QrShare.shared.track(m: msg, inflate: ShareCodeIO.inflate)
+            status = "Got it: " + tr.name
+            stop()
+            done?(tr.name, Gpx.shared.writeShared(t: tr))
+        } catch { fail?("That code could not be read") }
+    }
+}
+
+/// the camera's live picture, filling the sheet
+struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var preview: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+    func makeUIView(context: Context) -> PreviewView { let v = PreviewView(); v.preview.session = session; v.preview.videoGravity = .resizeAspectFill; return v }
+    func updateUIView(_ v: PreviewView, context: Context) {}
 }
