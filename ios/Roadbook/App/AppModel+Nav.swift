@@ -87,8 +87,11 @@ extension AppModel {
         let b = Chart.shared.forTrack(lats: lats, lons: lons, cues: trackCues.sorted { trackOffset($0) < trackOffset($1) }, chartJson: trackChart)
         let m = TripMeter(chart: b)
         if !fresh, let o = meter { m.restoreFrom(o: o) }
-        chart = b; meter = m; chartCum = Chart.shared.cumulative(lats: lats, lons: lons).swift
-        if fresh { chartOn = false }
+        let cum = Chart.shared.cumulative(lats: lats, lons: lons)
+        chart = b; meter = m; chartCum = cum.swift
+        if fresh { chartOn = false; chartAlong = 0; chartState.here = nil }
+        let at = b.rows.filter { $0.kind != .banner }.map { $0.at }
+        chartState.lats = lats; chartState.lons = lons; chartState.cum = cum; chartState.rowsAt = KotlinDoubleArray.of(at)
         chartState.free = m.source == .free; chartState.reading = m.reading; chartState.version += 1
     }
     func clearChart() { chart = nil; meter = nil; chartCum = nil; if chartOn { chartOn = false } }
@@ -108,10 +111,16 @@ extension AppModel {
         guard let m = meter else { return }
         if let cum = chartCum, let la = trackLats, let lo = trackLons, cum.count == la.count {
             let seg = Int(v.segment)
-            if v.arrived { m.onRoute(alongMeters: cum[cum.count - 1]) }
-            else if v.onRoute && seg >= 0 && seg < la.count - 1 { m.onRoute(alongMeters: cum[seg] + Chart.shared.dist(lon1: lo[seg], lat1: la[seg], lon2: v.lon, lat2: v.lat)) }
+            if v.arrived { chartAlong = cum[cum.count - 1] }
+            else if v.onRoute && seg >= 0 && seg < la.count - 1 { chartAlong = cum[seg] + Chart.shared.dist(lon1: lo[seg], lat1: la[seg], lon2: v.lon, lat2: v.lat) }
+            if v.arrived || v.onRoute { m.onRoute(alongMeters: chartAlong) }
         }
         guard chartOn else { return }
+        if v.fixState == .valid || v.fixState == .degraded {
+            // the inset redraws for a move of a couple of metres, not every tick
+            let h = ChartState.Here(lat: (v.lat * 50000).rounded() / 50000, lon: (v.lon * 50000).rounded() / 50000, along: (chartAlong / 2).rounded() * 2)
+            if chartState.here != h { chartState.here = h }
+        }
         let status: String? = v.fixState == FixState.none ? "WAITING FOR GPS" : v.fixState == FixState.stale ? "NO GPS · " + Units.time(v.fixAge) : v.arrived ? nil : !v.onRoute ? "OFF TRACK" : nil
         // the next row comes up a little before it: further ahead at speed
         let show = Int(m.showRow(leadMeters: min(400, 150 + max(0, v.speed) * 8)))

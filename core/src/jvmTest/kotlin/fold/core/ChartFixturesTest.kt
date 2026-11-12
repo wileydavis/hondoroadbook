@@ -107,4 +107,16 @@ class ChartFixturesTest {
         // the chart's scale factor applies to the reading
         assertEquals(Chart.hundredths(m.chartMeters, chart.settings), m.readingH)
     }
+
+    @Test fun theInsetTurnsTheWayAheadUp() {
+        // a line due east: ahead must be up (negative y), the rider 20 m north of it is to the left (negative x)
+        val lats = DoubleArray(300) { 45.0 }; val lons = DoubleArray(300) { -111.0 + it * 0.0001 }
+        val cum = Chart.cumulative(lats, lons)
+        val sk = Chart.sketch(lats, lons, cum, 45.00018, lons[100], cum[100], doubleArrayOf(cum[150], cum[299]))!!
+        val last = sk.line.size - 2
+        assertTrue(sk.line[last + 1] < -700 && abs(sk.line[last]) < 1, "ahead is up: ${sk.line[last]}, ${sk.line[last + 1]}")
+        assertTrue(sk.line[1] > 240, "behind is down")
+        assertTrue(sk.riderX < -15 && abs(sk.riderY) < 2, "north of an eastbound line is on the left: ${sk.riderX}, ${sk.riderY}")
+        assertEquals(2, sk.marks.size, "only the row within reach")
+    }
 }

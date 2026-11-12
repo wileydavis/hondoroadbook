@@ -288,6 +288,10 @@ struct ChartScreen<Menu: View>: View {
     @State private var manual: CGFloat = 0
     @State private var dragStart: CGFloat? = nil
     @State private var lastTouch = Date.distantPast
+    /** a handlebar remote pairs as a Bluetooth keyboard: the chart takes its keys while it is up */
+    @FocusState private var keys: Bool
+    /// the inset folds away (a tap) when it covers a row's corner
+    @State private var insetOn = true
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -312,6 +316,56 @@ struct ChartScreen<Menu: View>: View {
             }
         }
         .onReceive(tick) { _ in if manual != 0 && Date().timeIntervalSince(lastTouch) > 4 { manual = 0 } }
+        .focusable()
+        .focused($keys)
+        .focusEffectDisabled()
+        .onAppear { keys = true }
+        .onKeyPress(phases: [.down, .repeat]) { k in remote(k) }
+    }
+
+    /// The remote: up and down look a row back or ahead, left and right (or − and +) nudge the meter, the centre
+    /// button (Return or Space) sets it to the row at the top, once per press.
+    private func remote(_ k: KeyPress) -> KeyPress.Result {
+        if k.key == .upArrow || k.key == .pageUp { step(-1) }
+        else if k.key == .downArrow || k.key == .pageDown { step(1) }
+        else if k.key == .leftArrow || k.characters == "-" { model.nudgeMeter(-1) }
+        else if k.key == .rightArrow || k.characters == "+" || k.characters == "=" { model.nudgeMeter(1) }
+        else if k.key == .return || k.key == .space {
+            if k.phase == .down { model.setMeterToRow(max(0, min(rowCount - 1, state.shown + Int(manual.rounded())))); manual = 0 }
+        } else { return .ignored }
+        return .handled
+    }
+    /// the line around the rider, the way ahead up, the chart's rows as dots
+    @ViewBuilder private var inset: some View {
+        if let h = state.here, let la = state.lats, let lo = state.lons, let cum = state.cum {
+            if insetOn {
+                Canvas { ctx, size in
+                    guard let sk = Chart.shared.sketch(lats: la, lons: lo, cum: cum, lat: h.lat, lon: h.lon, along: h.along, rowsAt: state.rowsAt, back: 250, ahead: 750) else { return }
+                    // 1 pt to 8 m: 700 m ahead fits above the rider, who sits two thirds down
+                    let k = size.width / 1000, o = CGPoint(x: size.width / 2, y: size.height * 0.72)
+                    func pt(_ a: KotlinDoubleArray, _ i: Int32) -> CGPoint { CGPoint(x: o.x + a.get(index: 2 * i) * k, y: o.y + a.get(index: 2 * i + 1) * k) }
+                    var p = Path(); for i in 0..<(sk.line.size / 2) { if i == 0 { p.move(to: pt(sk.line, i)) } else { p.addLine(to: pt(sk.line, i)) } }
+                    ctx.stroke(p, with: .color(Theme.sInk), lineWidth: 4)
+                    for i in 0..<(sk.marks.size / 2) { let c = pt(sk.marks, i); ctx.fill(Path(ellipseIn: CGRect(x: c.x - 4.5, y: c.y - 4.5, width: 9, height: 9)), with: .color(Theme.sInk)) }
+                    let r = CGPoint(x: o.x + sk.riderX * k, y: o.y + sk.riderY * k)
+                    var a = Path(); a.move(to: CGPoint(x: r.x, y: r.y - 10)); a.addLine(to: CGPoint(x: r.x + 7, y: r.y + 7)); a.addLine(to: CGPoint(x: r.x, y: r.y + 3)); a.addLine(to: CGPoint(x: r.x - 7, y: r.y + 7)); a.closeSubpath()
+                    ctx.fill(a, with: .color(Theme.sAccent)); ctx.stroke(a, with: .color(Theme.sCard), lineWidth: 1.5)
+                }
+                .frame(width: 128, height: 128)
+                .background(Theme.sPaper)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.sInkSoft, lineWidth: 1))
+                .onTapGesture { insetOn = false }
+            } else {
+                Text("MAP").font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.sCard).padding(.horizontal, 10).padding(.vertical, 7).background(Theme.sInk, in: Capsule())
+                    .onTapGesture { insetOn = true }
+            }
+        }
+    }
+
+    private func step(_ rows: Int) {
+        manual = min(max(manual.rounded() + CGFloat(rows), -CGFloat(state.shown)), CGFloat(max(0, rowCount - 1 - state.shown)))
+        lastTouch = Date()
     }
 
     private var rowCount: Int { model.chart?.rows.count ?? 1 }
@@ -372,6 +426,7 @@ struct ChartScreen<Menu: View>: View {
                 }
             }
             .id(ver)
+            .overlay(alignment: .bottomTrailing) { inset.padding(.trailing, 12).padding(.bottom, 16) }
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 8)
                 .onChanged { v in

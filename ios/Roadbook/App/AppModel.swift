@@ -16,6 +16,11 @@ final class ChartState: ObservableObject {
     @Published var free = false
     /// bumped when the chart is rebuilt (a cue edited on the way)
     @Published var version = 0
+    /// where the GPS puts the rider, and how far along the line the follower last had them (for the inset)
+    struct Here: Equatable { var lat: Double; var lon: Double; var along: Double }
+    @Published var here: Here? = nil
+    /// the inset's inputs, in the core's own arrays (made once per chart)
+    var lats: KotlinDoubleArray? = nil; var lons: KotlinDoubleArray? = nil; var cum: KotlinDoubleArray? = nil; var rowsAt = KotlinDoubleArray(size: 0)
 }
 
 final class HudState: ObservableObject {
@@ -99,6 +104,8 @@ final class AppModel: ObservableObject, MapEvents {
     let chartState = ChartState()
     /// the chart reader: the followed track's roll chart, its trip meter, the track's distances, and whether it is on screen
     var chart: ChartBuild? = nil; var meter: TripMeter? = nil; var chartCum: [Double]? = nil
+    /// the rider's last place along the followed track (kept through a stretch off it)
+    var chartAlong = 0.0
     @Published var chartOn = false
     let ride = RideSession.shared
     let recorder = Recorder.shared

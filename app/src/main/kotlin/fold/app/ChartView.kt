@@ -65,7 +65,7 @@ class ChartView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         val m = meter ?: return
         val want = m.showRow(leadMeters)
         if (manual != 0f && System.currentTimeMillis() - lastTouch > 4000) manual = 0f   // settle back on the rider's place
-        val key = m.reading + "|" + status + "|" + want + "|" + manual + "|" + m.source
+        val key = m.reading + "|" + status + "|" + want + "|" + Math.round(hereLat * 50000) + "," + Math.round(hereLon * 50000) + "|" + manual + "|" + m.source
         if (want != shown) shown = want
         if (key != lastKey) { lastKey = key; invalidate() }
     }
@@ -107,7 +107,51 @@ class ChartView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
             k++
         }
         c.restore()
+        drawInset(c, left, top, w, h)
         drawMeter(c, st)
+    }
+
+    // ---- the inset: the line around the rider, the way ahead up, the chart's rows as ticks ----------------------------
+    private var tLats: DoubleArray? = null; private var tLons: DoubleArray? = null; private var tCum: DoubleArray? = null; private var rowsAt = DoubleArray(0)
+    private var hereLat = Double.NaN; private var hereLon = Double.NaN; private var hereAlong = 0.0
+    /** the rider can fold it away (a tap) when it covers a row's corner */
+    var insetOn = true
+    private val inset = RectF()
+    fun setTrack(lats: DoubleArray?, lons: DoubleArray?, cum: DoubleArray?) {
+        tLats = lats; tLons = lons; tCum = cum
+        rowsAt = chart?.rows?.filter { it.kind != ChartRow.Kind.BANNER }?.map { it.at }?.toDoubleArray() ?: DoubleArray(0)
+        invalidate()
+    }
+    /** where the GPS puts the rider, and how far along the line the follower last had them */
+    fun here(lat: Double, lon: Double, along: Double) { hereLat = lat; hereLon = lon; hereAlong = along }
+    private fun drawInset(c: Canvas, x0: Float, y0: Float, w: Float, h: Float) {
+        val la = tLats ?: return; val lo = tLons ?: return; val cum = tCum ?: return
+        if (hereLat.isNaN()) return
+        val s = dp(128f)
+        if (!insetOn) {
+            // folded: a small chip to bring it back
+            text.textSize = 12 * sp; val tw = text.measureText("MAP") + dp(20f)
+            inset.set(x0 + w - tw - dp(12f), y0 + h - dp(44f), x0 + w - dp(12f), y0 + h - dp(16f))
+            fill.color = ink; c.drawRoundRect(inset, dp(14f), dp(14f), fill)
+            text.color = card; text.textAlign = Paint.Align.CENTER; c.drawText("MAP", inset.centerX(), inset.centerY() + dp(4f), text); text.textAlign = Paint.Align.LEFT
+            return
+        }
+        inset.set(x0 + w - s - dp(12f), y0 + h - s - dp(16f), x0 + w - dp(12f), y0 + h - dp(16f))
+        val sk = Chart.sketch(la, lo, cum, hereLat, hereLon, hereAlong, rowsAt) ?: return
+        fill.color = paper; c.drawRoundRect(inset, dp(12f), dp(12f), fill)
+        stroke.color = soft; stroke.alpha = 255; stroke.strokeWidth = dp(1f); stroke.pathEffect = null; c.drawRoundRect(inset, dp(12f), dp(12f), stroke)
+        c.save(); c.clipRect(inset)
+        // 1 dp to 8 m: 700 m ahead fits above the rider, who sits two thirds down
+        val k = s / 1000f; val ox = inset.centerX(); val oy = inset.top + s * 0.72f
+        path.reset()
+        for (i in 0 until sk.line.size / 2) { val x = ox + sk.line[2 * i].toFloat() * k; val y = oy + sk.line[2 * i + 1].toFloat() * k; if (i == 0) path.moveTo(x, y) else path.lineTo(x, y) }
+        stroke.color = ink; stroke.strokeWidth = dp(4f); c.drawPath(path, stroke)
+        fill.color = ink; for (i in 0 until sk.marks.size / 2) c.drawCircle(ox + sk.marks[2 * i].toFloat() * k, oy + sk.marks[2 * i + 1].toFloat() * k, dp(4.5f), fill)
+        // the rider: an arrow pointing up the page (the way ahead)
+        val rx = ox + sk.riderX.toFloat() * k; val ry = oy + sk.riderY.toFloat() * k
+        path.reset(); path.moveTo(rx, ry - dp(10f)); path.lineTo(rx + dp(7f), ry + dp(7f)); path.lineTo(rx, ry + dp(3f)); path.lineTo(rx - dp(7f), ry + dp(7f)); path.close()
+        fill.color = accent; c.drawPath(path, fill); stroke.color = card; stroke.strokeWidth = dp(1.5f); c.drawPath(path, stroke)
+        c.restore()
     }
 
     private fun drawMeter(c: Canvas, st: fold.core.ChartSettings) {
@@ -258,10 +302,25 @@ class ChartView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
         stroke.pathEffect = null; stroke.alpha = 255
     }
 
+    // ---- a handlebar remote (a Bluetooth keyboard to Android) ---------------------------------------------------------
+    /** Look a row ahead (+1) or back (−1), as a swipe would; it settles back on the rider's place like one. */
+    fun step(rows: Int) {
+        val ch = chart ?: return
+        manual = (kotlin.math.round(manual) + rows).coerceIn(-shown.toFloat(), (ch.rows.size - 1 - shown).toFloat().coerceAtLeast(0f))
+        lastTouch = System.currentTimeMillis(); invalidate()
+    }
+    fun nudge(h: Int) { meter?.nudge(h); onMeterTouched?.invoke(); invalidate() }
+    /** "I am at this row": the row with the bar, or the one stepped to */
+    fun setHere() {
+        val m = meter ?: return
+        m.setToRow((shown + kotlin.math.round(manual).toInt()).coerceIn(0, (chart?.rows?.size ?: 1) - 1)); manual = 0f; onMeterTouched?.invoke(); invalidate()
+    }
+
     // ---- touch ------------------------------------------------------------------------------------------------------
     private val gestures = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (inset.contains(e.x, e.y) && !tLats.isNullOrEmptyArr()) { insetOn = !insetOn; invalidate(); return true }
             val m = meter ?: return false
             when {
                 minus.contains(e.x, e.y) -> { m.nudge(-1); onMeterTouched?.invoke(); invalidate(); return true }
@@ -290,3 +349,5 @@ class ChartView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = n
     }
     private fun handle(e: MotionEvent): Boolean { lastTouch = System.currentTimeMillis(); return gestures.onTouchEvent(e) || super.onTouchEvent(e) }
 }
+
+private fun DoubleArray?.isNullOrEmptyArr() = this == null || this.isEmpty()

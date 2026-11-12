@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
@@ -1842,6 +1843,27 @@ class MainActivity : AppCompatActivity() {
 
     // ---- the chart reader
 
+    /**
+     * A handlebar remote, which pairs as a Bluetooth keyboard: up and down look a row back or ahead, left and right
+     * (or − and +) nudge the meter, the centre button (or Enter) sets it to the row at the top. Only while the chart is
+     * up, and never the volume keys: those stay the phone's.
+     */
+    override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        if (chartView.visibility != View.VISIBLE || mode != Mode.NAV || findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) return super.dispatchKeyEvent(e)
+        val act: (() -> Unit)? = when (e.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_PAGE_UP, KeyEvent.KEYCODE_MEDIA_PREVIOUS, KeyEvent.KEYCODE_F7 -> { { chartView.step(-1) } }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_PAGE_DOWN, KeyEvent.KEYCODE_MEDIA_NEXT, KeyEvent.KEYCODE_F6 -> { { chartView.step(+1) } }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MINUS, KeyEvent.KEYCODE_NUMPAD_SUBTRACT, KeyEvent.KEYCODE_MEDIA_REWIND -> { { chartView.nudge(-1) } }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_EQUALS, KeyEvent.KEYCODE_NUMPAD_ADD, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { { chartView.nudge(+1) } }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { { chartView.setHere() } }
+            else -> null
+        }
+        if (act == null) return super.dispatchKeyEvent(e)
+        // held down, the nudges and steps repeat; setting the meter happens once per press
+        if (e.action == KeyEvent.ACTION_DOWN && (e.repeatCount == 0 || e.keyCode !in setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE))) act()
+        return true
+    }
+
     /** Build the reader's chart for the followed track, if its file carries one. A rebuild (a cue edited on the way)
      *  keeps the meter: its source, the rider's correction and where it stands. */
     private fun setupChart(fresh: Boolean) {
@@ -1854,7 +1876,7 @@ class MainActivity : AppCompatActivity() {
             m.restoreFrom(old)
         }
         NavSession.chart = b; NavSession.meter = m; NavSession.chartCum = fold.core.Chart.cumulative(la, lo)
-        if (fresh) NavSession.chartOn = false
+        if (fresh) { NavSession.chartOn = false; chartAlong = 0.0 }
         applyChart()
     }
     private fun clearChart() { NavSession.chart = null; NavSession.meter = null; NavSession.chartCum = null; NavSession.chartOn = false; if (::chartView.isInitialized) applyChart() }
@@ -1863,18 +1885,23 @@ class MainActivity : AppCompatActivity() {
         val on = mode == Mode.NAV && NavSession.chartOn && NavSession.chart != null
         if (chartView.chart !== NavSession.chart) chartView.chart = NavSession.chart
         chartView.meter = NavSession.meter
+        chartView.setTrack(trackLats, trackLons, NavSession.chartCum)
         chartView.visibility = if (on) View.VISIBLE else View.GONE
         findViewById<View>(R.id.btnMenu).elevation = dp(if (on) 8 else 6).toFloat()
     }
     /** the meter follows the rider along the track; the reader scrolls to the row ahead */
+    /** the rider's last place along the followed track (kept through a stretch off it) */
+    private var chartAlong = 0.0
     private fun feedChart(v: NavView) {
         val m = NavSession.meter ?: return
         val cum = NavSession.chartCum; val la = trackLats; val lo = trackLons
         if (cum != null && la != null && lo != null && cum.size == la.size) {
-            if (v.arrived) m.onRoute(cum.last())
-            else if (v.onRoute && v.segment in 0 until la.size - 1) m.onRoute(cum[v.segment] + fold.core.Chart.dist(lo[v.segment], la[v.segment], v.lon, v.lat))
+            if (v.arrived) chartAlong = cum.last()
+            else if (v.onRoute && v.segment in 0 until la.size - 1) chartAlong = cum[v.segment] + fold.core.Chart.dist(lo[v.segment], la[v.segment], v.lon, v.lat)
+            if (v.arrived || v.onRoute) m.onRoute(chartAlong)
         }
         if (chartView.visibility != View.VISIBLE) return
+        if (v.fixState == FixState.VALID || v.fixState == FixState.DEGRADED) chartView.here(v.lat, v.lon, chartAlong)
         chartView.status = when { v.fixState == FixState.NONE -> "WAITING FOR GPS"; v.fixState == FixState.STALE -> "NO GPS · " + Units.time(v.fixAge); v.arrived -> null; !v.onRoute -> "OFF TRACK"; else -> null }
         // the next row comes up a little before it: further ahead at speed
         chartView.refresh((150.0 + maxOf(0.0, v.speed) * 8.0).coerceAtMost(400.0))

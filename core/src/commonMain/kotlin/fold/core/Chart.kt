@@ -129,6 +129,25 @@ object Chart {
     /** the planner's distance: equirectangular, mean latitude */
     fun dist(lon1: Double, lat1: Double, lon2: Double, lat2: Double): Double { val dLat = (lat2 - lat1) * RAD; val dLon = (lon2 - lon1) * RAD; return R_EARTH * hypot(dLat, dLon * cos((lat1 + lat2) / 2 * RAD)) }
     fun cumulative(lats: DoubleArray, lons: DoubleArray): DoubleArray { val c = DoubleArray(lats.size); for (i in 1 until lats.size) c[i] = c[i - 1] + dist(lons[i - 1], lats[i - 1], lons[i], lats[i]); return c }
+    /** The chart reader's inset: the line around the rider in metres, turned so the way ahead is up, the line's point
+     *  at [along] at the origin; the rider (where the GPS says, so off the line shows) and the chart's rows within reach. */
+    class Sketch(val line: DoubleArray, val riderX: Double, val riderY: Double, val marks: DoubleArray)
+    fun sketch(lats: DoubleArray, lons: DoubleArray, cum: DoubleArray, lat: Double, lon: Double, along: Double, rowsAt: DoubleArray, back: Double = 250.0, ahead: Double = 750.0): Sketch? {
+        val n = lats.size; if (n < 2 || cum.size != n) return null
+        val end = cum[n - 1]; val a = along.coerceIn(0.0, end)
+        val o = pointAt(lats, lons, cum, a)
+        val brg = if (a + 60 <= end) pointAt(lats, lons, cum, a + 60).let { bearing(o[0], o[1], it[0], it[1]) } else pointAt(lats, lons, cum, max(0.0, a - 60)).let { bearing(it[0], it[1], o[0], o[1]) }
+        val k = cos(o[1] * RAD); val sn = sin(brg * RAD); val cs = cos(brg * RAD)
+        val out = ArrayList<Double>()
+        fun put(lo: Double, la: Double, to: ArrayList<Double>) { val e = (lo - o[0]) * RAD * R_EARTH * k; val nn = (la - o[1]) * RAD * R_EARTH; to.add(e * cs - nn * sn); to.add(-(e * sn + nn * cs)) }
+        val from = max(0.0, a - back); val to = min(end, a + ahead)
+        pointAt(lats, lons, cum, from).let { put(it[0], it[1], out) }
+        for (i in 0 until n) if (cum[i] > from && cum[i] < to) put(lons[i], lats[i], out)
+        pointAt(lats, lons, cum, to).let { put(it[0], it[1], out) }
+        val r = ArrayList<Double>(); put(lon, lat, r)
+        val marks = ArrayList<Double>(); for (m in rowsAt) if (m >= from && m <= to) pointAt(lats, lons, cum, m).let { put(it[0], it[1], marks) }
+        return Sketch(out.toDoubleArray(), r[0], r[1], marks.toDoubleArray())
+    }
     fun bearing(lon1: Double, lat1: Double, lon2: Double, lat2: Double): Double {
         val y = sin((lon2 - lon1) * RAD) * cos(lat2 * RAD)
         val x = cos(lat1 * RAD) * sin(lat2 * RAD) - sin(lat1 * RAD) * cos(lat2 * RAD) * cos((lon2 - lon1) * RAD)

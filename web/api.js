@@ -4,7 +4,7 @@
 //   roadbooks             -> the public library: D1 for the list, R2 for the GPX files
 //   web                   -> Brave web search for the inspect panel, when BRAVE_KEY is set
 // Nothing here identifies anyone: no accounts, no cookies, uploads keep only the line and the cues.
-import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError, dist } from "./gpx.js";
+import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError, dist, shiftRally } from "./gpx.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const MAX_GPX = 6 << 20;
@@ -115,7 +115,7 @@ async function publish(request, env, url) {
   if (length < 500) return json({ error: "too short to publish (under 500 m)" }, 400);
   if (length > 5_000_000) return json({ error: "too long to publish (over 5,000 km)" }, 400);
   // cues are judged against the untrimmed line and must belong to the kept stretch: a cue at a trimmed-off end never rides along
-  const cues = trim > 0 ? cuesOn(source, g.cues, 150, [trim, measure(source).length - trim]) : cuesOn(pts, g.cues);
+  const cues = trim > 0 ? cuesOn(source, g.cues, 150, [trim, measure(source).length - trim]).map(c => shiftRally(c, trim)) : cuesOn(pts, g.cues);
   const name = cleanName(url.searchParams.get("name") || request.headers.get("X-Name") && decodeURIComponent(request.headers.get("X-Name")) || g.name || "Roadbook");
   const from = /^(app|planner)$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
   const id = randomCode(8).toLowerCase();

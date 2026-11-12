@@ -1133,12 +1133,14 @@ function gpxOut(opts) {
   out.push("  </trkseg></trk>", "</gpx>", "");
   return out.join("\n");
 }
+/** Does this roadbook have a roll chart worth carrying to the phone and the library? (opened here, came in a file, or a cue has chart fields) */
+function chartInUse() { return !!(S.chartOn || S.chartLoaded || S.cues.some(c => c.rally && Object.keys(c.rally).length)); }
 function rallyXml(c) { const r = Object.assign({}, c.rally || {}); if (Number.isFinite(c.at)) r.at = Math.round(c.at * 10) / 10; const clean = RC.cleanRally(r); return clean ? `<extensions><rally>${esc(JSON.stringify(clean))}</rally></extensions>` : ""; }
 $("#btnGpx").onclick = () => { const blob = new Blob([gpxOut({ rally: true })], { type: "application/gpx+xml" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = ($("#name").value.trim() || "roadbook").replace(/[^\w .-]+/g, "_") + ".gpx"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
 $("#btnPhone").onclick = async () => {
   const sh = $("#codeSheet"); for (const s of document.querySelectorAll(".sheet")) s.hidden = true; sh.hidden = false; $("#codeTitle").textContent = "Send to phone"; $("#codeBody").innerHTML = `<p class="muted">Parking the roadbook…</p>`;
   try {
-    const r = await fetch(`/api/park?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}`, { method: "POST", body: gpxOut(), headers: { "Content-Type": "application/gpx+xml" } });
+    const r = await fetch(`/api/park?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}`, { method: "POST", body: gpxOut({ rally: chartInUse() }), headers: { "Content-Type": "application/gpx+xml" } });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
     $("#codeBody").innerHTML = `<div class="code">${j.code.slice(0, 3)} ${j.code.slice(3)}</div><ol><li>In Roadbook on the phone: <b>≡ → TRACK → FETCH CODE</b>.</li><li>Type the code. The roadbook lands in your folder and opens for editing or following.</li></ol><p class="muted small">The code works for 24 hours, then the file is deleted. ${j.cues} cues · ${fmtDist(j.length)}.</p>`;
   } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p><p class="muted small">You can still download the GPX and copy it to the phone.</p>`; }
@@ -1149,7 +1151,7 @@ $("#btnPublish").onclick = async () => {
   $("#pubGo").onclick = async () => {
     $("#codeBody").innerHTML = `<p class="muted">Publishing…</p>`;
     try {
-      const r = await fetch(`/api/roadbooks?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}&source=planner`, { method: "POST", body: gpxOut(), headers: { "Content-Type": "application/gpx+xml" } });
+      const r = await fetch(`/api/roadbooks?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}&source=planner`, { method: "POST", body: gpxOut({ rally: chartInUse() }), headers: { "Content-Type": "application/gpx+xml" } });
       const j = await r.json(); if (!r.ok) throw new Error(j.error);
       $("#codeBody").innerHTML = `<p>Published. <a href="${esc(j.page)}">Link to it</a> · <a href="${esc(j.url)}">GPX</a></p><p class="muted small">If it should come down, email wiley@machinenusa.com with the link.</p>`;
       if (S.library) loadLibrary();
@@ -1224,7 +1226,7 @@ function loadGpxText(text, fallbackName, opts) {
   opts = opts || {};
   let g;
   try { g = parseGpx(text); } catch (e) { status(e.message, true); return; }   // the current plan is untouched by a bad file
-  if (g.chart) { S.chart = g.chart; if (S.chartOn) syncChartLayout(); }
+  S.chartLoaded = !!g.chart; if (g.chart) { S.chart = g.chart; if (S.chartOn) syncChartLayout(); }
   if (g.pts.length < 2 && g.rte.length >= 2) {
     // a route file with no track: its points are routing controls, so plan it here
     S.imported = null; $("#openSheet").hidden = true;

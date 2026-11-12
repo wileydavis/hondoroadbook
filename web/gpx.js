@@ -40,10 +40,11 @@ export function parseGpx(text) {
     if (lat == null || lon == null) throw new GpxError("a cue has a bad coordinate");
     if (cues.length >= LIMITS.cues) throw new GpxError(`more than ${LIMITS.cues.toLocaleString()} cues`, 413);
     const words = unesc(inner(m[2], "desc") || inner(m[2], "name") || "").replace(/[\u0000-\u001f]/g, " ").trim().slice(0, LIMITS.text);
+    const rally = cleanJson(unesc(inner(m[2], "rally")), 2000);
     const href = unesc((/<link\s+href="([^"]*)"/.exec(m[2]) || [, ""])[1]); const link = /^https?:\/\/[^\s"'<>]{1,200}$/.test(href) ? href : "";
-    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words, link }); else throw new GpxError(`unknown cue type ${type.slice(0, 30)}`); }
-    else if (type.startsWith("danger")) { const lv = Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)); cues.push({ lon, lat, turn: "DANGER", level: lv, text: words, link }); }
-    else if (words) cues.push({ lon, lat, turn: "NOTE", text: words, link });
+    if (type.startsWith("cue:")) { const t = type.slice(4).toUpperCase(); if (TURNS.has(t)) cues.push({ lon, lat, turn: t, text: words, link, rally }); else throw new GpxError(`unknown cue type ${type.slice(0, 30)}`); }
+    else if (type.startsWith("danger")) { const lv = Math.min(3, Math.max(1, Number(type.split(":")[1] || 2) || 2)); cues.push({ lon, lat, turn: "DANGER", level: lv, text: words, link, rally }); }
+    else if (words || rally) cues.push({ lon, lat, turn: "NOTE", text: words, link, rally });   // a chart-only row (a symbol, a reset) may have no words
   }
   const ext = /<roadbook>([\s\S]*?)<\/roadbook>/.exec(text);
   const meta = {};
@@ -51,6 +52,7 @@ export function parseGpx(text) {
     const mode = (inner(ext[1], "mode") || "").trim().toUpperCase(); if (MODES.has(mode)) meta.mode = mode;
     for (const k of ["paved", "unpaved"]) { const v = Number(inner(ext[1], k)); if (Number.isFinite(v) && v >= 0 && v < 1e8) meta[k] = Math.round(v); }
     if (inner(ext[1], "planner")) meta.planner = "1";
+    const chart = cleanJson(unesc(inner(ext[1], "chart")), 1000); if (chart) meta.chart = chart;
   }
   return { name: unesc(name).replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80), pts, rte, cues, meta };
 }
@@ -185,7 +187,7 @@ export function writeGpx(name, pts, cues, meta = {}) {
   out.push("  </metadata>");
   for (const c of cues) {
     const type = c.turn === "DANGER" ? `danger:${c.level || 2}` : c.turn === "NOTE" ? "note" : `cue:${c.turn}`;
-    out.push(`  <wpt lat="${c.lat}" lon="${c.lon}"><name>${esc(c.text || label(c.turn))}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type></wpt>`);
+    out.push(`  <wpt lat="${c.lat}" lon="${c.lon}"><name>${esc(c.text || label(c.turn))}</name>${c.text ? `<desc>${esc(c.text)}</desc>` : ""}${c.link ? `<link href="${esc(c.link)}"><text>source</text></link>` : ""}<type>${type}</type>${c.rally ? `<extensions><rally>${esc(c.rally)}</rally></extensions>` : ""}</wpt>`);
   }
   out.push(`  <trk><name>${esc(name)}</name><trkseg>`);
   for (const p of pts) out.push(`    <trkpt lat="${p[1]}" lon="${p[0]}">${p.length > 2 ? `<ele>${Math.round(p[2])}</ele>` : ""}</trkpt>`);
@@ -193,6 +195,17 @@ export function writeGpx(name, pts, cues, meta = {}) {
   return out.join("\n");
 }
 
+/** A roll-chart field (a cue's <rally>, the file's <chart>): kept only as a small plain JSON object, re-serialised so nothing else rides along. */
+export function cleanJson(s, max) {
+  if (!s || s.length > max * 2) return "";
+  try { const v = JSON.parse(s); if (!v || typeof v !== "object" || Array.isArray(v)) return ""; const out = JSON.stringify(v); return out.length <= max ? out : ""; } catch { return ""; }
+}
+/** A cue's chart position after the line lost `meters` off its start (a published ride's trimmed ends). */
+export function shiftRally(c, meters) {
+  if (!c.rally || !meters) return c;
+  const r = JSON.parse(c.rally); if (typeof r.at === "number") { r.at = Math.round((r.at - meters) * 10) / 10; if (r.at < 0) delete r.at; }
+  return { ...c, rally: JSON.stringify(r) };
+}
 function label(t) { return ({ STRAIGHT: "Straight on", SLIGHT_LEFT: "Slight left", SLIGHT_RIGHT: "Slight right", LEFT: "Left", RIGHT: "Right", SHARP_LEFT: "Sharp left", SHARP_RIGHT: "Sharp right", UTURN: "U-turn", KEEP_LEFT: "Keep left", KEEP_RIGHT: "Keep right", ROUNDABOUT: "Roundabout", DANGER: "Danger", NOTE: "Note" })[t] || t; }
 function inner(s, tag, within) { const scope = within ? (within.exec(s) || [""])[0] : s; const m = new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`).exec(scope); return m ? m[1] : ""; }
 function attr(attrs, k) { const m = new RegExp(`${k}\\s*=\\s*"([^"]*)"`).exec(attrs || ""); return m ? m[1] : null; }
