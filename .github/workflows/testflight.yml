@@ -1,0 +1,76 @@
+# The iPhone app to TestFlight, with no Mac at hand: a GitHub macOS runner builds the Kotlin engine, generates the
+# Xcode project (XcodeGen), archives with automatic signing and uploads to App Store Connect. Run it from the Actions
+# tab ("Run workflow"), or by the API.
+#
+# It needs four repository secrets (Settings → Secrets and variables → Actions):
+#   APPLE_TEAM_ID   the ten-character team id (developer.apple.com → Membership details)
+#   ASC_KEY_ID      an App Store Connect API key's id (App Store Connect → Users and Access → Integrations → Keys)
+#   ASC_ISSUER_ID   the issuer id shown above that list of keys
+#   ASC_KEY_P8      the key file's whole text (-----BEGIN PRIVATE KEY----- …), downloadable once when the key is made
+# The key needs the Admin role (or App Manager with access to cloud-managed distribution certificates), so Xcode can
+# sign in the cloud: no certificate or profile is kept in this repository.
+name: testflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      note:
+        description: "A note for the run's summary (what this build is for)"
+        required: false
+        default: ""
+
+concurrency: { group: testflight, cancel-in-progress: false }
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # the build number is the commit count: a shallow clone would say 1
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - name: The newest Xcode on the runner
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | grep -v beta | sort -V | tail -1)
+          sudo xcode-select -s "$X"; xcodebuild -version
+      - name: Secrets present
+        env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}", P8: "${{ secrets.ASC_KEY_P8 }}" }
+        run: |
+          for v in TEAM KID ISS P8; do [ -n "${!v}" ] || { echo "::error::secret missing: see the comment at the top of testflight.yml"; exit 1; }; done
+          mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
+      - name: The Xcode project
+        run: brew install xcodegen && cd ios && xcodegen generate
+      - name: Archive
+        env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/Roadbook.xcodeproj -scheme Roadbook -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
+            -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" \
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic archive | tail -n 200
+      - name: Upload to App Store Connect
+        env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
+        run: |
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>testFlightInternalTestingOnly</key><false/>
+          </dict></plist>
+          EOF
+          set -o pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
+            -exportPath "$RUNNER_TEMP/export" -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
+            -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" | tail -n 100
+          echo "Uploaded build $(git rev-list --count HEAD) of $(git rev-parse --short HEAD). ${{ inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Forget the key
+        if: always()
+        run: rm -rf ~/private_keys
