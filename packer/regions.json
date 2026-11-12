@@ -1565,5 +1565,138 @@
     "pbf": "europe/netherlands/zuid-holland-latest.osm.pbf",
     "geofabrik": "netherlands/zuid-holland",
     "max_zoom": 14
+  },
+  "switzerland": {
+    "name": "Switzerland",
+    "group": "Europe",
+    "path": "eu",
+    "pbf": "europe/switzerland-latest.osm.pbf",
+    "geofabrik": "switzerland",
+    "max_zoom": 14
+  },
+  "norway-south": {
+    "name": "Southern Norway",
+    "group": "Norway",
+    "path": "eu",
+    "pbf": "europe/norway-latest.osm.pbf",
+    "geofabrik": "norway",
+    "max_zoom": 14,
+    "bbox": [
+      4.4,
+      57.8,
+      12.8,
+      61.7
+    ],
+    "terrain_zoom": 12,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "norway-central": {
+    "name": "Central Norway (Trøndelag and Helgeland)",
+    "group": "Norway",
+    "path": "eu",
+    "pbf": "europe/norway-latest.osm.pbf",
+    "geofabrik": "norway",
+    "max_zoom": 14,
+    "bbox": [
+      4.4,
+      61.5,
+      15.5,
+      66.2
+    ],
+    "terrain_zoom": 11,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little"
+  },
+  "norway-north": {
+    "name": "Northern Norway",
+    "group": "Norway",
+    "path": "eu",
+    "pbf": "europe/norway-latest.osm.pbf",
+    "geofabrik": "norway",
+    "max_zoom": 14,
+    "bbox": [
+      11.5,
+      66.0,
+      31.3,
+      71.3
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the national extract by box; neighbouring packs overlap a little; no Svalbard"
+  },
+  "uk-scotland": {
+    "name": "Scotland",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/scotland-latest.osm.pbf",
+    "geofabrik": "united-kingdom/scotland",
+    "max_zoom": 14,
+    "terrain_zoom": 12
+  },
+  "uk-wales": {
+    "name": "Wales",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/wales-latest.osm.pbf",
+    "geofabrik": "united-kingdom/wales",
+    "max_zoom": 14
+  },
+  "uk-england-south-west": {
+    "name": "South West England",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/england-latest.osm.pbf",
+    "geofabrik": "united-kingdom/england",
+    "max_zoom": 14,
+    "bbox": [
+      -6.5,
+      49.8,
+      -1.9,
+      52.0
+    ],
+    "notes": "cut from the England extract by box; neighbouring packs overlap a little"
+  },
+  "uk-england-south-east": {
+    "name": "London and South East England",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/england-latest.osm.pbf",
+    "geofabrik": "united-kingdom/england",
+    "max_zoom": 14,
+    "bbox": [
+      -2.1,
+      50.5,
+      1.8,
+      52.2
+    ],
+    "notes": "cut from the England extract by box; neighbouring packs overlap a little"
+  },
+  "uk-england-midlands": {
+    "name": "Midlands and East of England",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/england-latest.osm.pbf",
+    "geofabrik": "united-kingdom/england",
+    "max_zoom": 14,
+    "bbox": [
+      -3.2,
+      51.9,
+      1.8,
+      53.6
+    ],
+    "notes": "cut from the England extract by box; neighbouring packs overlap a little"
+  },
+  "uk-england-north": {
+    "name": "Northern England",
+    "group": "United Kingdom",
+    "path": "eu",
+    "pbf": "europe/united-kingdom/england-latest.osm.pbf",
+    "geofabrik": "united-kingdom/england",
+    "max_zoom": 14,
+    "bbox": [
+      -3.7,
+      53.4,
+      0.2,
+      55.9
+    ],
+    "notes": "cut from the England extract by box; neighbouring packs overlap a little"
   }
 }
