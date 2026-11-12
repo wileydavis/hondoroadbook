@@ -72,12 +72,13 @@ extension AppModel {
         if tr.hasRoute { rerouteGpx(tr) } else { followTrack(tr, url) }
     }
 
-    func followTrack(_ tr: GpxTrack, _ url: URL?) {
+    func followTrack(_ tr: GpxTrack, _ url: URL?, chart asChart: Bool = false) {
         trackLats = tr.lats.swift; trackLons = tr.lons.swift; trackName = tr.name; trackURL = url; trackChart = tr.chart; trackCues = tr.cueList
         do {
             let r = try Route.companion.fromTrack(lats: tr.lats, lons: tr.lons, name: tr.name, cues: tr.cues)
             destination = nil; startNavigation(r, track: true); drawCues()
-            showToast("Following track (\(Units.distance(r.length)))" + (tr.cues.count > 0 ? " · \(tr.cues.count) cues" : ""))
+            if asChart && chart != nil { chartOn = true }
+            showToast("Following track (\(Units.distance(r.length)))" + (tr.cues.count > 0 ? " · \(tr.cues.count) cues" : "") + (chart != nil && !chartOn ? "\nRoll chart: ≡ → ROLL CHART" : ""))
         } catch { showToast("Track failed: \(error.text)") }
     }
 

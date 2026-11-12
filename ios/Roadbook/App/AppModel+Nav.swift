@@ -31,7 +31,6 @@ extension AppModel {
             DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [self] in if mode == .nav && isTrack && zoomMode == .overview { zoomMode = .turn; if let f = lastFix { moveCamera(f.lat, f.lon, animate: true) } } }
         }
         if resumed == nil || chart == nil { setupChart(fresh: resumed == nil) }
-        if resumed == nil && chart != nil { showToast("This track has a roll chart: ROLL CHART in the menu") }
         startHudTimer()
     }
 

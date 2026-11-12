@@ -372,6 +372,7 @@ struct TrackLoadedSheet: View {
             VStack(spacing: 12) {
                 Text(Units.distance(track.length) + (n > 0 ? " · \(n) cues" : " · no cues yet") + (track.hasRoute ? "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." : "")).multilineTextAlignment(.center)
                 Button("FOLLOW") { model.sheet = nil; model.followTrack(track, url) }.buttonStyle(BigButton(accent: true))
+                if n > 0 { Button("FOLLOW AS ROLL CHART") { model.sheet = nil; model.followTrack(track, url, chart: true) }.buttonStyle(BigButton()) }
                 Button("EDIT CUES") { model.sheet = nil; model.openEditor(track, url) }.buttonStyle(BigButton())
                 if track.hasRoute { Button("EDIT ROUTE") { model.sheet = nil; model.rerouteGpx(track) }.buttonStyle(BigButton()) }
                 Button("PUBLISH TO THE LIBRARY") { model.sheet = .publish(name: track.name, gpx: Gpx.shared.writeTrackChart(name: track.name, lats: track.lats, lons: track.lons, times: nil, cues: track.cues, chart: track.chart), recorded: true) }.buttonStyle(BigButton(compact: true))

@@ -1384,7 +1384,6 @@ class MainActivity : AppCompatActivity() {
             ui.postDelayed({ if (mode == Mode.NAV && isTrack && zoomMode == ZoomMode.OVERVIEW) { zoomMode = ZoomMode.TURN; lastFix?.let { moveCamera(it.lat, it.lon, true) } } }, 5000)
         }
         if (resumed == null || NavSession.chart == null) setupChart(fresh = resumed == null) else applyChart()
-        if (resumed == null && NavSession.chart != null) toast("This track has a roll chart: ROLL CHART in the menu")
         ui.removeCallbacks(hudTick); ui.post(hudTick)
     }
 
@@ -1668,6 +1667,7 @@ class MainActivity : AppCompatActivity() {
             val body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
             body.addView(TextView(this).apply { textSize = 16f; text = Units.distance(trackLength(tr)) + (if (n > 0) " · $n cues" else " · no cues yet") + (if (tr.hasRoute) "\n\nThis file also carries its start, vias and end: EDIT ROUTE plans it again on your maps, where you can add or remove vias (tap a via to remove it), then GO or SAVE." else "") })
             var dlgRef: androidx.appcompat.app.AlertDialog? = null
+            if (n > 0) body.addView(Button(this).apply { text = "FOLLOW AS ROLL CHART"; textSize = 15f; setOnClickListener { dlgRef?.dismiss(); followTrack(tr, uri, chart = true) } })
             body.addView(Button(this).apply { text = "PUBLISH TO THE LIBRARY"; textSize = 13f; setOnClickListener { dlgRef?.dismiss(); Library.publish(this@MainActivity, tr.name, Gpx.writeTrackChart(tr.name, tr.lats, tr.lons, null, tr.cues, tr.chart), recorded = true) } })
             dlgRef = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(tr.name).setView(body)
                 .setPositiveButton("FOLLOW") { _, _ -> followTrack(tr, uri) }
@@ -1681,10 +1681,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun trackLength(tr: Gpx.Track): Double { var d = 0.0; for (i in 1 until tr.lats.size) d += Geo.fastDistance(tr.lats[i - 1], tr.lons[i - 1], tr.lats[i], tr.lons[i]); return d }
 
-    private fun followTrack(tr: Gpx.Track, uri: Uri?) {
+    private fun followTrack(tr: Gpx.Track, uri: Uri?, chart: Boolean = false) {
         trackLats = tr.lats; trackLons = tr.lons; trackName = tr.name; trackUri = uri; trackChart = tr.chart; trackCues.clear(); trackCues.addAll(tr.cues)
         val r = Route.fromTrack(tr.lats, tr.lons, tr.name, tr.cues); destination = null; startNavigation(r, true); drawCues()
-        toast("Following track (${Units.distance(r.length)})" + if (tr.cues.isNotEmpty()) " · ${tr.cues.size} cues" else "")
+        if (chart && NavSession.chart != null) { NavSession.chartOn = true; applyChart() }
+        toast("Following track (${Units.distance(r.length)})" + (if (tr.cues.isNotEmpty()) " · ${tr.cues.size} cues" else "") + (if (NavSession.chart != null && !NavSession.chartOn) "\nRoll chart: ≡ → ROLL CHART" else ""))
     }
 
     /**

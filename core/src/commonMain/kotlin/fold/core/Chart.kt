@@ -293,8 +293,9 @@ object Chart {
     fun forTrack(lats: DoubleArray, lons: DoubleArray, cues: List<Cue>, chartJson: String?): ChartBuild =
         build(lats, lons, cues.mapIndexed { i, c -> ChartCue(c.lat, c.lon, c.turn, c.level, c.note, Rally.parse(c.rally), id = i) }, ChartSettings.parse(chartJson))
 
-    /** Does this file carry a chart? (any cue with rally fields, or chart settings) */
-    fun hasChart(cues: List<Cue>, chartJson: String?): Boolean = chartJson != null || cues.any { it.rally != null }
+    /** Can this track be read as a roll chart? Any track with cues can: rows from the cues, tulips from the line's own
+     *  turns, the planner's chart fields where the file carries them. */
+    fun hasChart(cues: List<Cue>, chartJson: String?): Boolean = chartJson != null || cues.isNotEmpty()
 
     // ---- the tulip's shapes ---------------------------------------------------------------------------------------------
     /** What to draw, in a square of side s with its top left at (0, 0): the app picks colours by [role] ("path" or "ink"). */
