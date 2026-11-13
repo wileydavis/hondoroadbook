@@ -1,0 +1,50 @@
+# Bulk import into the public library. The prepared GPX files (one ride each, already named) arrive on the
+# "import-upload" branch with names.tsv (file, URL-encoded name), force-pushed each time so they never pile up in
+# history. This stages them in the bucket under import/ (only R2-key holders can) and asks the site to publish them
+# (POST /api/import, which runs each through the same trim, cue check and clean write as the Publish button).
+name: import
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency: { group: import, cancel-in-progress: false }
+
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: import-upload }
+      - name: Stage in the bucket
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
+          n=0
+          while IFS=$'\t' read -r f name; do
+            rclone copyto --header-upload "X-Amz-Meta-Name: $name" --header-upload "X-Amz-Meta-Trim: 500" "gpx/$f" "r2:roadbook-packs/import/$f"
+            n=$((n+1))
+          done < names.tsv
+          echo "staged $n"
+      - name: Publish
+        run: |
+          set -uo pipefail
+          ok=0; bad=0
+          for i in $(seq 1 400); do
+            r=$(curl -fsS --retry 5 --retry-all-errors --retry-delay 5 -X POST https://hondoroadbook.com/api/import) || { sleep 10; continue; }
+            ok=$((ok + $(jq '[.done[] | select(.id)] | length' <<<"$r")))
+            bad=$((bad + $(jq '[.done[] | select(.error)] | length' <<<"$r")))
+            jq -r '.done[] | if .id then "published \(.id)  \(.length/1000|floor) km  \(.cues) cues  \(.name)" else "REFUSED \(.key): \(.error)" end' <<<"$r"
+            [ "$(jq -r .more <<<"$r")" = true ] || break
+          done
+          echo "Published $ok, refused $bad" | tee -a "$GITHUB_STEP_SUMMARY"

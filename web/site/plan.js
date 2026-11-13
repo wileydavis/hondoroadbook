@@ -53,7 +53,7 @@ const S = {
   deletedAuto: [],     // positions of auto cues the user removed; the router's cues near them stay hidden
   elastic: null, lastGood: null, places: false, pendingNotes: [], cueSeq: 0, routeReq: 0,
   // day map by default; the choice is kept in this browser once changed (the apps do the same)
-  night: (() => { try { return localStorage.getItem("rb.night") === "1"; } catch { return false; } })(), terrain: true, land: false, imagery: false, library: false,
+  night: (() => { try { return localStorage.getItem("rb.night") === "1"; } catch { return false; } })(), terrain: true, land: false, imagery: false, library: true,
   catalog: null, activePacks: new Set(), overview: new Map(), checking: new Set(), hasOverview: false, markers: [], cueMarkers: [], libraryData: null,
   inflight: null,
 };
@@ -88,6 +88,8 @@ async function init() {
   map.on("moveend", () => warm(false));
   warm(true);
   map.on("moveend", () => { if (S.library) loadLibrary(); });
+  // the published roadbooks show from the start (the Roadbooks box is ticked by default)
+  map.once("load", () => { if (S.library) loadLibrary(); });
   bindMap();
   if (S.pts.length >= 2) reroute();
   const rb = new URLSearchParams(location.hash.slice(1)).get("rb");

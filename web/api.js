@@ -18,6 +18,7 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
     if (path === "park" && request.method === "POST") return await park(request, env, url);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
+    if (path === "import" && request.method === "POST") return await importStaged(env);
     if (path.startsWith("roadbooks/")) return await roadbook(request, env, path.slice(10), url);
     if (path === "web") return await webSearch(request, env, url, ctx);
     if (path === "health") return json({ ok: true, router: !!(env.ROUTER || env.ROUTER_URL), library: !!env.DB, storage: !!env.PACKS, web: !!env.BRAVE_KEY });
@@ -103,21 +104,29 @@ async function publish(request, env, url) {
   // the day's allowance is spent before any parsing, so a flood costs one query each
   if (!(await admit(request, env, "publish", DAILY.publish))) return json({ error: "That is plenty for one day; try again tomorrow" }, 429);
   const text = await readGpx(request);
+  const name = url.searchParams.get("name") || request.headers.get("X-Name") && decodeURIComponent(request.headers.get("X-Name"));
+  const from = /^(app|planner)$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
+  const r = await addToLibrary(env, text, { trim: Number(url.searchParams.get("trim") || 0), name, from });
+  if (r.error) return json({ error: r.error }, r.status || 400);
+  return json({ ...r, url: `${url.origin}/api/roadbooks/${r.id}.gpx`, page: `${url.origin}/plan.html#rb=${r.id}` });
+}
+
+/** The one way into the library: trimmed, measured, its cues judged, written clean (no times, nothing but the line and its cues). */
+async function addToLibrary(env, text, { trim: t = 0, name: asked, from = "app" }) {
   const g = parseGpx(text);
-  const trim = Math.min(5000, Math.max(0, Math.round(Number(url.searchParams.get("trim") || 0) || 0)));
+  const trim = Math.min(5000, Math.max(0, Math.round(Number(t) || 0)));
   const source = g.pts.length >= 2 ? g.pts : g.rte;
-  if (source.length < 2) return json({ error: "the file has no track" }, 400);
+  if (source.length < 2) return { error: "the file has no track" };
   // trimming never fails open: a ride too short for the chosen trim is refused, not published whole
   const pts = trimEnds(source, trim);
-  if (!pts) return json({ error: `Too short to trim ${trim} m off each end and keep a ride. Choose a smaller trim.` }, 400);
-  if (trim > 0 && (same(pts[0], source[0]) || same(pts[pts.length - 1], source[source.length - 1]))) return json({ error: "Trimming did not move the ends; not published" }, 400);
+  if (!pts) return { error: `Too short to trim ${trim} m off each end and keep a ride. Choose a smaller trim.` };
+  if (trim > 0 && (same(pts[0], source[0]) || same(pts[pts.length - 1], source[source.length - 1]))) return { error: "Trimming did not move the ends; not published" };
   const { length, bbox } = measure(pts);
-  if (length < 500) return json({ error: "too short to publish (under 500 m)" }, 400);
-  if (length > 5_000_000) return json({ error: "too long to publish (over 5,000 km)" }, 400);
+  if (length < 500) return { error: "too short to publish (under 500 m)" };
+  if (length > 5_000_000) return { error: "too long to publish (over 5,000 km)" };
   // cues are judged against the untrimmed line and must belong to the kept stretch: a cue at a trimmed-off end never rides along
   const cues = trim > 0 ? cuesOn(source, g.cues, 150, [trim, measure(source).length - trim]).map(c => shiftRally(c, trim)) : cuesOn(pts, g.cues);
-  const name = cleanName(url.searchParams.get("name") || request.headers.get("X-Name") && decodeURIComponent(request.headers.get("X-Name")) || g.name || "Roadbook");
-  const from = /^(app|planner)$/.test(url.searchParams.get("source") || "") ? url.searchParams.get("source") : "app";
+  const name = cleanName(asked || g.name || "Roadbook");
   const id = randomCode(8).toLowerCase();
   const body = writeGpx(name, pts, cues, { ...g.meta, planner: undefined });
   await env.PACKS.put(`library/${id}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { name } });
@@ -126,7 +135,28 @@ async function publish(request, env, url) {
     env.DB.prepare("INSERT INTO roadbooks (id, name, length_m, cues, min_lon, min_lat, max_lon, max_lat, line, mode, paved, unpaved, source, created, hidden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)")
       .bind(id, name, Math.round(length), cues.length, bbox[0], bbox[1], bbox[2], bbox[3], line, g.meta.mode || null, numOrNull(g.meta.paved), numOrNull(g.meta.unpaved), from, Date.now()),
   ]);
-  return json({ id, name, length: Math.round(length), cues: cues.length, url: `${url.origin}/api/roadbooks/${id}.gpx`, page: `${url.origin}/plan.html#rb=${id}` });
+  return { id, name, length: Math.round(length), cues: cues.length };
+}
+
+// POST /api/import: publishes roadbooks staged in the bucket under import/ (each a GPX, its name in the object's
+// metadata, trimmed by its "trim" metadata), a few per call, deleting each once it is in. Only whoever holds the bucket's
+// keys can stage anything, so the call itself needs no secret: it can only publish what they put there.
+async function importStaged(env) {
+  if (!env.DB || !env.PACKS) return json({ error: "The library is not set up on this site yet" }, 503);
+  const list = await env.PACKS.list({ prefix: "import/", limit: 6, include: ["customMetadata"] });
+  const done = [];
+  for (const o of list.objects) {
+    const obj = await env.PACKS.get(o.key);
+    if (!obj) continue;
+    const m = obj.customMetadata || {};
+    let r;
+    try { r = await addToLibrary(env, await obj.text(), { trim: Number(m.trim || 500), name: m.name && decodeURIComponent(m.name), from: "import" }); }
+    catch (e) { r = { error: String(e && e.message || e) }; }
+    await env.PACKS.delete(o.key);
+    done.push({ key: o.key, ...r });
+  }
+  const more = list.truncated || (await env.PACKS.list({ prefix: "import/", limit: 1 })).objects.length > 0;
+  return json({ done, more });
 }
 
 async function list(request, env, url) {
