@@ -26,12 +26,14 @@ jobs:
           curl -fsSL --retry 5 -o all.zip "$B/StagedProducts/GeographicNames/Topical/AllNames_National_Text.zip"
           mkdir -p dom all; unzip -q dom.zip -d dom; unzip -q all.zip -d all
           ls -la dom all dom/* all/* | head -20
+          echo "::notice::domestic key=$K; files: $(find dom all -type f -printf '%p %s, ' | head -c 600)"
       - name: Build the index
         run: |
           set -euo pipefail
           D=$(find dom -iname '*.txt' -size +10M | head -1); A=$(find all -iname '*.txt' -size +10M | head -1)
-          python3 tools/gnis_index.py "$D" "$A" out
-          du -sh out; ls out | wc -l
+          python3 tools/gnis_index.py "$D" "$A" out 2> build.log || { tail -5 build.log; exit 1; }
+          echo "::notice::$(tail -1 build.log) · $(du -sh out | cut -f1)"
+          echo "::notice::$(grep -m1 'columns' build.log | head -c 600)"
       - name: Upload
         env:
           RCLONE_CONFIG_R2_TYPE: s3
