@@ -1137,14 +1137,50 @@ function gpxOut(opts) {
 function chartInUse() { return !!(S.chartOn || S.chartLoaded || S.cues.some(c => c.rally && Object.keys(c.rally).length)); }
 function rallyXml(c) { const r = Object.assign({}, c.rally || {}); if (Number.isFinite(c.at)) r.at = Math.round(c.at * 10) / 10; const clean = RC.cleanRally(r); return clean ? `<extensions><rally>${esc(JSON.stringify(clean))}</rally></extensions>` : ""; }
 $("#btnGpx").onclick = () => { const blob = new Blob([gpxOut({ rally: true })], { type: "application/gpx+xml" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = ($("#name").value.trim() || "roadbook").replace(/[^\w .-]+/g, "_") + ".gpx"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
-$("#btnPhone").onclick = async () => {
-  const sh = $("#codeSheet"); for (const s of document.querySelectorAll(".sheet")) s.hidden = true; sh.hidden = false; $("#codeTitle").textContent = "Send to phone"; $("#codeBody").innerHTML = `<p class="muted">Parking the roadbook…</p>`;
+$("#btnPhone").onclick = () => {
+  const sh = $("#codeSheet"); for (const s of document.querySelectorAll(".sheet")) s.hidden = true; sh.hidden = false; $("#codeTitle").textContent = "Send to phone";
+  if (!lineCoords().length) { $("#codeBody").innerHTML = `<p class="muted">Plan a route or open a GPX first.</p>`; return; }
+  $("#codeBody").innerHTML = `<p><b>A moving code</b> on this screen, read by the phone's camera. Nothing goes through our server, and the phone needs no signal.</p>
+    <div class="sheet-actions"><span></span><button id="phoneQr" class="cta">Show the code</button></div>
+    <p style="margin-top:14px"><b>A six-letter code</b> to type on the phone, here or later. The roadbook waits on hondoroadbook.com for 24 hours.</p>
+    <div class="sheet-actions"><span></span><button id="phonePark">Get a code</button></div>`;
+  $("#phoneQr").onclick = () => { sh.hidden = true; showQr(); };
+  $("#phonePark").onclick = parkForPhone;
+};
+async function parkForPhone() {
+  $("#codeBody").innerHTML = `<p class="muted">Parking the roadbook…</p>`;
   try {
     const r = await fetch(`/api/park?name=${encodeURIComponent($("#name").value.trim() || "Roadbook")}`, { method: "POST", body: gpxOut({ rally: true }), headers: { "Content-Type": "application/gpx+xml" } });
     const j = await r.json(); if (!r.ok) throw new Error(j.error);
     $("#codeBody").innerHTML = `<div class="code">${j.code.slice(0, 3)} ${j.code.slice(3)}</div><ol><li>In Roadbook on the phone: <b>≡ → TRACK → FETCH CODE</b>.</li><li>Type the code. The roadbook lands in your folder and opens for editing or following.</li></ol><p class="muted small">The code works for 24 hours, then the file is deleted. ${j.cues} cues · ${fmtDist(j.length)}.</p>`;
   } catch (e) { $("#codeBody").innerHTML = `<p class="muted">${esc(e.message)}</p><p class="muted small">You can still download the GPX and copy it to the phone.</p>`; }
-};
+}
+/** The roadbook as a moving QR code (qrshare.js, the apps' own format): the first frames plain, then random mixes, so
+ *  whichever frames the camera misses, a few more fill in. Bigger codes than the phone shows: a laptop screen has room. */
+let qrRun = 0;
+async function showQr() {
+  const R = window.RoadbookQr, run = ++qrRun;
+  const t = R && R.parseGpx(gpxOut({ rally: true }));
+  if (!t) { status("Nothing to send yet", true); return; }
+  const enc = new R.Encoder(await R.message(t), R.chunkFor(25));
+  let fps = 8, i = 0, timer = 0;
+  const ov = $("#qrOverlay"), cv = $("#qrCanvas"), g = cv.getContext("2d");
+  $("#qrName").textContent = t.name;
+  const info = () => { const s = (enc.k + 3) / fps; $("#qrInfo").textContent = `${enc.k} ${enc.k === 1 ? "frame" : "frames"} · ${(enc.message.length / 1024).toFixed(1)} kB · ${s < 2 ? "a second or two" : "about " + Math.ceil(s) + " s"} to read · ${fps} a second`; };
+  const draw = () => {
+    const q = enc.code(i++), n = q.size + 8, px = Math.max(1, Math.floor(Math.min(cv.clientWidth || 600, 1400) * (window.devicePixelRatio || 1) / n));
+    cv.width = cv.height = n * px; g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.fillStyle = "#000";
+    for (let y = 0; y < q.size; y++) for (let x = 0; x < q.size; x++) if (q.dark(x, y)) g.fillRect((x + 4) * px, (y + 4) * px, px, px);
+  };
+  const tick = () => { if (run !== qrRun || ov.hidden) return; draw(); timer = setTimeout(tick, 1000 / fps); };
+  const close = () => { qrRun++; clearTimeout(timer); ov.hidden = true; document.removeEventListener("keydown", esc_); };
+  const esc_ = e => { if (e.key === "Escape") close(); };
+  $("#qrSlower").onclick = () => { fps = Math.max(2, fps - 2); info(); };
+  $("#qrFaster").onclick = () => { fps = Math.min(15, fps + 2); info(); };
+  $("#qrClose").onclick = close; ov.onclick = e => { if (e.target === ov) close(); };
+  document.addEventListener("keydown", esc_);
+  ov.hidden = false; info(); tick();
+}
 $("#btnPublish").onclick = async () => {
   const sh = $("#codeSheet"); for (const s of document.querySelectorAll(".sheet")) s.hidden = true; sh.hidden = false; $("#codeTitle").textContent = "Publish to the library";
   $("#codeBody").innerHTML = `<p>Anyone can then find this roadbook on the map here and in the app, and ride it. The file keeps only the line and the cues — no times, no device, no name but the one below.</p><p class="muted small">Name: <b>${esc($("#name").value.trim() || "Roadbook")}</b></p><div class="sheet-actions"><span></span><button id="pubGo" class="cta">Publish</button></div>`;

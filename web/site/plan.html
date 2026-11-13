@@ -160,6 +160,17 @@
   <div id="codeBody"></div>
 </div>
 
+<!-- the moving share code: the phone's camera reads the roadbook from this screen -->
+<div id="qrOverlay" hidden>
+  <div class="qr-box">
+    <b id="qrName"></b>
+    <p class="muted small">On the phone: <b>≡ → TRACK → SCAN A CODE FROM ANOTHER PHONE</b>, and point it at this screen. Nothing goes through our server, and the phone needs no signal.</p>
+    <canvas id="qrCanvas"></canvas>
+    <p id="qrInfo" class="muted small"></p>
+    <div class="qr-actions"><button id="qrSlower">Slower</button><button id="qrFaster">Faster</button><button id="qrClose" class="cta">Done</button></div>
+  </div>
+</div>
+
 <!-- an opened track: keep it, or route it -->
 <div id="openSheet" class="sheet" hidden>
   <div class="sheet-head"><b id="openTitle">Opened a track</b><button class="icon" data-close>×</button></div>
@@ -208,6 +219,7 @@
 <script src="/map/vendor/pmtiles.js"></script>
 <script src="/map/vendor/mvt.js"></script>
 <script src="/chart.js"></script>
+<script src="/qrshare.js"></script>
 <script src="/plan.js"></script>
 </body>
 </html>

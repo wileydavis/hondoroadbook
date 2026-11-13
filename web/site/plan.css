@@ -75,6 +75,12 @@ button.icon:hover { border-color: var(--soft); }
 .ctx button:last-child { border-bottom: 0; }
 .ctx button:hover { background: var(--paper); }
 
+#qrOverlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; }
+#qrOverlay[hidden] { display: none; }
+#qrOverlay .qr-box { background: #fff; color: #111; border-radius: 18px; padding: 18px 20px; width: min(92vw, 84vh); max-height: 96vh; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+#qrOverlay .qr-box p { margin: 0; color: #444; }
+#qrCanvas { width: min(100%, calc(96vh - 190px)); aspect-ratio: 1; image-rendering: pixelated; }
+#qrOverlay .qr-actions { display: flex; gap: 8px; }
 .sheet { position: absolute; right: 10px; bottom: 10px; z-index: 8; width: 360px; max-width: calc(100vw - 20px); background: var(--card); border: 1px solid var(--rule); border-radius: 16px; box-shadow: 0 16px 50px rgba(0,0,0,.25); padding: 12px 14px 14px; max-height: calc(100vh - 20px); overflow-y: auto; }
 .sheet.wide { width: 440px; }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
