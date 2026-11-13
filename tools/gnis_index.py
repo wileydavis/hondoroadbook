@@ -18,7 +18,8 @@ mount mountain mountains mt peak peaks summit hill hills butte buttes knob ridge
 creek creeks river run brook branch fork forks spring springs well wells lake lakes pond ponds reservoir tank tanks dam falls
 canyon canyons valley valleys gulch draw wash hollow ravine basin flat flats meadow meadows park pass gap saddle notch
 upper lower north south east west middle little big old new great
-mine mines ranch camp trail road cave arch island bay cove beach point lookout tunnel bridge station""".split())
+mine mines ranch camp trail road cave arch island bay cove beach point lookout tunnel bridge station
+historical ditch number lateral drain canal""".split())
 SKIP_CLASSES = {"Building", "Church", "School", "Hospital", "Post Office", "Census", "Civil", "Tower", "Military",
                 "Harbor", "Bay", "Sea", "Channel", "Gut", "Swamp", "Area", "Unknown"}
 STATES = dict(Alabama="AL", Alaska="AK", Arizona="AZ", Arkansas="AR", California="CA", Colorado="CO", Connecticut="CT", Delaware="DE",

@@ -56,7 +56,7 @@ async function routerProxy(request, env, path, url, routerFetch) {
 // it lives in the bucket under names/v1/<first three letters of a distinctive word>.json.
 const NAME_GENERIC = new Set(("the of and de del la el los las le du des a an at in on to mount mountain mountains mt peak peaks summit hill hills butte buttes knob ridge ridges point bluff cliff cliffs rock rocks " +
   "creek creeks river run brook branch fork forks spring springs well wells lake lakes pond ponds reservoir tank tanks dam falls canyon canyons valley valleys gulch draw wash hollow ravine basin flat flats meadow meadows park pass gap saddle notch " +
-  "upper lower north south east west middle little big old new great mine mines ranch camp trail road cave arch island bay cove beach lookout tunnel bridge station").split(" "));
+  "upper lower north south east west middle little big old new great mine mines ranch camp trail road cave arch island bay cove beach lookout tunnel bridge station historical ditch number lateral drain canal").split(" "));
 const NAME_CLASS = { Gap: "Pass", Summit: "Summit", Spring: "Spring", Valley: "Valley", Stream: "Creek", Mine: "Mine", Locale: "Place", "Populated Place": "Town", Lake: "Lake", Reservoir: "Reservoir", Flat: "Flat", Basin: "Basin", Range: "Range", Ridge: "Ridge", Arch: "Arch", Falls: "Falls", Trail: "Trail", Park: "Park", Crossing: "Crossing", Airport: "Airstrip", Cemetery: "Cemetery", Dam: "Dam", Well: "Well", Canal: "Canal", Bench: "Bench", Cliff: "Cliff", Crater: "Crater", Pillar: "Pillar", Plain: "Plain", Island: "Island", Bend: "Bend", Cape: "Point", Lava: "Lava flow", Glacier: "Glacier", Bridge: "Bridge", Tunnel: "Tunnel", Woods: "Woods", Slope: "Slope", Gut: "", Rapids: "Rapids", Beach: "Beach", Bar: "Bar", Isthmus: "Isthmus" };
 const shardCache = new Map();
 function nameWords(s) { return (s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().match(/[a-z0-9]+/g)) || []; }
@@ -83,8 +83,9 @@ async function placeNames(env, q, lat, lon) {
     let got = 0; for (const t of qw) if (w.some(x => x.startsWith(t))) got++;
     out.push({ r, got, full: got === qw.length, exact: w.join(" ") === qw.join(" "), d: near ? km(lat, lon, r[4], r[5]) : 0 });
   }
-  // every word of the query first, then the most of them; the nearest to the map within each
-  out.sort((a, b) => (b.full - a.full) || (b.got - a.got) || (b.exact - a.exact) || (a.d - b.d));
+  // every word of the query first, then the most of them; within each, near beats far, an exact name counting for some
+  const score = o => Math.log1p(o.d) - (o.exact ? 1.5 : 0);
+  out.sort((a, b) => (b.full - a.full) || (b.got - a.got) || score(a) - score(b));
   return out.slice(0, 10).map(({ r, full, exact, d }) => ({
     name: r[0], lat: r[4], lon: r[5], full, exact, source: "gnis",
     context: [NAME_CLASS[r[1]] ?? r[1], r[6] ? `officially ${r[6]}` : ""].filter(Boolean).join(" · "),
@@ -108,8 +109,9 @@ async function search(request, env, url, routerFetch) {
   const ranked = hits.map(h => { const w = nameWords(h.name || ""); return { ...h, exact: w.join(" ") === qw, full: qws.every(t => w.some(x => x.startsWith(t))) }; });
   // a town the map already found is not listed twice
   for (const g of gn) if (!ranked.some(h => nameWords(h.name || "").join(" ") === nameWords(g.name).join(" ") && Number.isFinite(h.lat) && km(h.lat, h.lon, g.lat, g.lon) < 5)) ranked.push(g);
-  const order = h => (h.exact ? 0 : 2) + (h.full ? 0 : 4) + (h.source === "gnis" ? 1 : 0);
-  ranked.sort((a, b) => order(a) - order(b) || (a.distance ?? 1e12) - (b.distance ?? 1e12));
+  // the whole query first; within that, the nearer, an exact name counting for some (a town the map knows first among equals)
+  const score = h => Math.log1p((h.distance ?? 5e6) / 1000) - (h.exact ? 1.5 : 0) + (h.source === "gnis" ? 0.1 : 0);
+  ranked.sort((a, b) => (b.full - a.full) || score(a) - score(b));
   return json({ hits: ranked.slice(0, 12).map(({ exact, full, source, ...h }) => h) });
 }
 
