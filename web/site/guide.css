@@ -195,6 +195,34 @@
 .gplanner .gview span { flex: 1; text-align: center; font-size: 9px; font-weight: 700; padding: 3px 0; border-radius: 4px; color: #5a5a5a; }
 .gplanner .gview span.on { background: #fffdf8; color: #1b1b1b; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .gplanner .gview span.hot { background: #efe9dc; }
+.gscreen .gchartscr { position: absolute; inset: 0; z-index: 3; background: #f4efe6; display: flex; flex-direction: column; }
+.gchartscr .meter { display: flex; gap: 6px; padding: 26px 8px 8px; background: #fffdf8; border-bottom: 1px solid #cfc9bb; }
+.gchartscr .nb { width: 40px; border-radius: 8px; background: #1b1b1b; color: #fffdf8; font-size: 22px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.gchartscr .rd { flex: 1; text-align: center; }
+.gchartscr .rd b { display: block; font-size: 34px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.gchartscr .rd span { font-size: 8px; font-weight: 700; color: #5a5a5a; letter-spacing: .04em; }
+.gchartscr .crow { display: grid; grid-template-columns: 62px 58px 1fr; gap: 6px; align-items: center; padding: 8px 8px 8px 12px; background: #fffdf8; border-bottom: 1px solid #e2dccf; position: relative; }
+.gchartscr .crow.past { opacity: .4; }
+.gchartscr .crow.cur::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: #d8502f; }
+.gchartscr .fig small { font-size: 7px; color: #5a5a5a; display: block; }
+.gchartscr .fig b { font-size: 18px; display: block; font-variant-numeric: tabular-nums; }
+.gchartscr .fig span { font-size: 10px; font-weight: 700; color: #5a5a5a; }
+.gchartscr .tl { background: #f4efe6; border-radius: 6px; padding: 4px; }
+.gchartscr .tl svg { width: 100%; display: block; }
+.gchartscr .w { font-size: 11px; font-weight: 800; }
+.gchartscr .w em { color: #e30613; font-style: normal; margin-right: 3px; }
+.gchartscr .inset { position: absolute; right: 8px; bottom: 60px; width: 64px; height: 64px; }
+.gscreen .gqrscr { position: absolute; inset: 0; z-index: 3; background: #fff; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 30px 12px 12px; text-align: center; }
+.gqrscr .sub { font-size: 9px; color: #5a5a5a; }
+.gqrscr .q { width: 92%; }
+.gqrscr .q svg { width: 100%; display: block; }
+.gqrscr .grow { width: 100%; margin-top: auto; }
+.gscreen .gcam { position: absolute; inset: 0; z-index: 3; background: #2b2b2b; display: flex; flex-direction: column; }
+.gcam .q { margin: 22% auto 0; width: 62%; transform: rotate(-4deg) skewX(3deg); box-shadow: 0 0 0 10px #444, 0 0 0 11px #111; }
+.gcam .q svg { width: 100%; display: block; }
+.gcam .p { margin-top: auto; background: rgba(0,0,0,.8); color: #fff; padding: 10px; font-size: 10px; display: flex; flex-direction: column; gap: 6px; }
+.gcam .p i { display: block; height: 5px; background: #555; border-radius: 3px; overflow: hidden; }
+.gcam .p u { display: block; height: 100%; background: #d8502f; transition: width .3s; }
 .gqr svg { width: 100%; max-width: 220px; display: block; margin: 0 auto 6px; }
 .gplanner .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 4px; }
 .gplanner .actions .cta { font-size: 9px; padding: 5px 8px; border-radius: 6px; background: #1b1b1b; color: #f4efe6; font-weight: 600; }

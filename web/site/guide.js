@@ -309,8 +309,20 @@
   // ---- phone: the rest ------------------------------------------------------------------------------------------------
   const navScene = (s, { dist = '0.4 mi', street = 'MT-84', progress = 0 } = {}) => { idleMap(s); s.layer('hill', true); s.route('nav', RIDE, MODES.ride[1], { draw: false }); s.marker('pin', 'pin', 252, 74); s.hud('left', dist, street, progress); s.navPanel('57 mi', '41 mph'); s.movePuck(160, 380); };
   const trackScene = s => { idleMap(s); s.layer('hill', true); s.route('trk', 'M160 470 V300 H60 V200 H220 V84 Q236 79 252 74', '#7c3aed', { draw: false }); s.marker('c1', 'cue', 60, 300, 'Left'); s.marker('c2', 'cue danger', 60, 250, 'Washout'); s.marker('c3', 'cue', 140, 200, 'Note'); s.marker('c4', 'cue', 220, 84, 'Right'); };
-  const trackSheet = (s, name, meta) => s.sheet(name, `<div class="sub">${esc(meta)}</div><div class="grow"><div class="gbtn accent" data-b="follow">FOLLOW</div></div><div class="grow"><div class="gbtn" data-b="editc">EDIT CUES</div><div class="gbtn" data-b="editr">EDIT ROUTE</div></div><div class="grow"><div class="gbtn" data-b="pub">PUBLISH TO THE LIBRARY</div></div>`);
-  const trackList = (s, files) => s.sheet('Follow a track', `<div class="grow" style="margin:0 0 8px"><div class="gbtn" data-b="code">FETCH CODE FROM THE PLANNER</div></div>${files.map((f, i) => `<div class="li" data-h="${i}"><div>${esc(f[0])}<div style="font-size:10px;color:#5a5a5a">${esc(f[1])}</div></div></div>`).join('')}<div class="grow" style="margin-top:8px"><div class="gbtn" data-b="browse">BROWSE FILES…</div></div>`);
+  const trackSheet = (s, name, meta) => s.sheet(name, `<div class="sub">${esc(meta)}</div><div class="grow"><div class="gbtn accent" data-b="follow">FOLLOW</div></div><div class="grow"><div class="gbtn" data-b="rollchart">FOLLOW AS ROLL CHART</div></div><div class="grow"><div class="gbtn" data-b="editc">EDIT CUES</div><div class="gbtn" data-b="editr">EDIT ROUTE</div></div><div class="grow"><div class="gbtn" data-b="sharecode">SHARE BY CODE</div><div class="gbtn" data-b="pub">PUBLISH</div></div>`);
+  const trackList = (s, files) => s.sheet('Follow a track', `<div class="grow" style="margin:0 0 8px"><div class="gbtn" data-b="code">FETCH CODE FROM THE PLANNER</div></div><div class="grow" style="margin:0 0 8px"><div class="gbtn" data-b="scan">SCAN A CODE FROM ANOTHER PHONE</div></div>${files.map((f, i) => `<div class="li" data-h="${i}"><div>${esc(f[0])}<div style="font-size:10px;color:#5a5a5a">${esc(f[1])}</div></div></div>`).join('')}<div class="grow" style="margin-top:8px"><div class="gbtn" data-b="browse">BROWSE FILES…</div></div>`);
+  /** the phone's chart reader: the trip meter on top, the rows below (the one you are at marked), a corner map */
+  const CHART_ROWS = [['1', '0.00', '—', 'straight', 'START'], ['2', '2.14', '2.14', 'left', 'L ON RANCH RD'], ['3', '3.02', '0.88', 'right', '!! R AT Y · CATTLE GUARD'], ['4', '5.47', '2.45', 'straight', 'CST ON MAIN TRACK'], ['5', '7.90', '2.43', 'left', 'L AT T · GATE']];
+  const chartScreen = (s, reading, at, { status = '', inset = true } = {}) => {
+    let el = $('.gchartscr', s.sc); if (!el) { el = document.createElement('div'); el.className = 'gchartscr'; s.sc.appendChild(el); }
+    const rows = CHART_ROWS.slice(Math.max(0, at - 1), at + 2).map(r => `<div class="crow${r[0] === String(at + 1) ? ' cur' : ''}${+r[0] <= at ? ' past' : ''}"><div class="fig"><small>${r[0]}</small><b>${r[1]}</b><span>${r[2]}</span></div><div class="tl">${arrowSvg(r[3], '#1b1b1b')}</div><div class="w">${r[4].replace(/^(!+)/, '<em>$1</em>')}</div></div>`).join('');
+    el.innerHTML = `<div class="meter"><span class="nb" data-b="minus">−</span><div class="rd" data-b="meter"><b>${reading}</b><span>${status || 'MI · ALONG THE ROUTE'}</span></div><span class="nb" data-b="plus">+</span></div><div class="crows">${rows}</div>${inset ? '<svg class="inset" viewBox="0 0 60 60"><rect width="60" height="60" rx="8" fill="#f4efe6" stroke="#cfc9bb"/><path d="M30 60 L30 40 Q30 30 22 22 L14 4" fill="none" stroke="#1b1b1b" stroke-width="3"/><circle cx="22" cy="22" r="2.5"/><path d="M30 38 l5 9 -5 -3 -5 3z" fill="#d8502f"/></svg>' : ''}`;
+    el.style.display = ''; return el;
+  };
+  const chartOff = s => { const el = $('.gchartscr', s.sc); if (el) el.style.display = 'none'; };
+  /** the share code on a phone screen: a QR-looking pattern that changes, and the reading phone's camera */
+  const qrScreen = (s, name, frames) => { let el = $('.gqrscr', s.sc); if (!el) { el = document.createElement('div'); el.className = 'gqrscr'; s.sc.appendChild(el); } el.innerHTML = `<b>${esc(name)}</b><div class="sub">On the other phone: ≡ → TRACK → SCAN A CODE FROM ANOTHER PHONE</div><div class="q">${fakeQr(7)}</div><div class="sub">${frames} frames · a second or two to read</div><div class="grow"><div class="gbtn">SLOWER</div><div class="gbtn">FASTER</div><div class="gbtn accent">DONE</div></div>`; el.style.display = ''; return el; };
+  const qrOff = s => { for (const c of ['.gqrscr', '.gcam']) { const el = $(c, s.sc); if (el) el.style.display = 'none'; } };
   const recStrip = (s, text) => { let r = $('.grec', s.sc); if (!r) { r = document.createElement('div'); r.className = 'grec'; s.sc.appendChild(r); } r.textContent = text; r.style.display = text ? '' : 'none'; };
   const night = (s, on) => s.sc.classList.toggle('night', on);
 
@@ -348,6 +360,21 @@
           run: async s => { s.movePuck(160, 380); await s.wait(900); s.hud('left', '0.2 mi', 'onto the ridge road', 45); s.movePuck(160, 330); await s.wait(1000); } },
         { c: `Files get in several ways: saved from a plan, recorded, fetched by code, AirDropped or shared to Roadbook, or dropped into its folder (section: Get a GPX in and out).`,
           run: async s => { await s.wait(600); } },
+      ] },
+
+    { group: 'Routing on the phone', id: 'roll-chart-reader', title: 'Read a roll chart on the phone', device: 'phone',
+      blurb: 'The roll chart on screen instead of the map: the same rows the planner prints, sized for the bars, moving along by themselves, with a trip meter you correct with a thumb.',
+      steps: [
+        { c: `Open a track with cues — any roadbook, and one from the planner brings its tulips, symbols and chart settings. ${K('FOLLOW AS ROLL CHART')}.`,
+          run: async s => { chartOff(s); idleMap(s); s.layer('hill', true); await trackSheet(s, 'Copper Ridge', '22 mi · 14 cues · a planner roll chart'); await s.wait(600); await s.tap(s.btn('rollchart')); await s.closeSheet(); s.hideFinger(); chartScreen(s, '1.86', 1); await s.wait(1200); } },
+        { c: `The trip meter is on top, to hundredths, in the chart's units. The row you are coming to has the orange bar, with the one just passed above it; the list moves itself, and the next row comes up a little before you reach it.`,
+          run: async s => { for (const [r, a] of [['1.98', 1], ['2.07', 1], ['2.16', 2], ['2.41', 2]]) { chartScreen(s, r, a); await s.wait(650); } } },
+        { c: `${K('−')} and ${K('+')} nudge the meter by a hundredth, the way you would at a known landmark. Hold the meter to set it to the row at the top: you are standing at that junction.`,
+          run: async s => { await s.tap(s.btn('plus')); chartScreen(s, '2.42', 2); await s.tap(s.btn('plus')); chartScreen(s, '2.43', 2); await s.longPress(s.btn('meter')); chartScreen(s, '3.02', 2); s.hideFinger(); await s.toast('Meter set to row 3', 1100); } },
+        { c: `In the menu: ${K('MAP')} brings the map back and ${K('ROLL CHART')} returns. ${K('ODO: ROUTE')} reads your distance along the track, so it never drifts; ${K('ODO: GPS')} counts what you actually ride, like the bike's trip meter. Off the line, a warning shows under the meter.`,
+          run: async s => { await s.tap($('.gfab', s.sc)); const it = await s.menu([['END', '✕', 'acc'], ['MAP', '▦'], ['ODO: ROUTE', '⤳'], ['SOUND ON', '♪', 'onn'], ['BATTERY SAVER', '▭'], ['TURN LIST', '≡'], ['LOCK SCREEN', '⊡']], 'NAVIGATING'); await s.wait(900); await s.tap(it('ODO: ROUTE')); s.closeMenu(); s.hideFinger(); chartScreen(s, '3.05', 2, { status: 'MI · ODOMETER' }); await s.wait(900); chartScreen(s, '3.11', 2, { status: 'OFF TRACK' }); await s.wait(1100); } },
+        { c: `The small map in the corner shows the line around you, the way ahead up, a dot for each row; tap it to fold it away. A handlebar remote that pairs as a Bluetooth keyboard works the chart: up and down look a row back or ahead, left and right nudge the meter, the centre button sets it. The volume buttons stay the phone's.`,
+          run: async s => { chartScreen(s, '3.14', 2); await s.wait(1400); } },
       ] },
 
     { group: 'Routing on the phone', id: 'off-line', title: 'Off the line', device: 'phone',
@@ -424,6 +451,18 @@
           run: async s => { await s.type($('[data-in]', s.sc), 'KQ7 M2P'); await s.tap(s.btn('fetch')); await s.closeSheet(); s.hideFinger(); await s.toast('Fetching…', 800); } },
         { c: `The roadbook lands in your folder and opens: ${K('FOLLOW')} it, ${K('EDIT CUES')}, or ${K('EDIT ROUTE')} to re-plan it on the phone's own maps. The code dies after 24 hours; the file is yours for good.`,
           run: async s => { await trackSheet(s, 'Madison divide', '64 mi · 9 cues · from the planner'); await s.wait(1400); } },
+      ] },
+    { group: 'Files', id: 'share-code', title: 'Share a route phone to phone, offline', short: true, device: 'phone',
+      blurb: 'A moving QR code one phone shows and the other films: no signal, no pairing, Android and iPhone either way.',
+      steps: [
+        { c: `Open any route — a file, a roadbook, a roll chart, a recording — and ${K('SHARE BY CODE')} (on a planned route or a recording it is under ${K('SHARE…')}).`,
+          run: async s => { qrOff(s); idleMap(s); s.layer('hill', true); await trackSheet(s, 'Madison divide', '64 mi · 9 cues · a roll chart'); await s.wait(500); await s.tap(s.btn('sharecode')); await s.closeSheet(); s.hideFinger(); qrScreen(s, 'Madison divide', 4); } },
+        { c: `The screen turns bright and shows a code that changes several times a second. It carries the line, the stops and mode, every cue and the roll chart.`,
+          run: async s => { for (let i = 0; i < 6; i++) { $('.gqrscr .q', s.sc).innerHTML = fakeQr(11 + i * 7); await s.wait(260); } } },
+        { c: `On the other phone: ${K('≡')} → ${K('TRACK')} → ${K('SCAN A CODE FROM ANOTHER PHONE')}, and point the camera at it. Missed frames don't matter: keep it there and the bar fills.`,
+          run: async s => { qrOff(s); let el = $('.gcam', s.sc); if (!el) { el = document.createElement('div'); el.className = 'gcam'; s.sc.appendChild(el); } el.style.display = ''; for (const n of [0, 1, 2, 3, 4]) { el.innerHTML = `<div class="q">${fakeQr(31 + n * 5)}</div><div class="p"><b>${n ? `Reading… ${n} of 4` : 'Point the camera at the code on the other phone'}</b><i><u style="width:${n * 25}%"></u></i><div class="gbtn">CANCEL</div></div>`; await s.wait(450); } } },
+        { c: `It lands in your folder and opens like any file: ${K('FOLLOW')}, ${K('FOLLOW AS ROLL CHART')}, ${K('EDIT CUES')}. The camera is asked for the first time you scan, and used for nothing else. On the planner, ${K('Phone')} → ${K('Show the code')} does the same from a laptop screen.`,
+          run: async s => { qrOff(s); await trackSheet(s, 'Madison divide', '64 mi · 9 cues · scanned from another phone'); await s.wait(1400); } },
       ] });
 
   // ---- the planner --------------------------------------------------------------------------------------------------
@@ -461,8 +500,8 @@
     return `<div class="pname" data-b="name">${esc(name)}</div><div class="ptools">${t.map(([k, l, on]) => k === '|' ? '<i></i>' : `<span data-b="${k}" class="${on ? '' : 'off'}">${l}</span>`).join('')}</div>`;
   }
   /** a QR-looking pattern for the guide's picture of the moving code (decorative, not a readable code) */
-  function fakeQr() {
-    let r = '', seed = 7; const n = 33, rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  function fakeQr(seed0 = 7) {
+    let r = '', seed = seed0; const n = 33, rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const inF = (x, y) => [[0, 0], [n - 8, 0], [0, n - 8]].some(([a, b]) => x >= a && x < a + 8 && y >= b && y < b + 8);
     const finder = (x, y) => [[0, 0], [n - 7, 0], [0, n - 7]].some(([a, b]) => x >= a && x < a + 7 && y >= b && y < b + 7 && (x === a || x === a + 6 || y === b || y === b + 6 || (x >= a + 2 && x <= a + 4 && y >= b + 2 && y <= b + 4)));
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (inF(x, y) ? finder(x, y) : rnd() < .5) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
