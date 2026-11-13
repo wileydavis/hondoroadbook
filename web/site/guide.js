@@ -157,10 +157,10 @@
       const modes = [['fast', 'Fast'], ['backroads', 'Backroads'], ['ride', 'Ride'], ['dirt', 'Dirt'], ['gravel', 'Gravel']].map(([k, l]) => `<span class="chip${k === mode ? ' on' : ''}" data-mode="${k}" style="--c:${(MODES[k] || ['', '#8a7a5a'])[1]}">${l}</span>`).join('');
       const body = hint ? `<div class="hint"><p><b>Click the map twice</b>: a start and an end. The route follows the mode above.</p><p><b>Drag the line</b> onto any road or trail to pull the route through it.</p><p><b>Click the line</b> to add a cue, inspect the spot, or add a stop.</p></div>`
         : `<div class="stats"><div class="big">${esc(dist)} <span>${esc(time)}</span></div><div class="surf"><i style="width:72%;background:#2b6cb0"></i><i style="width:18%;background:#e7b400"></i><i style="width:10%;background:#8a7a5a"></i></div>${profile ? '<svg class="prof" viewBox="0 0 160 40" preserveAspectRatio="none"><path d="M0 34 L30 30 L60 14 L80 10 L100 22 L130 18 L160 32 V40 H0 Z" fill="#cfc9bb"/><path d="M0 34 L30 30 L60 14 L80 10 L100 22 L130 18 L160 32" fill="none" stroke="#5a5a5a" stroke-width="1.2"/></svg><div class="muted">↑ 2,140 ft · ↓ 1,880 ft · high point 6,320 ft</div>' : ''}${legs ? `<div class="muted">${esc(legs)}</div>` : ''}</div>
-           <div class="cues"><h4>Cues <span>(${cues.length})</span> <em>reset to turns</em></h4>${cues.map(c => `<div class="cue${c.user ? ' user' : ''}" data-cue="${esc(c.id || '')}"><b>${esc(c.g)}</b><span>${esc(c.text)}</span><i>${esc(c.at)}</i></div>`).join('')}</div>
-           <div class="actions"><span class="cta" data-b="gpx">Download GPX</span><span class="cta alt" data-b="phone">Send to phone</span><span class="cta alt" data-b="publish">Publish</span><span class="cta alt" data-b="chart">Roll chart</span><div class="mini"><span data-b="clear">clear</span><span data-b="reverse">reverse</span><span data-b="loop">loop</span><span data-b="open">open GPX</span></div><div class="muted">Name: <u data-b="name">${esc(name)}</u></div></div>`;
+           <div class="gview"><span class="on">Cues</span><span data-b="chart">Roll chart</span></div><div class="cues"><h4>Cues <span>(${cues.length})</span> <em>reset to turns</em></h4>${cues.map(c => `<div class="cue${c.user ? ' user' : ''}" data-cue="${esc(c.id || '')}"><b>${esc(c.g)}</b><span>${esc(c.text)}</span><i>${esc(c.at)}</i></div>`).join('')}</div>
+`;
       const side = $('.pside', this.sc);
-      side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div><div class="in ph" data-in>Find a town, road or trail</div><div class="modes">${modes}</div>${body}`;
+      side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div>${ptools(hint ? 'Roadbook' : name, !hint)}<div class="in ph" data-in>Find a town, road or trail</div><div class="modes">${modes}</div>${body}`;
       return side;
     }
     players(on = {}) {
@@ -455,10 +455,23 @@
     const st = C.settings({ layout, title: 'Copper Ridge' });
     return (chartCache[key] = { st, chart: C.buildRows(line, cues, st, { cum }) });
   }
+  /** the planner's top tools, as the real panel has them */
+  function ptools(name, have) {
+    const t = [['clear', 'New', 1], ['open', 'Open', 1], ['reverse', 'Reverse', have], ['loop', 'Loop', have], ['|'], ['gpx', 'GPX', have], ['phone', 'Phone', have], ['publish', 'Publish', have]];
+    return `<div class="pname" data-b="name">${esc(name)}</div><div class="ptools">${t.map(([k, l, on]) => k === '|' ? '<i></i>' : `<span data-b="${k}" class="${on ? '' : 'off'}">${l}</span>`).join('')}</div>`;
+  }
+  /** a QR-looking pattern for the guide's picture of the moving code (decorative, not a readable code) */
+  function fakeQr() {
+    let r = '', seed = 7; const n = 33, rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const inF = (x, y) => [[0, 0], [n - 8, 0], [0, n - 8]].some(([a, b]) => x >= a && x < a + 8 && y >= b && y < b + 8);
+    const finder = (x, y) => [[0, 0], [n - 7, 0], [0, n - 7]].some(([a, b]) => x >= a && x < a + 7 && y >= b && y < b + 7 && (x === a || x === a + 6 || y === b || y === b + 6 || (x >= a + 2 && x <= a + 4 && y >= b + 2 && y <= b + 4)));
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (inF(x, y) ? finder(x, y) : rnd() < .5) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+    return `<svg viewBox="-2 -2 ${n + 4} ${n + 4}" shape-rendering="crispEdges"><rect x="-2" y="-2" width="${n + 4}" height="${n + 4}" fill="#fff"/>${r}</svg>`;
+  }
   function chartSide(s, layout, edited) {
     const side = $('.pside', s.sc), d = sampleChart(layout, edited), C = RCg();
     const rows = d ? d.chart.rows.slice(0, layout === 'A' ? 5 : 4).map(r => `<div class="gcrow" data-r="${r.n}">${C.rowSvg(r, d.st).svg}${r.auto ? '<i>auto</i>' : ''}</div>`).join('') : '';
-    side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div><div class="gchart"><h4>Roll chart <span>(${d ? d.chart.rows.length : 0} rows)</span> <em>cue list</em></h4><div class="gseg"><span data-l="A" class="${layout === 'A' ? 'on' : ''}">A · Stage-rally scroll</span><span data-l="B" class="${layout === 'B' ? 'on' : ''}">B · Rally-raid roadbook</span></div><div class="gcact"><span class="cta" data-b="export">Export PDF…</span><span class="m">suggest cues</span><span class="m">find junctions</span></div><div class="gcrows ${layout}">${rows}</div></div>`;
+    side.innerHTML = `<div class="ptitle">Roadbook <small>planner</small></div>${ptools('Copper Ridge', true)}<div class="gview"><span>Cues</span><span class="on">Roll chart</span></div><div class="gchart"><h4>Roll chart <span>(${d ? d.chart.rows.length : 0} rows)</span></h4><div class="gseg"><span data-l="A" class="${layout === 'A' ? 'on' : ''}">A · Stage-rally scroll</span><span data-l="B" class="${layout === 'B' ? 'on' : ''}">B · Rally-raid roadbook</span></div><div class="gcact"><span class="cta" data-b="export">Export PDF…</span><span class="m">suggest cues</span><span class="m">find junctions</span></div><div class="gcrows ${layout}">${rows}</div></div>`;
   }
   /** the tulip in the editor, with the arrowhead's handle where the planner puts it */
   function tulipWithHandle(t) {
@@ -530,11 +543,13 @@
       ] },
 
     { group: 'The planner', id: 'send-to-phone', title: 'Send to phone', short: true, device: 'planner',
-      blurb: 'From the desk to the handlebars in six letters.',
+      blurb: 'From the desk to the handlebars: a moving code the phone films, or six letters.',
       steps: [
         { c: `With the route planned and the cues the way you want them, ${K('Send to phone')}.`,
           run: async s => { plannerIdle(s); s.marker('start', 'start', ...P_BOZ); s.marker('pin', 'pin', ...P_ENN); plannerRoute(s, { name: 'Madison divide' }); s.fast || await s.wait(300); await s.tap(s.cursorOver('[data-b="phone"]')); } },
-        { c: `The roadbook is parked under a code for 24 hours. Nothing else about you goes with it: the line, the cues, the name.`,
+        { c: `Two ways. ${K('Show the code')} puts a moving QR code on the screen: on the phone, ${K('≡')} → ${K('TRACK')} → ${K('SCAN A CODE FROM ANOTHER PHONE')} and point it at the screen. Nothing goes through our server, and the phone needs no signal.`,
+          run: async s => { await s.modal('Send to phone', `<p><b>A moving code</b> on this screen, read by the phone's camera. Nothing goes through our server, and the phone needs no signal.</p><div class="grow"><div class="gbtn accent" data-b="qr">Show the code</div></div><p style="margin-top:10px"><b>A six-letter code</b> to type on the phone, here or later.</p><div class="grow"><div class="gbtn" data-b="park">Get a code</div></div>`); await s.wait(900); await s.tap(s.btn('qr')); s.hideFinger(); await s.modal('Copper Ridge', `<div class="gqr">${fakeQr()}</div><div class="sub">4 frames · a second or two to read</div>`); await s.wait(1600); } },
+        { c: `${K('Get a code')} instead parks the roadbook under six letters for 24 hours, for when the phone isn't beside you. Nothing else about you goes with it: the line, the cues, the name.`,
           run: async s => { await s.modal('Send to phone', `<div class="code">KQ7 M2P</div><ol><li>In Roadbook on the phone: <b>≡ → TRACK → FETCH CODE</b>.</li><li>Type the code. The roadbook lands in your folder and opens for editing or following.</li></ol><div class="sub">The code works for 24 hours, then the file is deleted. 9 cues · 64 mi.</div>`); s.hideFinger(); await s.wait(1600); } },
         { c: `On the phone: ${K('≡')} → ${K('TRACK')} → ${K('FETCH CODE FROM THE PLANNER')}, type it, and the roadbook opens (section: Fetch a code). ${K('Download GPX')} is the same file by hand, for a cable or a cloud folder.`,
           run: async s => { await s.wait(700); } },

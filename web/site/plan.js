@@ -487,9 +487,10 @@ function renderAll() { renderPoints(); renderCues(); renderStats(); saveHash(); 
 function renderStats() {
   const c = lineCoords();
   const have = !!c;
-  $("#btnLoop").textContent = isLoop() ? "open loop" : "loop";
+  $("#btnLoop span").textContent = isLoop() ? "Unloop" : "Loop"; $("#btnLoop").classList.toggle("on", isLoop());
   $("#btnLoop").title = isLoop() ? "Make the last stop the finish again" : "Finish where you started";
-  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have || S.chartOn; $("#chartSec").hidden = !have || !S.chartOn; $("#actions").hidden = !have;
+  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have || S.chartOn; $("#chartSec").hidden = !have || !S.chartOn; $("#viewSeg").hidden = !have; $("#btnChart").classList.toggle("on", !!S.chartOn); $("#btnChartClose").classList.toggle("on", !S.chartOn);
+  for (const el of document.querySelectorAll('#toolbar [data-needs="route"]')) { el.disabled = !have; el.classList.toggle("off", !have); }
   if (!have) { $("#trackSwap").hidden = true; return; }
   const len = S.route ? S.route.length : lineLength(c);
   $("#dist").textContent = fmtDist(len);

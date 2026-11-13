@@ -14,10 +14,23 @@
 <div id="map"></div>
 
 <aside id="side">
+  <div class="side-top">
   <header class="side-head">
     <a class="brand" href="/" title="hondoroadbook.com"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>planner</small></span></a>
     <button id="btnSide" class="icon" title="Hide panel" aria-label="Hide panel">‹</button>
   </header>
+  <div class="titlebar"><input id="name" value="Roadbook" maxlength="80" aria-label="Roadbook name" title="The roadbook's name: on the phone, in the file and on the chart" spellcheck="false"></div>
+  <nav id="toolbar" class="toolbar" aria-label="Roadbook">
+    <button id="btnClear" class="tool" title="Start over: clear the route, cues and chart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M12 11v6M9 14h6"/></svg><span>New</span></button>
+    <label class="tool" for="file" title="Open a GPX file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/><path d="M12 17v-6M9 14l3-3 3 3"/></svg><span>Open</span></label>
+    <button id="btnReverse" class="tool" title="Ride it the other way" data-needs="route"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v13M4 14l3 3 3-3"/><path d="M17 20V7M14 10l3-3 3 3"/></svg><span>Reverse</span></button>
+    <button id="btnLoop" class="tool" title="Finish where you started" data-needs="route"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-3-6.2"/><path d="M18 2v4h-4"/></svg><span>Loop</span></button>
+    <span class="tsep"></span>
+    <button id="btnGpx" class="tool" title="Download the roadbook as a GPX file (cues and roll chart included)" data-needs="route"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M8 11l4 4 4-4"/><path d="M5 19h14"/></svg><span>GPX</span></button>
+    <button id="btnPhone" class="tool" title="Send to phone: a moving code for the camera, or a six-letter code" data-needs="route"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg><span>Phone</span></button>
+    <button id="btnPublish" class="tool" title="Publish to the library, for anyone to ride" data-needs="route"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/></svg><span>Publish</span></button>
+  </nav>
+  </div>
 
   <div class="search"><input id="q" type="search" placeholder="Find a town, road or trail — or paste a coordinate" autocomplete="off"><div id="hits" class="hits" hidden></div></div>
 
@@ -40,13 +53,15 @@
     <div id="legs" class="legs"></div>
   </section>
 
+  <div id="viewSeg" class="viewseg" role="tablist" aria-label="Show" hidden><button id="btnChartClose" role="tab">Cues</button><button id="btnChart" role="tab" title="Print a rally roll chart from this route">Roll chart</button></div>
+
   <section id="cuesSec" hidden>
     <h3>Cues <span id="cueCount" class="muted"></span> <button id="btnAutoCues" class="mini" title="Replace the cues with the router's turns">reset to turns</button></h3>
     <ol id="cues" class="cues"></ol>
   </section>
 
   <section id="chartSec" hidden>
-    <h3>Roll chart <span id="chartCount" class="muted"></span> <button id="btnChartClose" class="mini" title="Back to the cue list">cue list</button></h3>
+    <h3>Roll chart <span id="chartCount" class="muted"></span></h3>
     <div class="seg" id="chartLayout" role="radiogroup" aria-label="Chart layout"><button data-l="A" title="NASA Rally Sport RallyMoto: a 2.25 in roll, miles">A · Stage-rally scroll</button><button data-l="B" title="FIA / FIM cross-country: 148 mm wide, kilometres">B · Rally-raid roadbook</button></div>
     <div class="actions chart-actions"><button id="btnExport" class="cta">Export PDF…</button><button id="btnSuggest" class="mini" title="Add turns found from the track's shape">suggest cues</button><button id="btnJunctions" class="mini" title="Ask the map for the other roads at each junction">find junctions</button></div>
     <p class="muted small chart-hint">Click a row to edit its tulip, words and symbols. Rows marked <i>auto</i> are still exactly as generated.</p>
@@ -54,19 +69,6 @@
     <div id="chartRows" class="crows"></div>
   </section>
 
-  <section id="actions" hidden>
-    <div class="actions">
-      <button id="btnGpx" class="cta">Download GPX</button>
-      <button id="btnPhone" class="cta alt">Send to phone</button>
-      <button id="btnPublish" class="cta alt">Publish</button>
-      <button id="btnChart" class="cta alt" title="Print a rally roll chart from this route">Roll chart</button>
-      <button id="btnClear" class="mini">clear</button>
-      <button id="btnReverse" class="mini">reverse</button>
-      <button id="btnLoop" class="mini" title="Finish where you started">loop</button>
-      <label class="mini link" for="file">open GPX</label>
-    </div>
-    <p class="muted small">Name: <input id="name" value="Roadbook" maxlength="80"></p>
-  </section>
 
   <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it, or park it for your phone (24 hours); a track you are working on is kept in this browser only, so a reload does not lose it. Your browser fetches elevation from AWS Terrain Tiles, imagery from USGS and EOX, land ownership from the BLM, and nearby articles from Wikipedia directly. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a> · <a id="fb" href="mailto:wiley@machinenusa.com?subject=Planner%20feedback">Feedback</a></footer>
 </aside>
