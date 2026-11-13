@@ -73,9 +73,14 @@ jobs:
           </dict></plist>
           EOF
           set -o pipefail
+          # Apple's reasons for a refusal go up as annotations too, so they can be read without the log
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" -exportOptionsPlist "$RUNNER_TEMP/export.plist" \
             -exportPath "$RUNNER_TEMP/export" -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
-            -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" | tail -n 100
+            -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" > "$RUNNER_TEMP/export.log" 2>&1 || {
+              tail -n 100 "$RUNNER_TEMP/export.log"
+              grep -iE "error|ITMS-|invalid|refused|exceed|too large|asset validation" "$RUNNER_TEMP/export.log" | grep -v "^\s*$" | head -12 | while read -r l; do echo "::error::${l:0:900}"; done
+              exit 70; }
+          tail -n 100 "$RUNNER_TEMP/export.log"
           echo "Uploaded build $(git rev-list --count HEAD) of $(git rev-parse --short HEAD). ${{ inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
       - name: Forget the key
         if: always()
