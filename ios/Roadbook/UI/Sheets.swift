@@ -4,6 +4,7 @@ import UIKit
 import FoldCore
 import UniformTypeIdentifiers
 import AVFoundation
+import ZIPFoundation
 
 /// Routes a Sheet value to its view.
 struct SheetHost: View {
@@ -29,6 +30,7 @@ struct SheetHost: View {
         case .trackLoaded(let tr, let url): TrackLoadedSheet(track: tr, url: url)
         case .shareCode(let gpx): ShareCodeSheet(gpx: gpx)
         case .scanCode: ScanCodeSheet()
+        case .voice: VoiceSheet()
         }
     }
 }
@@ -152,6 +154,7 @@ struct MapsSheet: View {
                             Button(model.prefs.places ? "PLACES: ON" : "PLACES: OFF") { model.togglePlaces(); tick += 1 }.buttonStyle(BigButton())
                         }
                         Text("Places: fuel, camping, water, beds, repair and food from the map packs, drawn as you zoom in. Tap one to route to it.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                        Button("VOICE…") { model.sheet = .voice }.buttonStyle(BigButton())
                         let n = marks.marks.count
                         HStack {
                             Text("Marks: \(n)")
@@ -174,7 +177,7 @@ struct MapsSheet: View {
                             Button("TERMS") { model.openURL("https://hondoroadbook.com/terms.html") }.buttonStyle(BigButton())
                             Button("PRIVACY") { model.openURL("https://hondoroadbook.com/privacy.html") }.buttonStyle(BigButton())
                         }
-                        Text("Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. Nothing about where you go leaves the phone.").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
+                        Text("Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs or the natural voice, fetching or publishing a roadbook, browsing the library. Nothing about where you go leaves the phone.").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
                     }
                 }
                 .id(tick)
@@ -192,6 +195,90 @@ struct MapsSheet: View {
             .alert("Delete all \(model.marks.marks.count) marks from this phone? There is no undo.", isPresented: $confirmBurn) {
                 Button("Burn", role: .destructive) { model.marks.burn(); model.drawMarks(); model.showToast("All marks deleted") }
                 Button("Cancel", role: .cancel) {}
+            }
+        }
+    }
+}
+
+// ---- VOICE: who reads the cues --------------------------------------------------------------------------------------
+
+struct VoiceSheet: View {
+    @EnvironmentObject var model: AppModel
+    @State private var tick = 0
+    @State private var busy: String?
+    @State private var downloader: Downloader?
+    @State private var confirmRemove = false
+    private let sample = "In half a mile, left onto US-287. Then cattle guard, caution."
+    private var sp: Speech { Speech.shared }
+
+    var body: some View {
+        SheetFrame(title: "Voice") {
+            List {
+                Section("Natural voice") {
+                    if NaturalVoice.installed {
+                        Text("Prepared ahead of each cue; if a phrase is not ready in time, the iPhone voice below says it.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                        ForEach(NaturalVoice.speakers, id: \.0) { s in
+                            row(s.1, on: sp.naturalSid == s.0) { sp.useNatural(s.0) }
+                        }
+                        Button("REMOVE NATURAL VOICE") { confirmRemove = true }.buttonStyle(BigButton(compact: true))
+                    } else if let b = busy {
+                        HStack { ProgressView(); Text(b).padding(.leading, 8); Spacer(); Button("CANCEL") { downloader?.cancel() }.buttonStyle(BigButton(compact: true)) }
+                    } else {
+                        Text("Kokoro, a voice much closer to a person: a one-time download of about \(NaturalVoice.sizeMB) MB, kept on this phone and run offline. Nothing is sent.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                        Button("DOWNLOAD (\(NaturalVoice.sizeMB) MB)") { download() }.buttonStyle(BigButton(accent: true))
+                    }
+                }
+                Section("iPhone voice") {
+                    row("Automatic (the best installed)", on: sp.naturalSid < 0 && sp.systemVoiceId == nil) { sp.useSystem(nil) }
+                    ForEach(Speech.systemVoices, id: \.identifier) { v in
+                        row(v.name + " · " + v.language + (v.quality == .premium ? " · Premium" : v.quality == .enhanced ? " · Enhanced" : ""), on: sp.naturalSid < 0 && sp.systemVoiceId == v.identifier) { sp.useSystem(v.identifier) }
+                    }
+                    Text("Better iPhone voices are free: Settings → Accessibility → Spoken Content → Voices → English, then download a Premium or Enhanced voice (Zoe, Ava, Evan, Nathan…). It appears here once installed.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                }
+                Section {
+                    Button("TEST") { sp.test(sample) }.buttonStyle(BigButton())
+                    Text("Cues are read the way people say them: \"US-287\" as \"U S two eighty-seven\", a roll chart's capitals as words.").font(.system(size: 13)).foregroundStyle(Theme.sInkSoft)
+                    Text("Kokoro-82M · Apache-2.0 · hexgrad").font(.system(size: 12)).foregroundStyle(Theme.sInkSoft)
+                }
+            }
+            .id(tick)
+        }
+        .alert("Remove the natural voice (\(NaturalVoice.sizeMB) MB) from this phone?", isPresented: $confirmRemove) {
+            Button("Remove", role: .destructive) { sp.useSystem(sp.systemVoiceId); try? FileManager.default.removeItem(at: NaturalVoice.dir); tick += 1 }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func row(_ label: String, on: Bool, pick: @escaping () -> Void) -> some View {
+        Button { pick(); tick += 1 } label: {
+            HStack { Text(label).font(.system(size: 16)).foregroundStyle(Theme.sInk); Spacer(); if on { Image(systemName: "checkmark").foregroundStyle(Theme.sAccent) } }
+        }
+    }
+
+    private func download() {
+        let d = Downloader(); downloader = d; busy = "Starting…"
+        let p = CatalogPack(id: NaturalVoice.pack, name: "Natural voice", region: "Voice", group: "", kind: "voice", url: NaturalVoice.url, bytes: NaturalVoice.bytes, built: "v1", notes: "")
+        Task {
+            do {
+                let zip = try await d.download(p) { m in busy = m }
+                busy = "Unpacking…"
+                let dir = NaturalVoice.dir
+                try await Task.detached {
+                    let fm = FileManager.default
+                    let tmp = dir.deletingLastPathComponent().appendingPathComponent(NaturalVoice.pack + ".tmp", isDirectory: true)
+                    try? fm.removeItem(at: tmp); try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+                    try fm.unzipItem(at: zip, to: tmp)
+                    guard fm.fileExists(atPath: tmp.appendingPathComponent("model.int8.onnx").path) else { throw Fail("The voice pack is incomplete") }
+                    try NaturalVoice.pack.write(to: tmp.appendingPathComponent("installed"), atomically: true, encoding: .utf8)
+                    try? fm.removeItem(at: dir); try fm.moveItem(at: tmp, to: dir); try? fm.removeItem(at: zip)
+                    var u = dir.deletingLastPathComponent(); var rv = URLResourceValues(); rv.isExcludedFromBackup = true; try? u.setResourceValues(rv)
+                }.value
+                busy = nil; sp.useNatural(NaturalVoice.speakers[0].0); tick += 1
+                model.showToast("Natural voice installed")
+            } catch is CancellationError {
+                busy = nil; model.showToast("Paused — download again to resume")
+            } catch {
+                busy = nil; model.showToast("Download failed: " + error.localizedDescription, 6)
             }
         }
     }

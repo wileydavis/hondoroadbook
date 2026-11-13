@@ -40,6 +40,10 @@ jobs:
           miss=""; for v in APPLE_TEAM_ID:TEAM ASC_KEY_ID:KID ASC_ISSUER_ID:ISS ASC_KEY_P8:P8; do n=${v#*:}; [ -n "${!n}" ] || miss="$miss ${v%%:*}"; done
           [ -z "$miss" ] || { echo "::error::repository secrets missing or empty:$miss (Settings → Secrets and variables → Actions → Repository secrets)"; exit 1; }
           mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
+      - uses: actions/cache@v4
+        with: { path: ios/Vendor, key: "sherpa-ios-${{ hashFiles('ios/fetch-vendor.sh') }}" }
+      - name: The natural voice's engine (sherpa-onnx, ONNX Runtime)
+        run: ios/fetch-vendor.sh
       - name: The Xcode project
         run: brew install xcodegen && cd ios && xcodegen generate
       - name: Archive

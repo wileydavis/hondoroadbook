@@ -7,10 +7,13 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 
 /**
  * The voice that ships inside Roadbook: a Piper VITS voice (en_US lessac, int8) run by sherpa-onnx,
@@ -19,17 +22,43 @@ import java.util.concurrent.Executors
  * Phrases are synthesized ahead of time ([prepare], called as soon as a cue becomes the next one)
  * and cached as PCM, so [say] at the window opening starts in milliseconds. Audio goes out as
  * navigation guidance, the same stream as the pips, so a helmet headset gets it.
+ *
+ * The natural voice (Kokoro, a download: [Voices]) runs beside it when chosen. It is slower to synthesize, so it
+ * works on its own thread: a cue it has prepared plays in the natural voice; one it has not gets [WAIT_MS] to be
+ * synthesized, and the built-in voice says it if that is not enough. The ride never waits on the bigger model.
  */
 class PiperEngine(private val ctx: Context) : SpeechEngine {
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "piper").apply { priority = Thread.NORM_PRIORITY - 1 } }
     @Volatile override var ready = false; private set
+    private val natWorker = Executors.newSingleThreadExecutor { r -> Thread(r, "kokoro").apply { priority = Thread.NORM_PRIORITY - 1 } }
     private var tts: OfflineTts? = null
     private var rate = 16000
-    private val cache = object : LinkedHashMap<String, FloatArray>(16, 0.75f, true) { override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 12 }
+    @Volatile private var nat: OfflineTts? = null
+    @Volatile private var natSid = -1
+    private class Pcm(val samples: FloatArray, val rate: Int)
+    private val cache = object : LinkedHashMap<String, Pcm>(16, 0.75f, true) { override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pcm>?) = size > 16 }
     @Volatile private var playing: AudioTrack? = null
     @Volatile private var generation = 0   // bumped by say() and stop(); queued synthesis checks it before playing
 
-    init { worker.execute { load() } }
+    init { worker.execute { load() }; useVoice(Voices.chosen(ctx)) }
+
+    /** The natural voice's speaker, or -1 for the built-in voice only. Loads or frees the model off the ride's threads. */
+    fun useVoice(sid: Int) {
+        natWorker.execute {
+            if (sid < 0 || !Voices.installed(ctx)) { nat?.let { n -> nat = null; natSid = -1; try { n.release() } catch (_: Throwable) {} }; return@execute }
+            if (nat == null) nat = loadNatural()
+            natSid = if (nat != null) sid else -1
+            synchronized(cache) { cache.keys.removeAll { it.startsWith("k") } }
+        }
+    }
+    val natural: Boolean get() = nat != null && natSid >= 0
+
+    private fun loadNatural(): OfflineTts? = try {
+        val d = Voices.dir(ctx)
+        val k = OfflineTtsKokoroModelConfig(model = File(d, "model.int8.onnx").path, voices = File(d, "voices.bin").path, tokens = File(d, "tokens.txt").path,
+            dataDir = File(d, "espeak-ng-data").path, lexicon = File(d, "lexicon-us-en.txt").path, lengthScale = 1.0f)
+        OfflineTts(null, OfflineTtsConfig(model = OfflineTtsModelConfig(kokoro = k, numThreads = 2, provider = "cpu")))
+    } catch (e: Throwable) { android.util.Log.w("Roadbook", "natural voice unavailable: $e"); null }
 
     private fun load() {
         try {
@@ -52,24 +81,52 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         to.mkdirs(); for (k in kids) copyAssets("$path/$k", File(to, k))
     }
 
-    private fun synth(text: String): FloatArray? {
-        synchronized(cache) { cache[text]?.let { return it } }
+    private fun synth(text: String): Pcm? {
+        synchronized(cache) { cache["p$text"]?.let { return it } }
         val t = tts ?: return null
         val a = try { t.generate(text, 0, 1.0f) } catch (_: Throwable) { return null }
-        val s = a.samples
-        synchronized(cache) { cache[text] = s }
-        return s
+        val p = Pcm(a.samples, rate)
+        synchronized(cache) { cache["p$text"] = p }
+        return p
+    }
+    /** natural voice: runs on [natWorker] only */
+    private fun synthNatural(text: String): Pcm? {
+        val sid = natSid; val key = "k$sid|$text"
+        synchronized(cache) { cache[key]?.let { return it } }
+        val t = nat ?: return null
+        if (sid < 0) return null
+        val a = try { t.generate(text, sid, 1.0f) } catch (_: Throwable) { return null }
+        val p = Pcm(a.samples, a.sampleRate)
+        synchronized(cache) { cache[key] = p }
+        return p
+    }
+    private fun cachedNatural(text: String): Pcm? = synchronized(cache) { cache["k$natSid|$text"] }
+
+    override fun prepare(text: String) {
+        if (natural) natWorker.execute { synthNatural(text) }
+        if (ready) worker.execute { synth(text) }
     }
 
-    override fun prepare(text: String) { if (ready) worker.execute { synth(text) } }
-
-    override fun say(text: String) {
-        if (!ready) return
+    /** The chosen voice saying [text] for the VOICE screen's TEST: waits for the natural voice however long it takes. */
+    fun test(text: String) {
         stopPlayback()
         val gen = ++generation
+        (if (natural) natWorker else worker).execute {
+            val pcm = (if (natural) synthNatural(text) else null) ?: synth(text) ?: return@execute
+            synchronized(playLock) { if (gen != generation) return@execute; play(pcm) }
+        }
+    }
+
+    override fun say(text: String) {
+        if (!ready && !natural) return
+        stopPlayback()
+        val gen = ++generation
+        // the natural voice if it has this phrase, or can make it in time; the built-in voice otherwise
+        val natFuture: Future<Pcm?>? = if (natural && cachedNatural(text) == null) natWorker.submit<Pcm?> { synthNatural(text) } else null
         worker.execute {
             if (gen != generation) return@execute                 // stale before it was even synthesised
-            val pcm = synth(text) ?: return@execute
+            val pcm = (if (natural) cachedNatural(text) ?: try { natFuture?.get(WAIT_MS, TimeUnit.MILLISECONDS) } catch (_: Throwable) { null } else null)
+                ?: synth(text) ?: return@execute
             // a stop() or a newer say() since this was queued: drop it rather than talk over the rider. The check
             // and the start of playback sit under the same lock stop() takes, so once stop() returns nothing starts.
             synchronized(playLock) { if (gen != generation) return@execute; play(pcm) }
@@ -77,7 +134,8 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
     }
     private val playLock = Any()
 
-    private fun play(samples: FloatArray) {
+    private fun play(p: Pcm) {
+        val samples = p.samples; val rate = p.rate
         try {
             val pcm = ShortArray(samples.size) { (samples[it].coerceIn(-1f, 1f) * 32767f * 0.9f).toInt().toShort() }
             val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
@@ -98,7 +156,11 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
     override fun stop() { generation++; synchronized(playLock) { stopPlayback() } }
     private fun stopPlayback() { playing?.let { t -> playing = null; try { t.stop(); t.release() } catch (_: Throwable) {} } }
 
-    override fun shutdown() { stop(); worker.execute { try { tts?.release() } catch (_: Throwable) {}; tts = null; ready = false } }
+    override fun shutdown() {
+        stop()
+        worker.execute { try { tts?.release() } catch (_: Throwable) {}; tts = null; ready = false }
+        natWorker.execute { try { nat?.release() } catch (_: Throwable) {}; nat = null; natSid = -1 }
+    }
 
-    companion object { const val VERSION = "lessac-low-int8-1" }
+    companion object { const val VERSION = "lessac-low-int8-1"; const val WAIT_MS = 1200L }
 }

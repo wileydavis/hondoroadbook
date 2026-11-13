@@ -1,5 +1,5 @@
 # Roadbook for iOS — XcodeGen project description. On a Mac: `brew install xcodegen && xcodegen generate`,
-# then open Roadbook.xcodeproj. The Kotlin engine (../core) is built into FoldCore.framework by a run-script
+# then open Roadbook.xcodeproj. Run ./fetch-vendor.sh once first (the natural voice's engine). The Kotlin engine (../core) is built into FoldCore.framework by a run-script
 # phase on every build, so Xcode needs a JDK 17 on the PATH (see README.md).
 name: Roadbook
 options:
@@ -62,6 +62,12 @@ targets:
     dependencies:
       - package: MapLibre
       - package: ZIPFoundation
+      # the natural voice (Kokoro on sherpa-onnx): static libraries, linked in, not embedded. ./fetch-vendor.sh first.
+      - framework: Vendor/sherpa-onnx.xcframework
+        embed: false
+      - framework: Vendor/onnxruntime.xcframework
+        embed: false
+      - sdk: CoreML.framework
       - target: RoadbookWidget
         embed: true
     settings:
@@ -75,7 +81,9 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         # FoldCore.framework (static) is built by the script phase below into this directory
         FRAMEWORK_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../core/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
-        OTHER_LDFLAGS: "$(inherited) -framework FoldCore"
+        OTHER_LDFLAGS: "$(inherited) -framework FoldCore -lc++"
+        SWIFT_OBJC_BRIDGING_HEADER: Roadbook/Core/Roadbook-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Vendor/sherpa-onnx.xcframework/ios-arm64/Headers"
         SWIFT_OBJC_INTEROP_MODE: objc
     preBuildScripts:
       - name: Build FoldCore (Kotlin Multiplatform)

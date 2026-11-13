@@ -18,3 +18,5 @@ node_modules/
 .wrangler/
 dist/*.jar
 __pycache__/
+# the natural voice's engine, fetched by ios/fetch-vendor.sh
+ios/Vendor/
