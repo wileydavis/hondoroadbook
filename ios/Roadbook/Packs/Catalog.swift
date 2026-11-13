@@ -4,7 +4,7 @@ import Foundation
 /// the rider presses DOWNLOAD. catalog.json: { "packs": [ { id, name, region, group, kind, url, bytes, built, bbox, notes } ] }
 struct CatalogPack: Identifiable, Hashable {
     let id: String, name: String, region: String, group: String, kind: String, url: String, bytes: Int64, built: String, notes: String
-    var kindLabel: String { switch kind { case "roads": return "Roads"; case "terrain": return "Terrain"; case "imagery": return "Imagery"; default: return kind.capitalizedFirst } }
+    var kindLabel: String { switch kind { case "roads": return "Roads"; case "terrain": return "Terrain"; case "imagery": return "Imagery"; case "names": return "Place names"; default: return kind.capitalizedFirst } }
     var blurb: String { switch kind { case "roads": return "roads, trails, routing, address search"; case "terrain": return "hillshade and contours under the roads"; case "imagery": return "aerial photos"; default: return "" } }
 }
 

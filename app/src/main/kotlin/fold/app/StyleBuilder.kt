@@ -20,7 +20,7 @@ object StyleBuilder {
      * the sky; a bright map out-shines that), wide dark roads, big labels, nothing else drawn (no hillshade either).
      */
     fun build(ctx: Context, all: List<Pack>, flavor: String): String {
-        val packs = all.filter { !it.isTerrain }
+        val packs = all.filter { it.isRoads }
         val terrain = if (flavor == "sun") emptyList() else all.filter { it.isTerrain }
         val night = flavor == "dark"
         val template = layers(ctx, flavor)

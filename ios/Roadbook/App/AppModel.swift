@@ -242,7 +242,7 @@ final class AppModel: ObservableObject, MapEvents {
             DispatchQueue.main.async {
                 self.hasTerrain = self.packs.packs.contains { $0.isTerrain }
                 self.loadStyle()
-                if let p = self.packs.packs.first, self.lastFix == nil { self.fitPack(p) }
+                if let p = self.packs.packs.first(where: { !$0.isNames }), self.lastFix == nil { self.fitPack(p) }
                 else if self.packs.packs.isEmpty { self.noMaps = true; self.showToast("No maps yet — tap MAPS → DOWNLOAD") }
             }
             // warm the routers in the background so the first route is instant
@@ -254,8 +254,8 @@ final class AppModel: ObservableObject, MapEvents {
 
     /// Packs worth drawing for the current camera: those in view, nearest first, at most six (style size matters).
     func visiblePacks() -> [Pack] {
-        let all = packs.packs
-        let roads = all.filter { !$0.isTerrain }, terrain = all.filter { $0.isTerrain }
+        let all = packs.packs.filter { !$0.isNames }      // names packs are searched, never drawn
+        let roads = all.filter { $0.isRoads }, terrain = all.filter { $0.isTerrain }
         if all.count <= 6 { return all }
         let b = map.visibleBounds; let c = map.center
         func pick(_ list: [Pack]) -> [Pack] {
@@ -267,7 +267,7 @@ final class AppModel: ObservableObject, MapEvents {
     }
 
     private func refreshVisiblePacks() {
-        if packs.packs.count <= 6 { return }
+        if packs.packs.filter({ !$0.isNames }).count <= 6 { return }
         let v = visiblePacks().filter { prefs.terrain || !$0.isTerrain }
         if v.map({ $0.dir }) != map.styledPacks.map({ $0.dir }) { loadStyle() }
     }
@@ -297,7 +297,7 @@ final class AppModel: ObservableObject, MapEvents {
     func onPacksChanged() {
         hasTerrain = packs.packs.contains { $0.isTerrain }; noMaps = packs.packs.isEmpty
         loadStyle()
-        if lastFix == nil, let p = packs.packs.last { fitPack(p) }
+        if lastFix == nil, let p = packs.packs.last(where: { !$0.isNames }) { fitPack(p) }
     }
 
     func fitPack(_ p: Pack) {
@@ -313,7 +313,7 @@ final class AppModel: ObservableObject, MapEvents {
     /// The styled packs' places onto the map (parsed on the worker the first time a pack is seen).
     func drawPlaces() {
         if !prefs.places { map.clear("places-src"); placesFor = []; return }
-        let packs = map.styledPacks.filter { !$0.isTerrain }
+        let packs = map.styledPacks.filter { $0.isRoads }
         if packs == placesFor { return }
         placesFor = packs
         worker.async { [self] in

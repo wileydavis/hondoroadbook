@@ -1,6 +1,7 @@
 package fold.core
 
-/** Manifest of a .mappack: a stored (uncompressed) zip holding pack.txt, tiles.pmtiles, graph.bin, search.tsv. */
+/** Manifest of a .mappack: a stored (uncompressed) zip holding pack.txt, tiles.pmtiles, graph.bin, search.tsv (kind roads);
+ *  pack.txt and terrain.pmtiles (terrain); pack.txt and search.tsv (names: tools/names_pack.py). */
 class PackManifest(val name: String, val format: Int, val minLat: Double, val minLon: Double, val maxLat: Double, val maxLon: Double, val created: String, val notes: String, val kind: String = "roads") {
     fun serialize(): String = buildString {
         append("name=").append(name).append('\n')
@@ -13,8 +14,12 @@ class PackManifest(val name: String, val format: Int, val minLat: Double, val mi
 
     fun contains(lat: Double, lon: Double) = lat in minLat..maxLat && lon in minLon..maxLon
     val isTerrain: Boolean get() = kind == "terrain"
+    /** place names only (GNIS and OpenStreetMap's passes, springs, peaks…): a search index beside a region's map, no map */
+    val isNames: Boolean get() = kind == "names"
+    /** the map, the routing graph and the town/street index */
+    val isRoads: Boolean get() = !isTerrain && !isNames
     /** Files a pack of this kind must carry. */
-    val required: List<String> get() = if (isTerrain) listOf(FILE, TERRAIN) else REQUIRED
+    val required: List<String> get() = when { isTerrain -> listOf(FILE, TERRAIN); isNames -> listOf(FILE, SEARCH); else -> REQUIRED }
 
     companion object {
         const val FILE = "pack.txt"

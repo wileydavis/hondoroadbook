@@ -16,6 +16,9 @@ import java.util.zip.ZipFile
 /** One installed region: tiles for the map, a graph for routing, an index for search. */
 class Pack(val dir: File, val manifest: PackManifest) {
     val isTerrain get() = manifest.isTerrain
+    /** place names only: searched, never drawn or routed */
+    val isNames get() = manifest.isNames
+    val isRoads get() = manifest.isRoads
     val tiles: File get() = File(dir, if (isTerrain) PackManifest.TERRAIN else PackManifest.TILES)
     /** roads.pmtiles, when the pack was built with it */
     val overview: File? get() = File(dir, PackManifest.OVERVIEW).takeIf { it.exists() }
@@ -34,7 +37,7 @@ class Pack(val dir: File, val manifest: PackManifest) {
     val sizeBytes: Long get() = dir.listFiles()?.sumOf { it.length() } ?: 0L
 
     @Synchronized fun loadRouter(): Router? {
-        if (isTerrain) return null
+        if (!isRoads) return null
         router?.let { return it }
         return try { Router(Graph.open(File(dir, PackManifest.GRAPH).path)).also { router = it } } catch (e: Throwable) { android.util.Log.w("Fold", "graph open failed for $name", e); null }
     }
@@ -59,7 +62,7 @@ class PackStore(private val ctx: Context) {
         val cur = packs
         multi?.let { if (multiFor === cur) return it }
         val errs = ArrayList<String>()
-        val routers = cur.filter { !it.isTerrain }.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-download or re-import that pack"); null } }
+        val routers = cur.filter { it.isRoads }.mapNotNull { p -> p.loadRouter() ?: run { errs.add("Routing data for ${p.name} could not be opened — re-download or re-import that pack"); null } }
         routerErrors = errs
         return MultiRouter(routers).also { multi = it; multiFor = cur }
     }
@@ -103,7 +106,7 @@ class PackStore(private val ctx: Context) {
     }
 
     /** Opens the routing graph once to prove the file is sound (header, sizes, sample edges); cheap, mmap only. */
-    fun validate(p: Pack): String? = if (p.isTerrain) null else try { Graph.open(File(p.dir, PackManifest.GRAPH).path); null } catch (e: Throwable) { e.message ?: "unreadable graph" }
+    fun validate(p: Pack): String? = if (!p.isRoads) null else try { Graph.open(File(p.dir, PackManifest.GRAPH).path); null } catch (e: Throwable) { e.message ?: "unreadable graph" }
 
     /** Copies and unpacks a .mappack picked by the user. Returns the new pack or throws with a readable message. */
     fun import(uri: Uri, progress: (String) -> Unit): Pack {
@@ -132,7 +135,7 @@ class PackStore(private val ctx: Context) {
                 val dir = File(root, safe)
                 val replacing = dir.exists()
                 val staging = File(root, ".staging-$safe").apply { deleteRecursively(); mkdirs() }
-                val wanted = manifest.required + listOfNotNull(PackManifest.OVERVIEW.takeIf { zip.getEntry(it) != null && !manifest.isTerrain }, PackManifest.POIS.takeIf { zip.getEntry(it) != null && !manifest.isTerrain })
+                val wanted = manifest.required + listOfNotNull(PackManifest.OVERVIEW.takeIf { zip.getEntry(it) != null && manifest.isRoads }, PackManifest.POIS.takeIf { zip.getEntry(it) != null && manifest.isRoads })
                 val total = wanted.sumOf { zip.getEntry(it).size.coerceAtLeast(0L) }
                 val free = root.usableSpace
                 if (free < total + (64L shl 20)) throw IllegalStateException("Not enough space: pack needs ${total / (1024 * 1024)} MB, phone has ${free / (1024 * 1024)} MB free")
@@ -151,7 +154,7 @@ class PackStore(private val ctx: Context) {
                     } }
                 }
                 // the new pack must open before it is allowed to replace anything
-                if (!manifest.isTerrain) { try { Graph.open(File(staging, PackManifest.GRAPH).path) } catch (e: Throwable) { throw IllegalStateException("This pack's routing data is damaged (${e.message}) — it was not installed") } }
+                if (manifest.isRoads) { try { Graph.open(File(staging, PackManifest.GRAPH).path) } catch (e: Throwable) { throw IllegalStateException("This pack's routing data is damaged (${e.message}) — it was not installed") } }
                 if (replacing) {
                     // drop any open handles on the old files, then swap: the old pack is kept until the new one is in place
                     packs.firstOrNull { it.dir == dir }?.let { it.router = null }
@@ -174,6 +177,8 @@ class PackStore(private val ctx: Context) {
     fun delete(p: Pack) { p.dir.deleteRecursively(); scan() }
 
     /** The road pack covering a point (terrain packs draw but carry no roads). */
-    fun packFor(lat: Double, lon: Double): Pack? = packs.firstOrNull { !it.isTerrain && it.contains(lat, lon) }
-    val roadPacks: List<Pack> get() = packs.filter { !it.isTerrain }
+    fun packFor(lat: Double, lon: Double): Pack? = packs.firstOrNull { it.isRoads && it.contains(lat, lon) }
+    val roadPacks: List<Pack> get() = packs.filter { it.isRoads }
+    /** every pack with a search index: the roads packs' towns and streets, the names packs' passes, springs, peaks… */
+    val searchPacks: List<Pack> get() = packs.filter { !it.isTerrain }
 }

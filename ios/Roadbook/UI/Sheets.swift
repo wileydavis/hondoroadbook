@@ -94,7 +94,7 @@ struct SearchSheet: View {
         shownMarks = model.marks.marks.filter { nq.isEmpty || TextNorm.shared.normalize(s: $0.name + " " + $0.note).contains(nq) }.sorted { $0.created > $1.created }
         if q.trimmingCharacters(in: .whitespaces).isEmpty { hits = []; return }
         status = "Searching…"
-        let packs = model.packs.roadPacks
+        let packs = model.packs.searchPacks
         model.worker.async {
             var scored: [(Int32, Hit)] = []
             for p in packs {
@@ -135,7 +135,7 @@ struct MapsSheet: View {
                         if model.packs.packs.isEmpty { Text("No maps on this phone yet.\n\nTap DOWNLOAD to fetch a region, or drop a .mappack file into Roadbook's folder in the Files app and IMPORT it.").foregroundStyle(Theme.sInkSoft) }
                         ForEach(model.packs.packs) { p in
                             HStack {
-                                VStack(alignment: .leading) { Text(p.name).font(.system(size: 17)); Text("\(Units.mb(p.sizeBytes)) · \(p.manifest.created)" + (p.isTerrain ? " · hillshade" : "")).font(.system(size: 13)).foregroundStyle(Theme.sInkSoft) }
+                                VStack(alignment: .leading) { Text(p.name).font(.system(size: 17)); Text("\(Units.mb(p.sizeBytes)) · \(p.manifest.created)" + (p.isTerrain ? " · hillshade" : p.isNames ? " · place names" : "")).font(.system(size: 13)).foregroundStyle(Theme.sInkSoft) }
                                 Spacer()
                                 Button("REMOVE") { confirmDelete = p }.buttonStyle(BigButton(compact: true))
                             }
@@ -254,7 +254,7 @@ struct RegionSheet: View {
     @State private var checked: Set<String> = []
     @State private var downloader: Downloader?
 
-    private var sorted: [CatalogPack] { let order = ["roads", "terrain", "imagery"]; return kinds.sorted { (order.firstIndex(of: $0.kind) ?? 99) < (order.firstIndex(of: $1.kind) ?? 99) } }
+    private var sorted: [CatalogPack] { let order = ["roads", "terrain", "names", "imagery"]; return kinds.sorted { (order.firstIndex(of: $0.kind) ?? 99) < (order.firstIndex(of: $1.kind) ?? 99) } }
 
     var body: some View {
         let installed = Dictionary(model.packs.packs.map { ($0.name, $0) }, uniquingKeysWith: { a, _ in a })

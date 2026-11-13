@@ -69,7 +69,7 @@ async function fetchPack(env, key, range) {
 const RELEASE = "https://github.com/wileydavis/hondoroadbook/releases/download/packs/";
 // Only the catalog and pack files are reachable here: parked and library objects share the bucket but are
 // served solely by /api, which knows about expiry and hiding.
-const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery)\.(mappack|json))$/;
+const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery|names)\.(mappack|json))$/;
 async function servePackOrRelease(request, env, key) {
   if (!key || !PACK_KEY.test(key)) return new Response("not found", { status: 404 });
   if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }

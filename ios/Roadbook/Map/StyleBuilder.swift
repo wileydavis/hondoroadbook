@@ -16,7 +16,7 @@ enum StyleBuilder {
     /// `flavor`: "light" (day), "dark" (night) or "sun" — the noon-sun handlebar style: white ground (the glass mirrors
     /// the sky; a bright map out-shines that), wide dark roads, big labels, nothing else drawn (no hillshade either).
     static func build(_ all: [Pack], flavor: String) throws -> Data {
-        let packs = all.filter { !$0.isTerrain }
+        let packs = all.filter { $0.isRoads }
         let terrain = flavor == "sun" ? [] : all.filter { $0.isTerrain }
         let night = flavor == "dark"
         let template = try layers(flavor)

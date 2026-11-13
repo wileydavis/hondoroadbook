@@ -24,7 +24,7 @@ import java.util.concurrent.Executors
  * Downloads resume: a partial file in the cache keeps its bytes and the next attempt asks for the rest.
  */
 class CatalogPack(val id: String, val name: String, val region: String, val group: String, val kind: String, val url: String, val bytes: Long, val built: String, val notes: String) {
-    val kindLabel: String get() = when (kind) { "roads" -> "Roads"; "terrain" -> "Terrain"; "imagery" -> "Imagery"; else -> kind.replaceFirstChar { it.uppercase() } }
+    val kindLabel: String get() = when (kind) { "roads" -> "Roads"; "terrain" -> "Terrain"; "imagery" -> "Imagery"; "names" -> "Place names"; else -> kind.replaceFirstChar { it.uppercase() } }
     val blurb: String get() = when (kind) { "roads" -> "roads, trails, routing, address search"; "terrain" -> "hillshade and contours under the roads"; "imagery" -> "aerial photos"; else -> "" }
 }
 
@@ -95,11 +95,11 @@ object Catalog {
 
     private fun showRegion(act: Activity, packs: PackStore, region: String, kinds: List<CatalogPack>, installed: Map<String, Pack>, onDone: () -> Unit) {
         val ctx = act
-        val order = listOf("roads", "terrain", "imagery")
+        val order = listOf("roads", "terrain", "names", "imagery")
         val sorted = kinds.sortedBy { order.indexOf(it.kind).let { i -> if (i < 0) 99 else i } }
         val checked = BooleanArray(sorted.size) { state(installed, sorted[it]) != "installed" }
         val labels = sorted.map { p -> val st = state(installed, p); p.kindLabel + " · " + p.bytes / (1024 * 1024) + " MB" + (if (st.isNotEmpty()) " · $st" else "") + (if (p.blurb.isNotEmpty()) "\n" + p.blurb else "") }.toTypedArray()
-        val missing = order.filter { k -> sorted.none { it.kind == k } }.joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
+        val missing = listOf("roads", "terrain").filter { k -> sorted.none { it.kind == k } }.joinToString(", ") { it.replaceFirstChar { c -> c.uppercase() } }
         val b = AlertDialog.Builder(ctx).setTitle(region)
             .setMultiChoiceItems(labels, checked) { _, i, v -> checked[i] = v }
             .setPositiveButton("DOWNLOAD") { _, _ ->

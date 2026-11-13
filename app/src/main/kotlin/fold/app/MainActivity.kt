@@ -437,8 +437,8 @@ class MainActivity : AppCompatActivity() {
 
     /** Packs worth drawing for the current camera: those in view, nearest first, at most six (style size matters). */
     private fun visiblePacks(): List<Pack> {
-        val all = packs.packs
-        val roads = all.filter { !it.isTerrain }; val terrain = all.filter { it.isTerrain }
+        val all = packs.packs.filter { !it.isNames }      // names packs are searched, never drawn
+        val roads = all.filter { it.isRoads }; val terrain = all.filter { it.isTerrain }
         val m = map ?: return roads.take(6) + terrain.take(6)
         if (all.size <= 6) return all
         val bounds = try { m.projection.visibleRegion.latLngBounds } catch (_: Throwable) { return roads.take(6) + terrain.take(6) }
@@ -451,7 +451,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshVisiblePacks() {
-        if (packs.packs.size <= 6) return
+        if (packs.packs.count { !it.isNames } <= 6) return
         val v = visiblePacks().filter { prefs.terrain || !it.isTerrain }
         if (v.map { it.dir } != styledPacks.map { it.dir }) loadStyle()
     }
@@ -642,7 +642,7 @@ class MainActivity : AppCompatActivity() {
     private fun drawPlaces() {
         val src = srcPlaces ?: return
         if (!prefs.places) { src.setGeoJson(FeatureCollection.fromFeatures(emptyArray())); placesFor = emptyList(); return }
-        val packs = styledPacks.filter { !it.isTerrain }
+        val packs = styledPacks.filter { it.isRoads }
         if (packs == placesFor) return
         placesFor = packs
         worker.execute {
@@ -2313,7 +2313,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onBackPressed() { if (findViewById<View>(R.id.menuScrim).visibility == View.VISIBLE) closeMenu() else super.onBackPressed() }
 
-    private fun onPacksChanged() { loadStyle(); if (lastFix == null) packs.packs.lastOrNull()?.let { val m = it.manifest; map?.moveCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(m.maxLat, m.maxLon, m.minLat, m.minLon), dp(40))) } }
+    private fun onPacksChanged() { loadStyle(); if (lastFix == null) packs.packs.lastOrNull { !it.isNames }?.let { val m = it.manifest; map?.moveCamera(CameraUpdateFactory.newLatLngBounds(LatLngBounds.from(m.maxLat, m.maxLon, m.minLat, m.minLon), dp(40))) } }
 
     private fun toast(msg: String, ms: Long = 3500) {
         toastView.text = msg; toastView.visibility = View.VISIBLE

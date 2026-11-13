@@ -4,6 +4,8 @@
 # Regions live in packer/regions.json (US states, Canadian provinces and territories, Baja California, the EU). Kinds:
 #   roads   — OSM extract → roads, routing graph, address index, vector tiles (fold-packer.jar)
 #   terrain — hillshade raster from AWS Terrain Tiles (packer/terrain/build_terrain.py)
+#   names   — place names for the apps' search: GNIS (US states) and OSM's passes, springs, peaks… (tools/names_pack.py).
+#             Small, and kept in R2 only (the release holds at most 1,000 files): the catalog reads their sidecars there.
 # Packs always go to the rolling GitHub release "packs" (no setup needed; the Worker proxies /packs/*
 # from there), and also to the Cloudflare R2 bucket when R2_ACCOUNT_ID / R2_ACCESS_KEY_ID /
 # R2_SECRET_ACCESS_KEY exist (web/README.md). The last job rebuilds catalog.json from every sidecar.
@@ -16,8 +18,8 @@ on:
         description: "Space-separated region slugs from packer/regions.json, or 'all'"
         default: "montana idaho wyoming baja-california"
       kinds:
-        description: "Space-separated kinds: roads terrain"
-        default: "roads terrain"
+        description: "Space-separated kinds: roads terrain names"
+        default: "roads terrain names"
   schedule:
     - cron: "17 9 3 * *"     # monthly refresh of everything
 
@@ -55,19 +57,23 @@ jobs:
       terrain: ${{ steps.m.outputs.terrain }}
       has_roads: ${{ steps.m.outputs.has_roads }}
       has_terrain: ${{ steps.m.outputs.has_terrain }}
+      names: ${{ steps.m.outputs.names }}
+      has_names: ${{ steps.m.outputs.has_names }}
     steps:
       - uses: actions/checkout@v4
       - id: m
         shell: bash
         run: |
           WANT="${{ github.event.inputs.regions || 'all' }}"
-          KINDS="${{ github.event.inputs.kinds || 'roads terrain' }}"
+          KINDS="${{ github.event.inputs.kinds || 'roads terrain names' }}"
           [ "$WANT" = "all" ] && WANT="$(jq -r 'keys[]' packer/regions.json | tr '\n' ' ')"
           LIST=$(printf '%s\n' $WANT | jq -R . | jq -sc .)
           echo "roads=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
           echo "terrain=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
           echo "has_roads=$([[ " $KINDS " == *" roads "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_terrain=$([[ " $KINDS " == *" terrain "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "names=$(jq -c --argjson l "$LIST" '{region: $l}' <<< '{}')" >> "$GITHUB_OUTPUT"
+          echo "has_names=$([[ " $KINDS " == *" names "* ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           # every extract asked for must exist at Geofabrik before a hundred jobs start: a misspelt slug fails here, by name
           curl -fsSL --retry 5 --retry-all-errors -o index.json https://download.geofabrik.de/index-v1-nogeom.json
           missing=""
@@ -201,8 +207,78 @@ jobs:
           rclone copyto --ignore-times "$r-terrain.mappack" "r2:$BUCKET/$path/$r-terrain.mappack"
           rclone copyto --ignore-times "$r-terrain.json" "r2:$BUCKET/$path/$r-terrain.json"
 
+  gnis:
+    needs: [plan]
+    if: needs.plan.outputs.has_names == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: GNIS, cut by state (USGS Geographic Names Information System, public domain)
+        run: |
+          set -euo pipefail
+          B=https://prd-tnm.s3.amazonaws.com
+          K=$(curl -fsSL --retry 5 "$B/?list-type=2&prefix=StagedProducts/GeographicNames/DomesticNames/" | grep -o '<Key>[^<]*National[^<]*Text[^<]*\.zip</Key>' | sed 's/<[^>]*>//g' | head -1)
+          curl -fsSL --retry 5 -o dom.zip "$B/$K"
+          curl -fsSL --retry 5 -o all.zip "$B/StagedProducts/GeographicNames/Topical/AllNames_National_Text.zip"
+          mkdir -p dom all; unzip -q dom.zip -d dom; unzip -q all.zip -d all
+          python3 tools/names_pack.py split "$(find dom -iname '*.txt' -size +10M | head -1)" "$(find all -iname '*.txt' -size +10M | head -1)" gnis
+          ls gnis | wc -l
+      - uses: actions/upload-artifact@v4
+        with: { name: gnis-by-state, path: gnis, retention-days: 3 }
+
+  names:
+    needs: [plan, gnis]
+    if: always() && needs.plan.outputs.has_names == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJson(needs.plan.outputs.names) }}
+    env:
+      R2_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_TYPE: s3
+      RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+      RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true            # outside the US there is no GNIS: OpenStreetMap alone
+        with: { name: gnis-by-state, path: gnis }
+      - name: Build
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update >/dev/null && sudo apt-get -qq install -y osmium-tool >/dev/null
+          r="${{ matrix.region }}"
+          R=$(jq -c --arg r "$r" '.[$r]' packer/regions.json); [ "$R" != "null" ] || { echo "unknown region $r"; exit 1; }
+          name=$(jq -r .name <<< "$R"); group=$(jq -r .group <<< "$R"); path=$(jq -r .path <<< "$R"); pbf=$(jq -r .pbf <<< "$R")
+          curl -fL --retry 5 --retry-all-errors -s -o region.osm.pbf "https://download.geofabrik.de/$pbf"
+          osmium tags-filter -O -o extras.osm.pbf region.osm.pbf \
+            n/natural=hot_spring,geyser,spring,saddle,peak,volcano,arch,cave_entrance nw/mountain_pass=yes w/natural=hot_spring \
+            n/waterway=waterfall n/tourism=viewpoint n/highway=trailhead
+          rm -f region.osm.pbf
+          osmium export -O -f geojsonseq -o extras.geojsonseq extras.osm.pbf
+          gnis=""; [ "$path" = us ] && [ -f "gnis/$name.tsv" ] && gnis="--gnis gnis/$name.tsv"
+          python3 tools/names_pack.py build --name "$name place names" --region "$name" $gnis --osm extras.geojsonseq --out "$r-names.mappack"
+          unzip -p "$r-names.mappack" pack.txt > pack.txt
+          IFS=, read -r minLat minLon maxLat maxLon <<< "$(grep '^bbox=' pack.txt | cut -d= -f2)"
+          jq -n --arg id "$path-$r-names" --arg name "$name place names" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-names.mappack" --argjson bytes "$(stat -c %s "$r-names.mappack")" \
+                --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
+                '{id:$id, name:$name, region:$region, group:$group, kind:"names", url:$url, bytes:$bytes, built:$built, bbox:$bbox, notes:"passes, springs, peaks and other named places, for search"}' > "$r-names.json"
+          cat "$r-names.json"
+      - name: Publish to R2
+        run: |
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
+          r="${{ matrix.region }}"; path=$(jq -r --arg r "$r" '.[$r].path' packer/regions.json)
+          # the pack first, the sidecar only once the pack is really there
+          rclone copyto --ignore-times "$r-names.mappack" "r2:$BUCKET/$path/$r-names.mappack"
+          rclone copyto --ignore-times "$r-names.json" "r2:$BUCKET/$path/$r-names.json"
+
   catalog:
-    needs: [roads, terrain]
+    needs: [roads, terrain, names]
     if: always()
     runs-on: ubuntu-latest
     env:
@@ -229,12 +305,14 @@ jobs:
           mkdir meta && cd meta
           gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -E '\.json$' | grep -v '^catalog.json$' | while read -r a; do gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p "$a" || true; done
           cd ..
+          # the names packs' sidecars live in R2 only
+          if [ -n "$R2_KEY" ]; then command -v rclone >/dev/null || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null; rclone copy r2:$BUCKET meta/r2 --include "*/*-names.json"; fi
           find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
           jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
           gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber catalog.json
       - name: Mirror to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         run: |
-          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
+          command -v rclone >/dev/null || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
           rclone copyto --ignore-times catalog.json "r2:$BUCKET/catalog.json"
           rclone copyto --ignore-times na-overview.pmtiles "r2:$BUCKET/na-overview.pmtiles"

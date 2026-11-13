@@ -1,7 +1,7 @@
 package fold.core
 
 
-/** One line of the search index. kind: 'P' place, 'S' street, 'A' address. */
+/** One line of the search index. kind: 'P' place, 'S' street, 'A' address, 'N' a named place (pass, spring, peak…) from a names pack. */
 class Hit(val kind: Char, val name: String, val context: String, val lat: Double, val lon: Double) {
     val label: String get() = if (context.isEmpty()) name else "$name, $context"
 }
@@ -145,7 +145,7 @@ class SearchFile private constructor(private val b: Bytes) {
             val parts = line.split('\t'); if (parts.size < 6) continue
             val kind = parts[1].firstOrNull() ?: continue
             val lat = parts[4].toIntOrNull() ?: continue; val lon = parts[5].toIntOrNull() ?: continue
-            score += when (kind) { 'P' -> 12; 'S' -> 6; else -> 0 }
+            score += when (kind) { 'P' -> 12; 'N' -> 9; 'S' -> 6; else -> 0 }   // N: a named place from a names pack
             if (key.startsWith(nq)) score += 20
             if (key == nq) score += 40
             // an alias line (East Missoula filed under "missoula") ranks below the real thing

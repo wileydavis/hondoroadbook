@@ -10,6 +10,9 @@ final class Pack: Identifiable, Equatable {
     var id: String { dir.lastPathComponent }
     var name: String { manifest.name }
     var isTerrain: Bool { manifest.isTerrain }
+    /// place names only: searched, never drawn or routed
+    var isNames: Bool { manifest.isNames }
+    var isRoads: Bool { manifest.isRoads }
     var tiles: URL { dir.appendingPathComponent(isTerrain ? "terrain.pmtiles" : "tiles.pmtiles") }
     /// roads.pmtiles, when the pack was built with it
     var overview: URL? { let u = dir.appendingPathComponent("roads.pmtiles"); return FileManager.default.fileExists(atPath: u.path) ? u : nil }
@@ -25,7 +28,7 @@ final class Pack: Identifiable, Equatable {
     }
 
     func loadRouter() -> Router? {
-        if isTerrain { return nil }
+        if !isRoads { return nil }
         lock.lock(); defer { lock.unlock() }
         if let r = router { return r }
         do { let r = Router(g: try Graph.companion.open(path: dir.appendingPathComponent("graph.bin").path)); router = r; return r }
@@ -69,8 +72,10 @@ final class PackStore {
         var u = root; var rv = URLResourceValues(); rv.isExcludedFromBackup = true; try? u.setResourceValues(rv)
     }
 
-    var roadPacks: [Pack] { packs.filter { !$0.isTerrain } }
-    func packFor(_ lat: Double, _ lon: Double) -> Pack? { packs.first { !$0.isTerrain && $0.contains(lat, lon) } }
+    var roadPacks: [Pack] { packs.filter { $0.isRoads } }
+    /// every pack with a search index: the roads packs' towns and streets, the names packs' passes, springs, peaks…
+    var searchPacks: [Pack] { packs.filter { !$0.isTerrain } }
+    func packFor(_ lat: Double, _ lon: Double) -> Pack? { packs.first { $0.isRoads && $0.contains(lat, lon) } }
 
     /// One router over every installed pack's graph; packs whose graph fails to open are skipped.
     func multiRouter() -> MultiRouter {
@@ -78,7 +83,7 @@ final class PackStore {
         let cur = packs
         if let m = multi, multiFor == cur { return m }
         var errs: [String] = []
-        let routers: [Router] = cur.filter { !$0.isTerrain }.compactMap { p in
+        let routers: [Router] = cur.filter { $0.isRoads }.compactMap { p in
             if let r = p.loadRouter() { return r }
             errs.append("Routing data for \(p.name) could not be opened — re-download or re-import that pack"); return nil
         }
@@ -143,8 +148,8 @@ final class PackStore {
         try? fm.removeItem(at: staging); try fm.createDirectory(at: staging, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: staging) }
         var wanted = required
-        if !manifest.isTerrain, zip["roads.pmtiles"] != nil { wanted.append("roads.pmtiles") }
-        if !manifest.isTerrain, zip["pois.tsv"] != nil { wanted.append("pois.tsv") }
+        if manifest.isRoads, zip["roads.pmtiles"] != nil { wanted.append("roads.pmtiles") }
+        if manifest.isRoads, zip["pois.tsv"] != nil { wanted.append("pois.tsv") }
         let total = wanted.reduce(Int64(0)) { $0 + Int64(zip[$1]?.uncompressedSize ?? 0) }
         let free = (try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage) ?? Int64.max
         if free < total + (64 << 20) { throw Fail("Not enough space: pack needs \(total / (1024 * 1024)) MB, phone has \(free / (1024 * 1024)) MB free") }
@@ -163,7 +168,7 @@ final class PackStore {
             }
         }
         // the new pack must open before it is allowed to replace anything
-        if !manifest.isTerrain {
+        if manifest.isRoads {
             do { _ = try Graph.companion.open(path: staging.appendingPathComponent("graph.bin").path) }
             catch { throw Fail("This pack's routing data is damaged (\(error.text)) — it was not installed") }
         }
