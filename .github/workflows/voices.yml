@@ -1,7 +1,7 @@
-# The natural-voice pack the apps download on request (MAPS → VOICE): Kokoro-82M v1.0 (Apache-2.0), int8, as
-# packaged for sherpa-onnx, cut to English — the model, the 54 voice styles (ids unchanged), the US-English lexicon,
-# and the same English espeak-ng data the Android app ships (for words the lexicon lacks). Uploaded to the rolling
-# "packs" release as kokoro-en-v1.zip; the site serves it at /packs/voices/kokoro-en-v1.zip.
+# The voice both apps ship with: Kokoro-82M v1.0 (Apache-2.0), int8, as packaged for sherpa-onnx, cut to one speaker
+# (af_heart, US English). The model's metadata is set to one speaker and voices.bin holds only Heart's style, which gives
+# output identical to the full pack's speaker 3 at 0.5 MB instead of 28 MB. Too big for git (the model is 114 MB), so it
+# lives on the rolling "packs" release as kokoro-heart-v1.zip; tools/fetch-voice.sh puts it in the app builds.
 name: voices
 
 on:
@@ -11,24 +11,42 @@ permissions:
   contents: write
 
 jobs:
-  kokoro:
+  heart:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch and cut the pack
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Fetch and cut
         run: |
           set -euo pipefail
+          pip install -q onnx
           curl -fsSL --retry 5 -o k.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2
           tar xjf k.tar.bz2
           K=kokoro-int8-multi-lang-v1_0
           mkdir -p pack
-          cp "$K/model.int8.onnx" "$K/voices.bin" "$K/tokens.txt" "$K/lexicon-us-en.txt" "$K/LICENSE" pack/
+          cp "$K/tokens.txt" "$K/lexicon-us-en.txt" "$K/LICENSE" pack/
           cp -r app/src/main/assets/tts/espeak-ng-data pack/
-          printf '%s\n' "Roadbook natural voice: Kokoro-82M v1.0 (Apache-2.0, hexgrad/Kokoro-82M), int8, as packaged for sherpa-onnx" \
-            "(k2-fsa/sherpa-onnx tts-models kokoro-int8-multi-lang-v1_0), cut to English: the model, all 54 voice styles" \
-            "(ids unchanged), the US-English lexicon, and espeak-ng's English data for words the lexicon lacks." > pack/README.txt
-          (cd pack && zip -q -r -9 ../kokoro-en-v1.zip .)
-          ls -la kokoro-en-v1.zip
+          python3 - "$K" <<'PY'
+          import sys, onnx
+          k = sys.argv[1]
+          names = None
+          m = onnx.load(f"{k}/model.int8.onnx")
+          for p in m.metadata_props:
+              if p.key == "speaker_names": names = p.value.split(",")
+          i = names.index("af_heart")
+          d = open(f"{k}/voices.bin", "rb").read(); n = len(d) // len(names)
+          open("pack/voices.bin", "wb").write(d[i * n:(i + 1) * n])
+          for p in m.metadata_props:
+              if p.key == "n_speakers": p.value = "1"
+              if p.key == "speaker_names": p.value = "af_heart"
+          onnx.save(m, "pack/model.int8.onnx")
+          PY
+          printf '%s\n' "Roadbook's voice: Kokoro-82M v1.0 (Apache-2.0, hexgrad/Kokoro-82M), int8, as packaged for sherpa-onnx" \
+            "(k2-fsa/sherpa-onnx tts-models kokoro-int8-multi-lang-v1_0), cut to the af_heart speaker (id 0 here)," \
+            "with the US-English lexicon and espeak-ng's English data for words the lexicon lacks." > pack/README.txt
+          (cd pack && zip -q -r -9 ../kokoro-heart-v1.zip .)
+          ls -la kokoro-heart-v1.zip pack
       - name: Upload
         env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release upload packs -R "$GITHUB_REPOSITORY" --clobber kokoro-en-v1.zip
+        run: gh release upload packs -R "$GITHUB_REPOSITORY" --clobber kokoro-heart-v1.zip
