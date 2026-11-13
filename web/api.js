@@ -14,7 +14,8 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors({ "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Name", "Access-Control-Max-Age": "86400" }) });
   try {
-    if (path === "route" || path === "snap" || path === "junctions" || path === "search" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
+    if (path === "search") return await search(request, env, url, routerFetch);
+    if (path === "route" || path === "snap" || path === "junctions" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
     if (path === "park" && request.method === "POST") return await park(request, env, url);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
@@ -46,6 +47,70 @@ async function routerProxy(request, env, path, url, routerFetch) {
   if (env.ROUTER && routerFetch) return withCors(await routerFetch(shard, target));
   if (env.ROUTER_URL) return withCors(await fetch(env.ROUTER_URL.replace(/\/$/, "") + target));
   return json({ error: "The router is not deployed yet" }, 503);
+}
+
+// ---- search: the map's own towns, roads and trails (the router), and the country's place names (GNIS) ----------------
+
+// The routing container answers from the map data; GNIS (USGS, public domain) adds the named places a map leaves
+// unlabelled: passes, springs, summits, canyons, mines… with their variant names. tools/gnis_index.py builds the index;
+// it lives in the bucket under names/v1/<first three letters of a distinctive word>.json.
+const NAME_GENERIC = new Set(("the of and de del la el los las le du des a an at in on to mount mountain mountains mt peak peaks summit hill hills butte buttes knob ridge ridges point bluff cliff cliffs rock rocks " +
+  "creek creeks river run brook branch fork forks spring springs well wells lake lakes pond ponds reservoir tank tanks dam falls canyon canyons valley valleys gulch draw wash hollow ravine basin flat flats meadow meadows park pass gap saddle notch " +
+  "upper lower north south east west middle little big old new great mine mines ranch camp trail road cave arch island bay cove beach lookout tunnel bridge station").split(" "));
+const NAME_CLASS = { Gap: "Pass", Summit: "Summit", Spring: "Spring", Valley: "Valley", Stream: "Creek", Mine: "Mine", Locale: "Place", "Populated Place": "Town", Lake: "Lake", Reservoir: "Reservoir", Flat: "Flat", Basin: "Basin", Range: "Range", Ridge: "Ridge", Arch: "Arch", Falls: "Falls", Trail: "Trail", Park: "Park", Crossing: "Crossing", Airport: "Airstrip", Cemetery: "Cemetery", Dam: "Dam", Well: "Well", Canal: "Canal", Bench: "Bench", Cliff: "Cliff", Crater: "Crater", Pillar: "Pillar", Plain: "Plain", Island: "Island", Bend: "Bend", Cape: "Point", Lava: "Lava flow", Glacier: "Glacier", Bridge: "Bridge", Tunnel: "Tunnel", Woods: "Woods", Slope: "Slope", Gut: "", Rapids: "Rapids", Beach: "Beach", Bar: "Bar", Isthmus: "Isthmus" };
+const shardCache = new Map();
+function nameWords(s) { return (s.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().match(/[a-z0-9]+/g)) || []; }
+function km(aLat, aLon, bLat, bLon) { const x = (bLon - aLon) * 111.32 * Math.cos((aLat + bLat) * Math.PI / 360), y = (bLat - aLat) * 110.57; return Math.hypot(x, y); }
+
+async function placeNames(env, q, lat, lon) {
+  if (!env.PACKS) return [];
+  const qw = nameWords(q);
+  const anchor = qw.find(w => w.length >= 3 && !NAME_GENERIC.has(w)) || qw.find(w => w.length >= 3);
+  if (!anchor) return [];
+  const key = anchor.slice(0, 3);
+  let rows = shardCache.get(key);
+  if (!rows) {
+    const o = await env.PACKS.get(`names/v1/${key}.json`);
+    rows = o ? await o.json() : [];
+    if (shardCache.size > 60) shardCache.delete(shardCache.keys().next().value);
+    shardCache.set(key, rows);
+  }
+  const near = Number.isFinite(lat) && Number.isFinite(lon);
+  const out = [];
+  for (const r of rows) {
+    const w = nameWords(r[0]);
+    if (!w.some(x => x.startsWith(anchor))) continue;
+    let got = 0; for (const t of qw) if (w.some(x => x.startsWith(t))) got++;
+    out.push({ r, got, full: got === qw.length, exact: w.join(" ") === qw.join(" "), d: near ? km(lat, lon, r[4], r[5]) : 0 });
+  }
+  // every word of the query first, then the most of them; the nearest to the map within each
+  out.sort((a, b) => (b.full - a.full) || (b.got - a.got) || (b.exact - a.exact) || (a.d - b.d));
+  return out.slice(0, 10).map(({ r, full, exact, d }) => ({
+    name: r[0], lat: r[4], lon: r[5], full, exact, source: "gnis",
+    context: [NAME_CLASS[r[1]] ?? r[1], r[6] ? `officially ${r[6]}` : ""].filter(Boolean).join(" · "),
+    region: [r[2] && `${r[2]} County`, r[3]].filter(Boolean).join(", "),
+    distance: near ? Math.round(d * 1000) : undefined,
+  }));
+}
+
+async function search(request, env, url, routerFetch) {
+  const q = (url.searchParams.get("q") || "").trim().slice(0, 120);
+  const lat = Number(url.searchParams.get("lat")), lon = Number(url.searchParams.get("lon"));
+  const names = placeNames(env, q, lat, lon).catch(() => []);
+  const routed = routerProxy(request, env, "search", url, routerFetch).then(r => r.json().then(j => ({ ok: r.ok, j }))).catch(() => null);
+  const gn = await names;
+  // with place names in hand, a slow router (the maps still loading) does not hold them up
+  const rt = await (gn.length ? Promise.race([routed, new Promise(res => setTimeout(() => res(null), 6000))]) : routed);
+  const hits = rt && rt.ok && Array.isArray(rt.j.hits) ? rt.j.hits : [];
+  if (!gn.length) return rt ? json(rt.j, rt.ok ? 200 : 503) : json({ error: "Search is not reachable right now" }, 503);
+  const qw = nameWords(q).join(" ");
+  const qws = nameWords(q);
+  const ranked = hits.map(h => { const w = nameWords(h.name || ""); return { ...h, exact: w.join(" ") === qw, full: qws.every(t => w.some(x => x.startsWith(t))) }; });
+  // a town the map already found is not listed twice
+  for (const g of gn) if (!ranked.some(h => nameWords(h.name || "").join(" ") === nameWords(g.name).join(" ") && Number.isFinite(h.lat) && km(h.lat, h.lon, g.lat, g.lon) < 5)) ranked.push(g);
+  const order = h => (h.exact ? 0 : 2) + (h.full ? 0 : 4) + (h.source === "gnis" ? 1 : 0);
+  ranked.sort((a, b) => order(a) - order(b) || (a.distance ?? 1e12) - (b.distance ?? 1e12));
+  return json({ hits: ranked.slice(0, 12).map(({ exact, full, source, ...h }) => h) });
 }
 
 // ---- park a roadbook for the phone ----------------------------------------------------------------

@@ -1,0 +1,46 @@
+# The place-name index for the planner's search bar: GNIS (USGS Geographic Names Information System, public domain),
+# its national Domestic Names file and the variant names in All Names, cut by tools/gnis_index.py into small files in
+# the bucket under names/v1/. Run it again whenever GNIS updates (a few times a year) to refresh.
+name: names
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  gnis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch GNIS
+        run: |
+          set -euo pipefail
+          B=https://prd-tnm.s3.amazonaws.com
+          # the national Domestic Names file, whatever its exact name this release
+          K=$(curl -fsSL --retry 5 "$B/?list-type=2&prefix=StagedProducts/GeographicNames/DomesticNames/" | grep -o '<Key>[^<]*National[^<]*Text[^<]*\.zip</Key>' | sed 's/<[^>]*>//g' | head -1)
+          echo "domestic: $K"
+          curl -fsSL --retry 5 -o dom.zip "$B/$K"
+          curl -fsSL --retry 5 -o all.zip "$B/StagedProducts/GeographicNames/Topical/AllNames_National_Text.zip"
+          mkdir -p dom all; unzip -q dom.zip -d dom; unzip -q all.zip -d all
+          ls -la dom all dom/* all/* | head -20
+      - name: Build the index
+        run: |
+          set -euo pipefail
+          D=$(find dom -iname '*.txt' -size +10M | head -1); A=$(find all -iname '*.txt' -size +10M | head -1)
+          python3 tools/gnis_index.py "$D" "$A" out
+          du -sh out; ls out | wc -l
+      - name: Upload
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
+          rclone sync --transfers 32 --checkers 32 --header-upload "Content-Type: application/json" out r2:roadbook-packs/names/v1
