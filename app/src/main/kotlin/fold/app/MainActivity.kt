@@ -375,7 +375,9 @@ class MainActivity : AppCompatActivity() {
                 val pickedMode = line?.getStringProperty("mode")?.let { try { Profile.valueOf(it) } catch (_: Throwable) { null } }
                 val viaHit = if (vias.isNotEmpty() && (mode == Mode.COMPARE || mode == Mode.NAV || mode == Mode.PIN)) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(20), pt.y - dp(20), pt.x + dp(20), pt.y + dp(20)), "via-layer").firstOrNull() } catch (_: Throwable) { null } else null
                 val viaIdx = viaHit?.getNumberProperty("idx")?.toInt()?.takeIf { it in vias.indices }
-                val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line").firstOrNull() } catch (_: Throwable) { null } else null
+                val libHit = if (libraryOn && mode == Mode.IDLE) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(16), pt.y - dp(16), pt.x + dp(16), pt.y + dp(16)), "lib-line", "lib-dot").firstOrNull() } catch (_: Throwable) { null } else null
+                // a cluster of roadbooks: zoom in on it rather than pick one
+                if (libHit != null && libHit.hasProperty("point_count")) { (libHit.geometry() as? Point)?.let { pt -> m.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(pt.latitude(), pt.longitude()), m.cameraPosition.zoom + 2.5)) }; return@addOnMapClickListener true }
                 val libItem = libHit?.getStringProperty("id")?.let { id -> libraryItems.firstOrNull { it.id == id } }
                 // a place from the packs (fuel, camping…): a pin with its name, so ROUTE HERE / VIA / ★ work on it
                 val placeHit = if (mode != Mode.NAV && mode != Mode.EDIT && prefs.places) try { val pt = m.projection.toScreenLocation(ll); m.queryRenderedFeatures(android.graphics.RectF(pt.x - dp(18), pt.y - dp(18), pt.x + dp(18), pt.y + dp(18)), "places-layer").firstOrNull() } catch (_: Throwable) { null } else null
@@ -2144,6 +2146,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var srcLib: GeoJsonSource? = null
+    /** the library as points, clustered where roadbooks crowd together: zoomed out, a lone one still glows */
+    private var srcLibPts: GeoJsonSource? = null
     private var libraryOn = false
     private var libraryItems: List<LibraryItem> = emptyList()
     private var libraryFetchedAt = 0L
@@ -2153,7 +2157,16 @@ class MainActivity : AppCompatActivity() {
         val firstLabel = st.layers.firstOrNull { it is SymbolLayer }?.id
         val l1 = LineLayer("lib-casing", "lib-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.route_casing)), lineWidth(7f), lineOpacity(0.8f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND))
         val l2 = LineLayer("lib-line", "lib-src").withProperties(lineColor(ContextCompat.getColor(this, R.color.track)), lineWidth(4f), lineOpacity(0.85f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND))
-        if (firstLabel != null) { st.addLayerBelow(l1, firstLabel); st.addLayerBelow(l2, firstLabel) } else { st.addLayer(l1); st.addLayer(l2) }
+        // a soft wide glow under the line, so a roadbook stands out of a busy map
+        val glow = LineLayer("lib-glow", "lib-src").withProperties(lineColor(0xFFA78BFA.toInt()), lineWidth(16f), lineBlur(10f), lineOpacity(0.55f), lineCap(Property.LINE_CAP_ROUND), lineJoin(Property.LINE_JOIN_ROUND))
+        if (firstLabel != null) { st.addLayerBelow(glow, firstLabel); st.addLayerBelow(l1, firstLabel); st.addLayerBelow(l2, firstLabel) } else { st.addLayer(glow); st.addLayer(l1); st.addLayer(l2) }
+        // zoomed out (below 9) the lines give way to glowing points, clustered with a count where many sit together
+        srcLibPts = GeoJsonSource("lib-pts-src", FeatureCollection.fromFeatures(emptyArray()), org.maplibre.android.style.sources.GeoJsonOptions().withCluster(true).withClusterRadius(40).withClusterMaxZoom(8)).also { st.addSource(it) }
+        val fade = E.interpolate(E.linear(), E.zoom(), E.stop(7.5, 1f), E.stop(9, 0f))
+        val cluster = E.has("point_count")
+        st.addLayer(org.maplibre.android.style.layers.CircleLayer("lib-halo", "lib-pts-src").withProperties(circleColor(0xFFA78BFA.toInt()), circleRadius(E.switchCase(cluster, E.literal(30f), E.literal(24f))), circleBlur(0.9f), circleOpacity(E.interpolate(E.linear(), E.zoom(), E.stop(7.5, 0.85f), E.stop(9, 0f)))).also { it.maxZoom = 9f })
+        st.addLayer(org.maplibre.android.style.layers.CircleLayer("lib-dot", "lib-pts-src").withProperties(circleColor(ContextCompat.getColor(this, R.color.track)), circleRadius(E.switchCase(cluster, E.literal(14f), E.literal(6f))), circleStrokeColor(0xFFFFFFFF.toInt()), circleStrokeWidth(2f), circleOpacity(fade), circleStrokeOpacity(fade)).also { it.maxZoom = 9f })
+        st.addLayer(SymbolLayer("lib-count", "lib-pts-src").withFilter(cluster).withProperties(textField(E.toString(E.get("point_count"))), textSize(12f), textFont(arrayOf("Noto Sans Medium")), textColor(0xFFFFFFFF.toInt()), textAllowOverlap(true), textIgnorePlacement(true)).also { it.maxZoom = 9f })
         st.addLayer(SymbolLayer("lib-label", "lib-src").withProperties(textField(E.get("name")), textSize(12f), textFont(arrayOf("Noto Sans Medium")), textColor(ContextCompat.getColor(this, R.color.track)), textHaloColor(ContextCompat.getColor(this, R.color.route_casing)), textHaloWidth(1.5f), symbolPlacement(Property.SYMBOL_PLACEMENT_LINE), textAllowOverlap(false)))
         if (libraryOn) drawLibrary()
     }
@@ -2181,6 +2194,10 @@ class MainActivity : AppCompatActivity() {
             f.addStringProperty("id", it.id); f.addStringProperty("name", it.name); f
         }
         srcLib?.setGeoJson(FeatureCollection.fromFeatures(feats))
+        srcLibPts?.setGeoJson(FeatureCollection.fromFeatures(libraryItems.filter { it.line.isNotEmpty() }.map { it ->
+            val mid = it.line[it.line.size / 2]
+            Feature.fromGeometry(Point.fromLngLat(mid[0], mid[1])).also { f -> f.addStringProperty("id", it.id); f.addStringProperty("name", it.name) }
+        }))
     }
 
     private fun openLibraryItem(item: LibraryItem) {

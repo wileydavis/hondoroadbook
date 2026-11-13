@@ -95,13 +95,34 @@ final class MapController: NSObject, MLNMapViewDelegate {
         // route lines go under the map's labels (road names, shields, towns), so a route never hides the name of the road it follows
         let firstLabel = st.layers.first { $0 is MLNSymbolStyleLayer }
         func addUnderLabels(_ l: MLNStyleLayer) { if let f = firstLabel { st.insertLayer(l, below: f) } else { st.addLayer(l) } }
-        // the library's roadbooks
+        // the library's roadbooks: a soft wide glow under the line, so a roadbook stands out of a busy map
+        let libGlow = line("lib-glow", "lib-src", color: UIColor(red: 0.655, green: 0.545, blue: 0.98, alpha: 1), width: 16, opacity: 0.55); libGlow.lineBlur = Self.c(10)
+        addUnderLabels(libGlow)
         addUnderLabels(line("lib-casing", "lib-src", color: casing, width: 7, opacity: 0.8))
         addUnderLabels(line("lib-line", "lib-src", color: track, width: 4, opacity: 0.85))
         let libLabel = MLNSymbolStyleLayer(identifier: "lib-label", source: sources["lib-src"]!)
         libLabel.text = NSExpression(forKeyPath: "name"); libLabel.textFontSize = Self.c(12); libLabel.textFontNames = Self.font
         libLabel.textColor = Self.c(track); libLabel.textHaloColor = Self.c(casing); libLabel.textHaloWidth = Self.c(1.5); libLabel.symbolPlacement = Self.c("line"); libLabel.textAllowsOverlap = Self.c(false)
         st.addLayer(libLabel)
+        // zoomed out (below 9) the lines give way to glowing points, clustered with a count where many sit together
+        let pts = MLNShapeSource(identifier: "lib-pts-src", shape: MLNShapeCollectionFeature(shapes: []), options: [.clustered: true, .clusterRadius: 40, .maximumZoomLevelForClustering: 8])
+        st.addSource(pts); sources["lib-pts-src"] = pts
+        let isCluster = NSPredicate(format: "cluster == YES")
+        let fade = Self.zoomStops([7: 1, 9: 0])
+        let halo = MLNCircleStyleLayer(identifier: "lib-halo", source: pts)
+        halo.circleColor = Self.c(UIColor(red: 0.655, green: 0.545, blue: 0.98, alpha: 1)); halo.circleBlur = Self.c(0.9)
+        halo.circleRadius = NSExpression(forConditional: isCluster, trueExpression: Self.c(30), falseExpression: Self.c(24))
+        halo.circleOpacity = Self.zoomStops([7: 0.85, 9: 0]); halo.maximumZoomLevel = 9
+        st.addLayer(halo)
+        let dot = MLNCircleStyleLayer(identifier: "lib-dot", source: pts)
+        dot.circleColor = Self.c(track); dot.circleStrokeColor = Self.c(UIColor.white); dot.circleStrokeWidth = Self.c(2)
+        dot.circleRadius = NSExpression(forConditional: isCluster, trueExpression: Self.c(14), falseExpression: Self.c(6))
+        dot.circleOpacity = fade; dot.circleStrokeOpacity = fade; dot.maximumZoomLevel = 9
+        st.addLayer(dot)
+        let count = MLNSymbolStyleLayer(identifier: "lib-count", source: pts)
+        count.predicate = isCluster; count.text = NSExpression(format: "CAST(point_count, 'NSString')"); count.textFontNames = Self.font; count.textFontSize = Self.c(12)
+        count.textColor = Self.c(UIColor.white); count.textAllowsOverlap = Self.c(true); count.textIgnoresPlacement = Self.c(true); count.maximumZoomLevel = 9
+        st.addLayer(count)
         addUnderLabels(line("route-casing", "route-src", color: casing, width: 10, opacity: 0.9))
         addUnderLabels(line("route-line", "route-src", color: isTrack ? track : routeColor, width: 6))
         // coverage: fog over everything not in an installed pack, outlines and names of what is

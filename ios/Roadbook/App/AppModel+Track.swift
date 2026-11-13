@@ -350,6 +350,8 @@ extension AppModel {
 
     func drawLibrary() {
         map.set("lib-src", MapController.collection(libraryItems.map { it in MapController.lineFeature(it.line.map { CLLocationCoordinate2D(latitude: $0[1], longitude: $0[0]) }, ["id": it.id, "name": it.name]) }))
+        // the same roadbooks as points (each line's middle), for the glow and the clusters when zoomed out
+        map.set("lib-pts-src", MapController.collection(libraryItems.filter { !$0.line.isEmpty }.map { it in let m = it.line[it.line.count / 2]; return MapController.point(CLLocationCoordinate2D(latitude: m[1], longitude: m[0]), ["id": it.id, "name": it.name]) }))
     }
 
     func withLibraryGpx(_ item: LibraryItem, _ then: @escaping (GpxTrack, String) -> Void) {

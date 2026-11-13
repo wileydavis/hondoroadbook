@@ -496,7 +496,9 @@ final class AppModel: ObservableObject, MapEvents {
         let picked = (lineHit?.attribute(forKey: "mode") as? String).flatMap { Profiles.byName($0) }
         let viaHit = (!vias.isEmpty && (mode == .compare || mode == .nav || mode == .pin)) ? map.features(at: p, layer: "via-layer", radius: 20).first : nil
         let viaIdx = (viaHit?.attribute(forKey: "idx") as? NSNumber).map { $0.intValue }
-        let libHit = (libraryOn && mode == .idle) ? map.features(at: p, layer: "lib-line", radius: 16).first : nil
+        let libHit = (libraryOn && mode == .idle) ? (map.features(at: p, layer: "lib-line", radius: 16).first ?? map.features(at: p, layer: "lib-dot", radius: 16).first) : nil
+        // a cluster of roadbooks: zoom in on it rather than pick one
+        if let cl = libHit as? MLNPointFeatureCluster { map.ease(to: cl.coordinate, zoom: map.zoom + 2.5, bearing: map.bearing, inset: .zero, animated: true); return }
         let libItem = (libHit?.attribute(forKey: "id") as? String).flatMap { id in libraryItems.first { $0.id == id } }
         // a place from the packs (fuel, camping…): a pin with its name, so ROUTE HERE / VIA / ★ work on it
         let placeHit = (mode != .nav && mode != .edit && prefs.places) ? map.features(at: p, layer: "places-layer", radius: 18).first : nil

@@ -131,6 +131,11 @@ async function publish(request, env, url) {
 
 async function list(request, env, url) {
   if (!env.DB) return json({ roadbooks: [], note: "The library is not set up on this site yet" });
+  // the whole library as points (the middle of each roadbook's box): the planner shows them, clustered, when zoomed out
+  if (url.searchParams.get("points") === "1") {
+    const { results } = await env.DB.prepare("SELECT id, name, length_m, min_lon, min_lat, max_lon, max_lat FROM roadbooks WHERE hidden = 0 ORDER BY created DESC LIMIT 20000").all();
+    return json({ points: results.map(r => ({ id: r.id, name: r.name, length: r.length_m, c: [Math.round((r.min_lon + r.max_lon) * 5e4) / 1e5, Math.round((r.min_lat + r.max_lat) * 5e4) / 1e5] })) }, 200, { "Cache-Control": "public, max-age=300" });
+  }
   const bb = (url.searchParams.get("bbox") || "").split(",").map(Number);
   const lim = Number(url.searchParams.get("limit") || 300);
   const limit = Number.isInteger(lim) && lim >= 1 && lim <= 500 ? lim : 300;

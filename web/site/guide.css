@@ -223,6 +223,8 @@
 .gcam .p { margin-top: auto; background: rgba(0,0,0,.8); color: #fff; padding: 10px; font-size: 10px; display: flex; flex-direction: column; gap: 6px; }
 .gcam .p i { display: block; height: 5px; background: #555; border-radius: 3px; overflow: hidden; }
 .gcam .p u { display: block; height: 100%; background: #d8502f; transition: width .3s; }
+.gplanner .gfind { font-size: 8px; color: #5a5a5a; display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.gplanner .gfind .m { border: 1px solid #cfc9bb; border-radius: 99px; padding: 1px 6px; }
 .gqr svg { width: 100%; max-width: 220px; display: block; margin: 0 auto 6px; }
 .gplanner .actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 4px; }
 .gplanner .actions .cta { font-size: 9px; padding: 5px 8px; border-radius: 6px; background: #1b1b1b; color: #f4efe6; font-weight: 600; }

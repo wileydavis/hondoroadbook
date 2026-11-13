@@ -159,6 +159,8 @@ function buildStyle() {
   if (S.imagery) { sources.naip = { type: "raster", tiles: [NAIP], tileSize: 256, minzoom: 8, bounds: [-170, 17, -64, 72] }; sources.s2 = { type: "raster", tiles: [S2], tileSize: 256, maxzoom: 14 }; }
   sources.coverage = { type: "geojson", data: coverageGeo() };
   sources.library = { type: "geojson", data: S.library && S.libraryData ? S.libraryData : { type: "FeatureCollection", features: [] } };
+  // the whole library as points, clustered where roadbooks crowd together; a lone one glows on its own
+  sources.library_pts = { type: "geojson", data: S.library && S.libraryPts ? S.libraryPts : { type: "FeatureCollection", features: [] }, cluster: true, clusterRadius: 38, clusterMaxZoom: 8 };
   sources.route = { type: "geojson", data: routeGeo() };
   sources.unpaved = { type: "geojson", data: unpavedGeo() };
   sources.elastic = { type: "geojson", data: S.elastic || { type: "FeatureCollection", features: [] } };
@@ -194,7 +196,12 @@ function buildStyle() {
   const mode = MODES.find(m => m[0] === S.mode); const color = S.track ? "#7c3aed" : mode[2];
   const ours = [
     { id: "coverage_line", type: "line", source: "coverage", maxzoom: 6, paint: { "line-color": night ? "#777" : "#555", "line-width": 1, "line-dasharray": [2, 2], "line-opacity": 0.35 } },
-    { id: "library_line", type: "line", source: "library", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#7c3aed", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 1.5, 10, 3, 14, 5], "line-opacity": 0.75 } },
+    // published roadbooks glow: a wide soft line under a crisp one, so a lone track shows from far out; below zoom 7 the
+    // lines give way to points, clustered where many sit together
+    { id: "library_glow", type: "line", source: "library", minzoom: 5, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#a78bfa", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 10, 10, 14, 14, 18], "line-blur": ["interpolate", ["linear"], ["zoom"], 5, 6, 14, 10], "line-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0, 6.5, 0.55, 12, 0.4] } },
+    { id: "library_line", type: "line", source: "library", minzoom: 5, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#7c3aed", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 2, 10, 3, 14, 5], "line-opacity": ["interpolate", ["linear"], ["zoom"], 5, 0, 6.5, 0.95] } },
+    { id: "library_halo", type: "circle", source: "library_pts", maxzoom: 8, paint: { "circle-color": "#a78bfa", "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, ["case", ["has", "point_count"], ["interpolate", ["linear"], ["get", "point_count"], 2, 22, 50, 34, 500, 46], 30], 7, ["case", ["has", "point_count"], ["interpolate", ["linear"], ["get", "point_count"], 2, 22, 50, 34, 500, 46], 18]], "circle-blur": 0.9, "circle-opacity": ["interpolate", ["linear"], ["zoom"], 6.5, 0.85, 8, 0] } },
+    { id: "library_dot", type: "circle", source: "library_pts", maxzoom: 8, paint: { "circle-color": "#7c3aed", "circle-radius": ["case", ["has", "point_count"], ["interpolate", ["linear"], ["get", "point_count"], 2, 11, 50, 15, 500, 20], 6], "circle-stroke-color": "#fff", "circle-stroke-width": ["case", ["has", "point_count"], 2, 1.5], "circle-opacity": ["interpolate", ["linear"], ["zoom"], 6.5, 1, 8, 0], "circle-stroke-opacity": ["interpolate", ["linear"], ["zoom"], 6.5, 1, 8, 0] } },
     { id: "route_casing", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": night ? "#000" : "#fff", "line-width": ["interpolate", ["linear"], ["zoom"], 5, 5, 12, 9, 16, 13], "line-opacity": 0.9 } },
     { id: "route_line", type: "line", source: "route", layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": color, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 6, 16, 9] } },
     { id: "route_unpaved", type: "line", source: "unpaved", layout: { "line-cap": "butt", "line-join": "round" }, paint: { "line-color": ["case", ["get", "private"], "#dc2626", "#fff"], "line-width": ["interpolate", ["linear"], ["zoom"], 5, ["case", ["get", "private"], 3, 1], 12, ["case", ["get", "private"], 5, 2], 16, ["case", ["get", "private"], 8, 3]], "line-dasharray": [2, 2.5], "line-opacity": 0.9 } },
@@ -215,6 +222,8 @@ function buildStyle() {
     }
   }
   layers.splice(at, 0, ...ours);
+  // the library's cluster counts over every label, so a number never hides under a place name
+  layers.push({ id: "library_count", type: "symbol", source: "library_pts", maxzoom: 8, filter: ["has", "point_count"], layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-allow-overlap": true, "text-ignore-placement": true }, paint: { "text-color": "#fff" } });
   layers.push({ id: "coverage_label", type: "symbol", source: "coverage", maxzoom: 5, layout: { "text-field": ["get", "name"], "text-font": ["Noto Sans Medium"], "text-size": 11, "text-transform": "uppercase", "text-letter-spacing": 0.1 }, paint: { "text-color": night ? "#aaa" : "#666", "text-halo-color": night ? "#000" : "#fff", "text-halo-width": 1 } });
   return { version: 8, glyphs: `${ORIGIN}/map/fonts/{fontstack}/{range}.pbf`, sprite: `${ORIGIN}/map/sprites/${night ? "dark" : "light"}`, sources, layers };
 }
@@ -268,7 +277,7 @@ $("#lyNight").onchange = e => { S.night = e.target.checked; try { localStorage.s
 $("#lyImagery").onchange = e => { S.imagery = e.target.checked; applyStyle(); };
 $("#lyLand").onchange = e => { S.land = e.target.checked; applyStyle(); $("#landKey").hidden = !S.land; if (S.land) landLegend(); };
 $("#lyPlaces").onchange = e => { S.places = e.target.checked; applyStyle(); };
-$("#lyLibrary").onchange = e => { S.library = e.target.checked; if (S.library) loadLibrary(); else { S.libraryData = null; applyStyle(); } };
+$("#lyLibrary").onchange = e => { S.library = e.target.checked; if (S.library) loadLibrary(); else { S.libraryData = null; S.libraryPts = null; applyStyle(); } };
 $("#btnSide").onclick = () => { $("#side").classList.add("hidden"); $("#btnSideShow").hidden = false; };
 $("#btnSideShow").onclick = () => { $("#side").classList.remove("hidden"); $("#btnSideShow").hidden = true; };
 document.querySelectorAll("[data-close]").forEach(b => b.onclick = () => { const sh = b.closest(".sheet"); sh.hidden = true; if (sh.id === "inspect") { inspGen++; clearInspPlaces(); } });
@@ -489,7 +498,7 @@ function renderStats() {
   const have = !!c;
   $("#btnLoop span").textContent = isLoop() ? "Unloop" : "Loop"; $("#btnLoop").classList.toggle("on", isLoop());
   $("#btnLoop").title = isLoop() ? "Make the last stop the finish again" : "Finish where you started";
-  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have || S.chartOn; $("#chartSec").hidden = !have || !S.chartOn; $("#viewSeg").hidden = !have; $("#btnChart").classList.toggle("on", !!S.chartOn); $("#btnChartClose").classList.toggle("on", !S.chartOn);
+  $("#empty").hidden = have; $("#stats").hidden = !have; $("#cuesSec").hidden = !have || S.chartOn; $("#chartSec").hidden = !have || !S.chartOn; $("#viewSeg").hidden = !have; $("#routeTools").hidden = !have; $("#btnChart").classList.toggle("on", !!S.chartOn); $("#btnChartClose").classList.toggle("on", !S.chartOn);
   for (const el of document.querySelectorAll('#toolbar [data-needs="route"]')) { el.disabled = !have; el.classList.toggle("off", !have); }
   if (!have) { $("#trackSwap").hidden = true; return; }
   const len = S.route ? S.route.length : lineLength(c);
@@ -654,16 +663,20 @@ function bindMap() {
       if (poi) { placePopup(poi, e.lngLat); return; }
     }
     const onRoute = map.queryRenderedFeatures(e.point, { layers: ["route_hit"] }).length > 0;
-    const onLib = S.library && map.queryRenderedFeatures(e.point, { layers: ["library_line"] });
+    const near = [[e.point.x - 8, e.point.y - 8], [e.point.x + 8, e.point.y + 8]];
+    const onLib = S.library && map.queryRenderedFeatures(near, { layers: ["library_line", "library_dot"].filter(l => map.getLayer(l)) });
     if (onRoute) { showCtx(e); return; }
-    if (onLib && onLib.length) { openLibraryItem(onLib[0].properties.id); return; }
+    if (onLib && onLib.length) {
+      const f = onLib[0];
+      if (f.properties.cluster) { map.getSource("library_pts").getClusterExpansionZoom(f.properties.cluster_id).then(z => map.easeTo({ center: f.geometry.coordinates, zoom: Math.max(z, map.getZoom() + 1) })); return; }
+      openLibraryItem(f.properties.id); return;
+    }
     if (S.track) { status("This is a loaded track. Clear it to plan a new route.", false); return; }
     S.pts.push({ lon: e.lngLat.lng, lat: e.lngLat.lat }); afterPointsChange();
   });
   map.on("mouseenter", "route_hit", () => map.getCanvas().style.cursor = "grab");
   map.on("mouseleave", "route_hit", () => map.getCanvas().style.cursor = "");
-  map.on("mouseenter", "library_line", () => map.getCanvas().style.cursor = "pointer");
-  map.on("mouseleave", "library_line", () => map.getCanvas().style.cursor = "");
+  for (const l of ["library_line", "library_dot"]) { map.on("mouseenter", l, () => map.getCanvas().style.cursor = "pointer"); map.on("mouseleave", l, () => map.getCanvas().style.cursor = ""); }
   const start = (point, lngLat) => {
     if (!S.route || S.track) return false;
     const hit = map.queryRenderedFeatures(point, { layers: ["route_hit"] });
@@ -1368,12 +1381,22 @@ $("#openRoute").onclick = () => { $("#openSheet").hidden = true; routeTrack(); }
 // ---- the library ---------------------------------------------------------------------------------------------------------
 async function loadLibrary() {
   const b = map.getBounds();
+  if (!S.libraryPts || Date.now() - S.libraryPtsAt > 300000) loadLibraryPoints();
+  if (map.getZoom() < 5) { S.libraryData = null; const src = map.getSource("library"); if (src) src.setData({ type: "FeatureCollection", features: [] }); return; }
   try {
     const r = await fetch(`/api/roadbooks?bbox=${b.getWest()},${b.getSouth()},${b.getEast()},${b.getNorth()}`); const j = await r.json();
     S.libraryData = { type: "FeatureCollection", features: (j.roadbooks || []).map(rb => ({ type: "Feature", properties: { id: rb.id, name: rb.name, length: rb.length }, geometry: { type: "LineString", coordinates: rb.line } })) };
     const src = map.getSource("library"); if (src) src.setData(S.libraryData); else applyStyle();
     if (j.note) status(j.note, false);
   } catch { status("The library is not reachable right now", true); }
+}
+async function loadLibraryPoints() {
+  S.libraryPtsAt = Date.now();
+  try {
+    const j = await (await fetch("/api/roadbooks?points=1")).json();
+    S.libraryPts = { type: "FeatureCollection", features: (j.points || []).map(p => ({ type: "Feature", properties: { id: p.id, name: p.name }, geometry: { type: "Point", coordinates: p.c } })) };
+    const src = map.getSource("library_pts"); if (src) src.setData(S.libraryPts); else applyStyle();
+  } catch { /* the lines still load */ }
 }
 async function openLibraryItem(id) {
   for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
@@ -1437,6 +1460,71 @@ $("#btnChart").onclick = () => { S.chartOn = true; renderStats(); renderChart();
 $("#btnChartClose").onclick = () => { S.chartOn = false; renderStats(); };
 $("#btnJunctions").onclick = () => fetchJunctions(true);
 $("#btnSuggest").onclick = suggestCues;
+$("#btnGates").onclick = findGates;
+
+/**
+ * Gates on the line: OpenStreetMap's barrier nodes (gate, lift gate, swing gate, cattle grid, stile, chain) within a
+ * few metres of the route, from the public Overpass API — asked only when the button is pressed, with the line
+ * simplified to a few hundred points. The finds are offered as notes with the chart's gate or cattle-guard symbol and
+ * a link to the node, so the rider can see who mapped it and when.
+ */
+const GATES = { gate: ["GATE", "gate"], lift_gate: ["GATE", "gate"], swing_gate: ["GATE", "gate"], kissing_gate: ["GATE", "gate"], cattle_grid: ["CATTLE GUARD", "cattle_guard"], stile: ["STILE", "gate"], chain: ["CHAIN ACROSS", "gate"] };
+let gatesBusy = false;
+async function findGates() {
+  const line = lineCoords(); if (!line || gatesBusy) return;
+  gatesBusy = true; $("#btnGates").disabled = true;
+  status("Asking OpenStreetMap for gates along the route…", false, true);
+  try {
+    const pts = simplify(line, 8).map(i => line[i]), parts = [];
+    for (let i = 0; i < pts.length - 1; i += 149) parts.push(pts.slice(i, i + 150));
+    const sel = parts.map(p => `node(around:22,${p.map(q => q[1].toFixed(5) + "," + q[0].toFixed(5)).join(",")})[barrier~"^(${Object.keys(GATES).join("|")})$"];`).join("");
+    const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "data=" + encodeURIComponent(`[out:json][timeout:90];(${sel});out;`) });
+    if (!r.ok) throw new Error(r.status === 429 || r.status === 504 ? "OpenStreetMap's Overpass server is busy; try again in a minute" : "Overpass answered " + r.status);
+    const j = await r.json(), cum = cumulative(line), found = [];
+    for (const n of j.elements || []) {
+      const k = GATES[n.tags && n.tags.barrier]; if (!k) continue;
+      const s = alongMetres(line, cum, [n.lon, n.lat]); if (!s || s.d > 25) continue;
+      if (found.some(f => Math.abs(f.at - s.at) < 15)) continue;
+      const locked = n.tags.locked === "yes" || n.tags.access === "private" || n.tags.access === "no";
+      found.push({ id: n.id, lon: n.lon, lat: n.lat, at: s.at, kind: k, text: (locked && k[1] === "gate" ? "LOCKED " : "") + k[0], name: n.tags.name || "", have: S.cues.some(c => c.at != null && Math.abs(c.at - s.at) < 30 && /GATE|GUARD|CATTLE|STILE|CHAIN/i.test(c.text || "")) });
+    }
+    found.sort((a, b) => a.at - b.at);
+    $("#status").hidden = true;
+    showGates(found);
+  } catch (e) { status(e.message || "Overpass is not reachable right now", true); }
+  finally { gatesBusy = false; $("#btnGates").disabled = false; }
+}
+/** where a point meets the line: metres along it, and how far off it */
+function alongMetres(line, cum, p) {
+  const k = Math.cos(p[1] * Math.PI / 180) * 111320; let best = null;
+  for (let i = 0; i < line.length - 1; i++) {
+    const ax = (line[i][0] - p[0]) * k, ay = (line[i][1] - p[1]) * 111320, bx = (line[i + 1][0] - p[0]) * k, by = (line[i + 1][1] - p[1]) * 111320;
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+    const d = Math.hypot(ax + t * dx, ay + t * dy);
+    if (!best || d < best.d) best = { d, at: cum[i] + t * (cum[i + 1] - cum[i]) };
+  }
+  return best;
+}
+function showGates(found) {
+  for (const s of document.querySelectorAll(".sheet")) s.hidden = true;
+  const sh = $("#gatesSheet"); sh.hidden = false;
+  if (!found.length) { $("#gatesBody").innerHTML = `<p class="muted">OpenStreetMap has no gates, cattle guards or stiles on this line. That is a map with gaps, not a promise: ask locally.</p>`; return; }
+  const fresh = found.filter(f => !f.have).length;
+  $("#gatesBody").innerHTML = `<p class="muted small">From OpenStreetMap, within a few metres of the line. Untick any you know are gone; the rest become notes with the chart's symbol and a link to the map's record.</p>` +
+    found.map((f, i) => `<label class="gl${f.have ? " have" : ""}"><input type="checkbox" data-g="${i}"${f.have ? "" : " checked"}> ${esc(f.text)}${f.name ? ` · ${esc(f.name)}` : ""}${f.have ? ' <span class="muted small">(already a cue)</span>' : ""}<span class="at">${fmtDist(f.at)}</span></label>`).join("") +
+    `<div class="sheet-actions"><span class="muted small">${found.length} found</span><button id="gatesAdd" class="cta">Add ${fresh} as notes</button></div>`;
+  const upd = () => { const n = document.querySelectorAll("#gatesBody input:checked").length; $("#gatesAdd").textContent = `Add ${n} as note${n === 1 ? "" : "s"}`; $("#gatesAdd").disabled = !n; };
+  for (const cb of document.querySelectorAll("#gatesBody input")) cb.onchange = upd; upd();
+  $("#gatesAdd").onclick = () => {
+    let n = 0;
+    for (const cb of document.querySelectorAll("#gatesBody input:checked")) {
+      const f = found[+cb.dataset.g];
+      S.cues.push({ lon: f.lon, lat: f.lat, turn: "NOTE", level: 0, text: f.text, link: `https://www.openstreetmap.org/node/${f.id}`, auto: false, atHint: f.at, rally: { symbols: [{ id: f.kind[1], slot: "ra" }] } }); n++;
+    }
+    sh.hidden = true; renderCues(); if (S.chartOn) scheduleChart();
+    status(`Added ${n} note${n === 1 ? "" : "s"} from OpenStreetMap`);
+  };
+}
 
 /**
  * The other roads at each cue's junction, from the routing graph (/api/junctions): suggestions only. A cue whose tulip

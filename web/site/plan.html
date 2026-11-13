@@ -54,6 +54,7 @@
   </section>
 
   <div id="viewSeg" class="viewseg" role="tablist" aria-label="Show" hidden><button id="btnChartClose" role="tab">Cues</button><button id="btnChart" role="tab" title="Print a rally roll chart from this route">Roll chart</button></div>
+  <div id="routeTools" class="routetools" hidden><span class="muted small">Find along the route:</span><button id="btnSuggest" class="mini" title="Add turns found from the line's own shape (for a track you rode)">turns</button><button id="btnJunctions" class="mini" title="Ask the map for the other roads at each cue's junction, for the tulips">junctions</button><button id="btnGates" class="mini" title="Ask OpenStreetMap for gates, cattle guards and stiles on the line">gates</button></div>
 
   <section id="cuesSec" hidden>
     <h3>Cues <span id="cueCount" class="muted"></span> <button id="btnAutoCues" class="mini" title="Replace the cues with the router's turns">reset to turns</button></h3>
@@ -63,14 +64,14 @@
   <section id="chartSec" hidden>
     <h3>Roll chart <span id="chartCount" class="muted"></span></h3>
     <div class="seg" id="chartLayout" role="radiogroup" aria-label="Chart layout"><button data-l="A" title="NASA Rally Sport RallyMoto: a 2.25 in roll, miles">A · Stage-rally scroll</button><button data-l="B" title="FIA / FIM cross-country: 148 mm wide, kilometres">B · Rally-raid roadbook</button></div>
-    <div class="actions chart-actions"><button id="btnExport" class="cta">Export PDF…</button><button id="btnSuggest" class="mini" title="Add turns found from the track's shape">suggest cues</button><button id="btnJunctions" class="mini" title="Ask the map for the other roads at each junction">find junctions</button></div>
+    <div class="actions chart-actions"><button id="btnExport" class="cta">Export PDF…</button></div>
     <p class="muted small chart-hint">Click a row to edit its tulip, words and symbols. Rows marked <i>auto</i> are still exactly as generated.</p>
     <ul id="chartWarn" class="cwarn"></ul>
     <div id="chartRows" class="crows"></div>
   </section>
 
 
-  <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it, or park it for your phone (24 hours); a track you are working on is kept in this browser only, so a reload does not lose it. Your browser fetches elevation from AWS Terrain Tiles, imagery from USGS and EOX, land ownership from the BLM, and nearby articles from Wikipedia directly. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a> · <a id="fb" href="mailto:wiley@machinenusa.com?subject=Planner%20feedback">Feedback</a></footer>
+  <footer class="side-foot muted small">Same router and maps as the app. Nothing you plan here is stored unless you publish it, or park it for your phone (24 hours); a track you are working on is kept in this browser only, so a reload does not lose it. Your browser fetches elevation from AWS Terrain Tiles, imagery from USGS and EOX, land ownership from the BLM, nearby articles from Wikipedia, and (when you press <i>gates</i>) gates from OpenStreetMap's Overpass API directly. <a href="/manual.html#planner">How it works</a> · <a href="/">Roadbook</a> · <a id="fb" href="mailto:wiley@machinenusa.com?subject=Planner%20feedback">Feedback</a></footer>
 </aside>
 <button id="btnSideShow" class="icon showside" title="Show panel" hidden>›</button>
 
@@ -212,6 +213,11 @@
 </div>
 
 <!-- library item -->
+<div id="gatesSheet" class="sheet" hidden>
+  <div class="sheet-head"><b>Gates along the route</b><button class="icon" data-close>×</button></div>
+  <div id="gatesBody"></div>
+</div>
+
 <div id="rbSheet" class="sheet" hidden>
   <div class="sheet-head"><b id="rbName">Roadbook</b><button class="icon" data-close>×</button></div>
   <div id="rbBody"></div>
