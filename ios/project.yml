@@ -49,6 +49,10 @@ targets:
       - path: Roadbook
         excludes: ["Info.plist", "Roadbook.entitlements"]
       - path: Shared
+      # the voice (Kokoro, Heart): fetched by tools/fetch-voice.sh, bundled as the folder "voice"
+      - path: Vendor/voice
+        type: folder
+        buildPhase: resources
       # the map's fonts, sprites and layer templates are the same files the Android app ships
       - path: ../app/src/main/assets/fonts
         type: folder

@@ -74,7 +74,7 @@ struct SearchAsk {
 
 enum Sheet: Identifiable {
     case search(SearchAsk = .goTo)
-    case maps, catalog, trackPicker, fetchCode, turnList, cueList, modes, stops, voice
+    case maps, catalog, trackPicker, fetchCode, turnList, cueList, modes, stops
     case cue(lat: Double, lon: Double, existing: Cue?)
     case markEdit(existing: Mark?, suggested: String, lat: Double, lon: Double)
     case markCard(Mark)
@@ -88,7 +88,7 @@ enum Sheet: Identifiable {
         switch self {
         case .search: return "search"; case .maps: return "maps"; case .catalog: return "catalog"; case .trackPicker: return "track"; case .fetchCode: return "fetch"; case .stops: return "stops"
         case .turnList: return "turns"; case .cueList: return "cues"; case .modes: return "modes"; case .cue: return "cue"; case .markEdit: return "markEdit"; case .markCard: return "markCard"
-        case .publish: return "publish"; case .libraryItem: return "lib"; case .fileName: return "fileName"; case .trackLoaded: return "trackLoaded"; case .shareCode: return "shareCode"; case .scanCode: return "scanCode"; case .voice: return "voice"
+        case .publish: return "publish"; case .libraryItem: return "lib"; case .fileName: return "fileName"; case .trackLoaded: return "trackLoaded"; case .shareCode: return "shareCode"; case .scanCode: return "scanCode"
         }
     }
 }

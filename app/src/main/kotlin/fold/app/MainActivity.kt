@@ -292,7 +292,7 @@ class MainActivity : AppCompatActivity() {
             onDownload = { Catalog.show(this, packs) { onPacksChanged() } },
             onBrowse = { showLibrary(true) },
             terrainOn = prefs.terrain, onTerrain = { on -> prefs.terrain = on; loadStyle() }, placesOn = prefs.places, onPlaces = { on -> prefs.places = on; drawPlaces() },
-            onImportMarks = { safe { browseGpx.launch(arrayOf("*/*")) } }, onVoice = { Voices.show(this) }) }
+            onImportMarks = { safe { browseGpx.launch(arrayOf("*/*")) } }) }
         findViewById<Button>(R.id.btnRouteHere).setOnClickListener { pin?.let { routeTo(it, pinName) } }
         findViewById<Button>(R.id.btnPinCancel).setOnClickListener { clearPin() }
         findViewById<Button>(R.id.btnVia).setOnClickListener { pin?.let { addVia(it, pinName) } }

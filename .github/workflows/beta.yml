@@ -1,0 +1,31 @@
+# The Android beta, signed on the build machine (the key never leaves it), is too big for a git file (over 100 MB since
+# the voice is bundled). So it arrives on the "beta-upload" branch in parts under 100 MB with a SHA-256, force-pushed each
+# time so the parts never pile up in history; this joins them, checks the hash, and puts roadbook-beta.apk on the rolling
+# "packs" release, where hondoroadbook.com/download/roadbook-beta.apk serves it from.
+name: beta
+
+on:
+  push:
+    branches: [beta-upload]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: beta-upload }
+      - name: Join and check
+        run: |
+          set -euo pipefail
+          cat roadbook-beta.apk.part* > roadbook-beta.apk
+          sha256sum -c roadbook-beta.apk.sha256
+          ls -la roadbook-beta.apk
+      - name: Publish
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          gh release upload packs -R "$GITHUB_REPOSITORY" --clobber roadbook-beta.apk
+          echo "Published $(cat VERSION 2>/dev/null)" >> "$GITHUB_STEP_SUMMARY"

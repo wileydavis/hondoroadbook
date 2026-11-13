@@ -68,8 +68,8 @@ async function fetchPack(env, key, range) {
 // rolling GitHub release "packs" (catalog.json, us/<state>-roads.mappack → asset <state>-roads.mappack).
 const RELEASE = "https://github.com/wileydavis/hondoroadbook/releases/download/packs/";
 // Only the catalog and pack files are reachable here: parked and library objects share the bucket but are
-// served solely by /api, which knows about expiry and hiding. voices/<name>.zip is a voice pack (MAPS → VOICE in the apps).
-const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery)\.(mappack|json)|voices\/[a-z0-9-]+\.zip)$/;
+// served solely by /api, which knows about expiry and hiding.
+const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery)\.(mappack|json))$/;
 async function servePackOrRelease(request, env, key) {
   if (!key || !PACK_KEY.test(key)) return new Response("not found", { status: 404 });
   if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }
@@ -93,13 +93,15 @@ async function serveApp(request, env, name) {
   if (!/^[a-z-]+\.apk$/.test(name)) return new Response("not found", { status: 404 });
   const fromR2 = env.PACKS ? await servePack(request, env, "app/" + name) : new Response(null, { status: 404 });
   if (fromR2.status !== 404) { const h = new Headers(fromR2.headers); h.set("Content-Type", APK_TYPE); return new Response(fromR2.body, { status: fromR2.status, headers: h }); }
-  // pass Range through so Android's download manager can resume; raw.githubusercontent honours it
+  // pass Range through so Android's download manager can resume; raw.githubusercontent and the release both honour it
   const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);
-  const upstream = await fetch("https://raw.githubusercontent.com/wileydavis/hondoroadbook/main/dist/" + name, { headers: fwd, cf: rng ? undefined : { cacheTtl: 300, cacheEverything: true } });
+  // the beta is over git's 100 MB file limit (the voice is bundled): .github/workflows/beta.yml puts it on the release
+  const src = name === "roadbook-beta.apk" ? RELEASE + name : "https://raw.githubusercontent.com/wileydavis/hondoroadbook/main/dist/" + name;
+  const upstream = await fetch(src, { method: request.method === "HEAD" ? "HEAD" : "GET", headers: fwd, redirect: "follow", cf: rng ? undefined : { cacheTtl: 300, cacheEverything: true } });
   if (!upstream.ok) return new Response("no build published yet", { status: 404, headers: { "Cache-Control": "no-store" } });
   const headers = new Headers({ "Content-Type": APK_TYPE, "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "public, max-age=300", "Accept-Ranges": "bytes", "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" });
   for (const h of ["Content-Length", "Content-Range", "ETag", "Last-Modified"]) { const v = upstream.headers.get(h); if (v) headers.set(h, v); }
-  return new Response(upstream.body, { status: upstream.status, headers });
+  return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers });
 }
 
 async function servePack(request, env, key) {

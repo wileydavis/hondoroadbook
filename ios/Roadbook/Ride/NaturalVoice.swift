@@ -1,31 +1,15 @@
 import Foundation
 
-/// The natural voice: Kokoro-82M (Apache-2.0) run on the phone by sherpa-onnx, from the pack the rider downloads under
-/// MAPS → VOICE (about 117 MB, kept in Application Support). Synthesis is slower than the system voice, so Speech
-/// prepares phrases ahead of the cue and falls back to the system voice when one is not ready in time.
+/// The voice riders hear: Kokoro-82M (Apache-2.0, the Heart speaker) run on the phone by sherpa-onnx, from the app
+/// bundle's "voice" folder (fetched at build time by tools/fetch-voice.sh). Synthesis is slower than the system voice,
+/// so Speech prepares phrases ahead of the cue and falls back to the system voice when one is not ready in time.
 final class NaturalVoice {
-    static let pack = "kokoro-en-v1"
-    static let sizeMB = 117
-    static let bytes: Int64 = 117_011_968   // kokoro-en-v1.zip as built by .github/workflows/voices.yml
-    static var url: String { Catalog.site + "/packs/voices/\(pack).zip" }
-    /// the speakers offered (Kokoro v1.0 ids)
-    static let speakers: [(Int, String)] = [
-        (3, "Heart · US, warm"), (2, "Bella · US"), (6, "Nicole · US, soft"), (9, "Sarah · US"),
-        (16, "Michael · US"), (14, "Fenrir · US, deep"), (18, "Puck · US, bright"), (11, "Adam · US"),
-        (21, "Emma · British"), (24, "Daniel · British"), (26, "George · British"),
-    ]
-    static var dir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("voices/\(pack)", isDirectory: true)
-    }
-    static var installed: Bool {
-        FileManager.default.fileExists(atPath: dir.appendingPathComponent("installed").path) && FileManager.default.fileExists(atPath: dir.appendingPathComponent("model.int8.onnx").path)
-    }
+    static var dir: URL? { Bundle.main.url(forResource: "voice", withExtension: nil) }
 
     private let tts: OpaquePointer
 
     init?() {
-        guard NaturalVoice.installed else { return nil }
-        let d = NaturalVoice.dir
+        guard let d = NaturalVoice.dir, FileManager.default.fileExists(atPath: d.appendingPathComponent("model.int8.onnx").path) else { return nil }
         func p(_ name: String) -> UnsafeMutablePointer<CChar> { strdup(d.appendingPathComponent(name).path)! }
         let strs = [p("model.int8.onnx"), p("voices.bin"), p("tokens.txt"), p("espeak-ng-data"), p("lexicon-us-en.txt"), strdup("cpu")!]
         defer { strs.forEach { free($0) } }

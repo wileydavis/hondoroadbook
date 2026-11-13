@@ -9,7 +9,6 @@ build/
 .kotlin/
 *.apk
 !dist/roadbook.apk
-!dist/roadbook-beta.apk
 *.apk.idsig
 *.mappack
 *.osm.pbf
@@ -18,5 +17,6 @@ node_modules/
 .wrangler/
 dist/*.jar
 __pycache__/
-# the natural voice's engine, fetched by ios/fetch-vendor.sh
+# fetched at build time: the voice (tools/fetch-voice.sh) and the iPhone app's speech engine (ios/fetch-vendor.sh)
 ios/Vendor/
+app/src/main/assets/tts/kokoro/

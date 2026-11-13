@@ -99,7 +99,7 @@ object SearchDialog {
 
 /** Installed packs, import, delete, units. The only screen with any settings. */
 object MapsDialog {
-    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null, terrainOn: Boolean = true, onTerrain: ((Boolean) -> Unit)? = null, placesOn: Boolean = true, onPlaces: ((Boolean) -> Unit)? = null, onImportMarks: (() -> Unit)? = null, onVoice: (() -> Unit)? = null) {
+    fun show(act: Activity, packs: PackStore, marks: MarkStore, onImport: () -> Unit, onDelete: (Pack) -> Unit, onUnits: (Boolean) -> Unit, onExportMarks: () -> Unit, onBurnMarks: () -> Unit, onDownload: (() -> Unit)? = null, onBrowse: (() -> Unit)? = null, terrainOn: Boolean = true, onTerrain: ((Boolean) -> Unit)? = null, placesOn: Boolean = true, onPlaces: ((Boolean) -> Unit)? = null, onImportMarks: (() -> Unit)? = null) {
         val ctx = act
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(16), ctx.dp(20), ctx.dp(8)) }
         val list = packs.packs
@@ -141,7 +141,6 @@ object MapsDialog {
             }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
         }
         root.addView(settings)
-        if (onVoice != null) root.addView(Button(ctx).apply { text = "VOICE…"; textSize = 14f; tag = "voice" })
         if (onPlaces != null) root.addView(TextView(ctx).apply { text = "Places: fuel, camping, water, beds, repair and food from the map packs, drawn as you zoom in. Tap one to route to it."; textSize = 12f; setPadding(0, ctx.dp(2), 0, ctx.dp(6)) })
         val n = marks.marks.size
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, ctx.dp(10), 0, 0) }
@@ -163,7 +162,7 @@ object MapsDialog {
         root.addView(LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL
             addView(Button(ctx).apply { text = "TERMS"; textSize = 12f; setOnClickListener { (act as? MainActivity)?.openUrl("https://hondoroadbook.com/terms.html") } }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             addView(Button(ctx).apply { text = "PRIVACY"; textSize = 12f; setOnClickListener { (act as? MainActivity)?.openUrl("https://hondoroadbook.com/privacy.html") } }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)) })
-        root.addView(TextView(ctx).apply { text = "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs or the natural voice, fetching or publishing a roadbook, browsing the library. No accounts, no history."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
+        root.addView(TextView(ctx).apply { text = "Roadbook stores your map packs, these settings, marks you save on purpose, and recordings you keep. The network is used only when you press a button that needs it: downloading packs, fetching or publishing a roadbook, browsing the library. No accounts, no history."; textSize = 12f; setPadding(0, ctx.dp(6), 0, 0) })
         val scroll = android.widget.ScrollView(ctx).apply { addView(root) }
         val b = AlertDialog.Builder(ctx).setTitle("Maps on this phone").setView(scroll)
             .setPositiveButton(if (onDownload != null) "DOWNLOAD" else ctx.getString(R.string.import_pack)) { _, _ -> if (onDownload != null) onDownload() else onImport() }
@@ -171,7 +170,6 @@ object MapsDialog {
         if (onDownload != null) b.setNeutralButton("IMPORT FILE") { _, _ -> onImport() }
         val dlg = b.show()
         if (onBrowse != null) root.findViewWithTag<Button>("browse")?.setOnClickListener { dlg.dismiss(); onBrowse() }
-        if (onVoice != null) root.findViewWithTag<Button>("voice")?.setOnClickListener { dlg.dismiss(); onVoice() }
     }
 }
 

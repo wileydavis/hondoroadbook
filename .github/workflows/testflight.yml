@@ -42,8 +42,9 @@ jobs:
           mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
       - uses: actions/cache@v4
         with: { path: ios/Vendor, key: "sherpa-ios-${{ hashFiles('ios/fetch-vendor.sh') }}" }
-      - name: The natural voice's engine (sherpa-onnx, ONNX Runtime)
-        run: ios/fetch-vendor.sh
+      - name: The voice and its engine (Kokoro; sherpa-onnx, ONNX Runtime)
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: ios/fetch-vendor.sh && tools/fetch-voice.sh
       - name: The Xcode project
         run: brew install xcodegen && cd ios && xcodegen generate
       - name: Archive

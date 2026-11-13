@@ -48,3 +48,9 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.2")
     implementation("com.google.zxing:core:3.5.3")
 }
+
+// The voice (Kokoro, Heart) is too big for git: tools/fetch-voice.sh puts it in assets/tts/kokoro before a build.
+// A release without it would quietly fall back to the small Piper voice, so refuse to build one.
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst { check(file("src/main/assets/tts/kokoro/model.int8.onnx").exists()) { "The voice is missing: run tools/fetch-voice.sh first" } }
+}

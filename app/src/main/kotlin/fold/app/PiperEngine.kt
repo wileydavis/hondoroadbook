@@ -23,9 +23,9 @@ import java.util.concurrent.TimeUnit
  * and cached as PCM, so [say] at the window opening starts in milliseconds. Audio goes out as
  * navigation guidance, the same stream as the pips, so a helmet headset gets it.
  *
- * The natural voice (Kokoro, a download: [Voices]) runs beside it when chosen. It is slower to synthesize, so it
- * works on its own thread: a cue it has prepared plays in the natural voice; one it has not gets [WAIT_MS] to be
- * synthesized, and the built-in voice says it if that is not enough. The ride never waits on the bigger model.
+ * The voice riders hear is Kokoro (Heart, US English; assets/tts/kokoro, fetched at build time by tools/fetch-voice.sh).
+ * It is slower to synthesize, so it works on its own thread: a cue it has prepared plays in Kokoro; one it has not gets
+ * [WAIT_MS] to be made, and the small Piper voice says it if that is not enough. The ride never waits on the big model.
  */
 class PiperEngine(private val ctx: Context) : SpeechEngine {
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "piper").apply { priority = Thread.NORM_PRIORITY - 1 } }
@@ -40,25 +40,20 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
     @Volatile private var playing: AudioTrack? = null
     @Volatile private var generation = 0   // bumped by say() and stop(); queued synthesis checks it before playing
 
-    init { worker.execute { load() }; useVoice(Voices.chosen(ctx)) }
-
-    /** The natural voice's speaker, or -1 for the built-in voice only. Loads or frees the model off the ride's threads. */
-    fun useVoice(sid: Int) {
-        natWorker.execute {
-            if (sid < 0 || !Voices.installed(ctx)) { nat?.let { n -> nat = null; natSid = -1; try { n.release() } catch (_: Throwable) {} }; return@execute }
-            if (nat == null) nat = loadNatural()
-            natSid = if (nat != null) sid else -1
-            synchronized(cache) { cache.keys.removeAll { it.startsWith("k") } }
-        }
+    init {
+        worker.execute { load() }
+        // after Piper's load has put espeak-ng-data on disk, which Kokoro shares
+        worker.execute { natWorker.execute { nat = loadNatural(); natSid = if (nat != null) 0 else -1 } }
     }
     val natural: Boolean get() = nat != null && natSid >= 0
 
     private fun loadNatural(): OfflineTts? = try {
-        val d = Voices.dir(ctx)
-        val k = OfflineTtsKokoroModelConfig(model = File(d, "model.int8.onnx").path, voices = File(d, "voices.bin").path, tokens = File(d, "tokens.txt").path,
-            dataDir = File(d, "espeak-ng-data").path, lexicon = File(d, "lexicon-us-en.txt").path, lengthScale = 1.0f)
-        OfflineTts(null, OfflineTtsConfig(model = OfflineTtsModelConfig(kokoro = k, numThreads = 2, provider = "cpu")))
-    } catch (e: Throwable) { android.util.Log.w("Roadbook", "natural voice unavailable: $e"); null }
+        if (ctx.assets.list("tts/kokoro")?.contains("model.int8.onnx") != true) null else {
+            val k = OfflineTtsKokoroModelConfig(model = "tts/kokoro/model.int8.onnx", voices = "tts/kokoro/voices.bin", tokens = "tts/kokoro/tokens.txt",
+                dataDir = File(ctx.filesDir, "tts/espeak-ng-data").path, lexicon = "tts/kokoro/lexicon-us-en.txt", lengthScale = 1.0f)
+            OfflineTts(ctx.assets, OfflineTtsConfig(model = OfflineTtsModelConfig(kokoro = k, numThreads = 2, provider = "cpu")))
+        }
+    } catch (e: Throwable) { android.util.Log.w("Roadbook", "Kokoro voice unavailable: $e"); null }
 
     private fun load() {
         try {
@@ -107,15 +102,6 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         if (ready) worker.execute { synth(text) }
     }
 
-    /** The chosen voice saying [text] for the VOICE screen's TEST: waits for the natural voice however long it takes. */
-    fun test(text: String) {
-        stopPlayback()
-        val gen = ++generation
-        (if (natural) natWorker else worker).execute {
-            val pcm = (if (natural) synthNatural(text) else null) ?: synth(text) ?: return@execute
-            synchronized(playLock) { if (gen != generation) return@execute; play(pcm) }
-        }
-    }
 
     override fun say(text: String) {
         if (!ready && !natural) return

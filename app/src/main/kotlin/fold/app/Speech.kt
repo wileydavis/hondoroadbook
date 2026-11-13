@@ -27,10 +27,7 @@ object Speech {
     private fun spoken(text: String) = try { SpeechText.forVoice(text) } catch (_: Throwable) { text }
     fun prepare(text: String) { if (enabled && text.isNotBlank()) engine?.prepare(spoken(text)) }
     fun say(text: String) { if (enabled && text.isNotBlank()) engine?.say(spoken(text)) }
-    /** The VOICE screen: hear the chosen voice whether or not cues are being spoken. */
-    fun test(text: String) { (engine as? PiperEngine)?.test(spoken(text)) ?: engine?.say(spoken(text)) }
-    /** The natural voice's speaker id, or -1 for the built-in voice. */
-    fun useVoice(sid: Int) { (engine as? PiperEngine)?.useVoice(sid) }
+
     fun stop() { engine?.stop() }
     fun shutdown() { engine?.shutdown(); engine = null }
 }
