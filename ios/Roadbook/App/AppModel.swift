@@ -84,11 +84,13 @@ enum Sheet: Identifiable {
     case trackLoaded(GpxTrack, URL?)
     /// a GPX shown as a moving code for a phone beside this one; the camera reading one
     case shareCode(String), scanCode
+    /// how to share a GPX: the file through the system share sheet, a moving code, or (a route) saved to Files
+    case share(title: String, message: String, fileName: String, gpx: String, save: (() -> Void)?)
     var id: String {
         switch self {
         case .search: return "search"; case .maps: return "maps"; case .catalog: return "catalog"; case .trackPicker: return "track"; case .fetchCode: return "fetch"; case .stops: return "stops"
         case .turnList: return "turns"; case .cueList: return "cues"; case .modes: return "modes"; case .cue: return "cue"; case .markEdit: return "markEdit"; case .markCard: return "markCard"
-        case .publish: return "publish"; case .libraryItem: return "lib"; case .fileName: return "fileName"; case .trackLoaded: return "trackLoaded"; case .shareCode: return "shareCode"; case .scanCode: return "scanCode"
+        case .publish: return "publish"; case .libraryItem: return "lib"; case .fileName: return "fileName"; case .trackLoaded: return "trackLoaded"; case .shareCode: return "shareCode"; case .scanCode: return "scanCode"; case .share: return "share"
         }
     }
 }

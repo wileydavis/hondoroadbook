@@ -210,11 +210,11 @@ extension AppModel {
     }
 
     func saveOrShareRoute(_ r: Route) {
-        ask("Route: " + (destName.isEmpty ? "route" : destName),
-            Units.distance(r.length) + " · " + Units.time(r.timeSeconds) + " · " + profile.label + "\n\nSaved as a GPX file: any map app opens it; Roadbook re-routes it on the recipient's own maps.",
-            [Dialog.Btn(label: "SAVE TO FILES") { [self] in safe { let u = try Files.write(routeFileName(), routeGpx(r)); showToast("Saved \(u.lastPathComponent) — it will show under TRACK", 5) } },
-             Dialog.Btn(label: "SHARE…") { [self] in shareChooser(routeFileName(), routeGpx(r)) },
-             Dialog.Btn(label: "Cancel", role: .cancel) {}])
+        let name = routeFileName(), gpx = routeGpx(r)
+        sheet = .share(title: "Route: " + (destName.isEmpty ? "route" : destName),
+                       message: Units.distance(r.length) + " · " + Units.time(r.timeSeconds) + " · " + profile.label + "\n\nA GPX file: any map app opens it; Roadbook re-routes it on the recipient's own maps.",
+                       fileName: name, gpx: gpx,
+                       save: { [self] in safe { let u = try Files.write(name, gpx); showToast("Saved \(u.lastPathComponent) — it will show under TRACK", 5) } })
     }
 
     /// The written directions, for the turn-list sheet.

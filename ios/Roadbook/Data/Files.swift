@@ -66,6 +66,12 @@ enum Files {
         return dst
     }
 
+    /// A text file written where the share sheet can read it, for ShareLink.
+    static func shareFile(_ fileName: String, _ text: String) -> URL? {
+        let f = share.appendingPathComponent(fileName)
+        do { try text.write(to: f, atomically: true, encoding: .utf8); return f } catch { return nil }
+    }
+
     /// The share sheet for a text file (AirDrop, Mail, Files…).
     static func shareText(_ fileName: String, _ text: String) {
         let f = share.appendingPathComponent(fileName)

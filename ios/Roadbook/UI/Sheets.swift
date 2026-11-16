@@ -19,7 +19,7 @@ struct SheetHost: View {
         case .catalog: CatalogSheet()
         case .trackPicker: TrackPickerSheet()
         case .fetchCode: FetchCodeSheet()
-        case .turnList: ListSheet(title: (model.destName.isEmpty ? "Route" : model.destName) + (model.route.map { " · " + Units.distance($0.length) + " · " + Units.time($0.timeSeconds) } ?? ""), lines: model.route.map { model.turnListLines($0) } ?? [], action: model.route.map { r -> (String, () -> Void) in ("SAVE / SHARE", { model.sheet = nil; model.saveOrShareRoute(r) }) })
+        case .turnList: ListSheet(title: (model.destName.isEmpty ? "Route" : model.destName) + (model.route.map { " · " + Units.distance($0.length) + " · " + Units.time($0.timeSeconds) } ?? ""), lines: model.route.map { model.turnListLines($0) } ?? [], action: model.route.map { r -> (String, () -> Void) in ("SAVE / SHARE", { model.saveOrShareRoute(r) }) })
         case .cueList: ListSheet(title: model.trackName + (model.route.map { " · " + Units.distance($0.length) } ?? ""), lines: model.cueListLines(), action: nil)
         case .modes: ModesSheet()
         case .cue(let lat, let lon, let existing): CueSheet(lat: lat, lon: lon, existing: existing)
@@ -31,6 +31,7 @@ struct SheetHost: View {
         case .trackLoaded(let tr, let url): TrackLoadedSheet(track: tr, url: url)
         case .shareCode(let gpx): ShareCodeSheet(gpx: gpx)
         case .scanCode: ScanCodeSheet()
+        case .share(let title, let message, let fileName, let gpx, let save): ShareSheet(title: title, message: message, fileName: fileName, gpx: gpx, save: save)
         }
     }
 }
@@ -769,6 +770,36 @@ struct ShareCodeSheet: View {
                 frame += 1
                 code = e.code(i: frame)
             }
+        }
+    }
+}
+
+/// Sharing a GPX, all in one sheet: the system share sheet comes from SwiftUI's own ShareLink inside it, and the moving
+/// code takes the sheet's place, so nothing is presented over a dialog that is closing or from the app's root (where
+/// iOS dismissed it again, or took the screen down with it).
+struct ShareSheet: View {
+    @EnvironmentObject var model: AppModel
+    let title: String, message: String, fileName: String, gpx: String
+    let save: (() -> Void)?
+    @State private var byCode = false
+    @State private var file: URL? = nil
+
+    var body: some View {
+        if byCode { ShareCodeSheet(gpx: gpx) }
+        else {
+            SheetFrame(title: title) {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        if !message.isEmpty { Text(message).font(.system(size: 14)).foregroundStyle(Theme.sInkSoft).frame(maxWidth: .infinity, alignment: .leading) }
+                        if let save { Button("SAVE TO FILES") { model.sheet = nil; save() }.buttonStyle(BigButton()) }
+                        if let f = file { ShareLink(item: f) { Text("SEND THE FILE…").frame(maxWidth: .infinity) }.buttonStyle(BigButton(accent: true)) }
+                        Button("SHARE BY CODE — to a phone beside you, offline") { byCode = true }.buttonStyle(BigButton())
+                        Button("CANCEL") { model.sheet = nil }.buttonStyle(BigButton(compact: true))
+                    }
+                    .padding()
+                }
+            }
+            .onAppear { if file == nil { file = Files.shareFile(fileName, gpx) } }
         }
     }
 }

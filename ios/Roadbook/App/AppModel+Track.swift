@@ -313,10 +313,7 @@ extension AppModel {
 
     /// How to share a GPX: as a moving code for a phone beside you (offline), or the file through the share sheet.
     func shareChooser(_ fileName: String, _ gpx: String) {
-        ask("Share", "",
-            [Dialog.Btn(label: "SHARE BY CODE — to a phone beside you, offline") { [self] in sheet = .shareCode(gpx) },
-             Dialog.Btn(label: "SEND THE FILE…") { Files.shareText(fileName, gpx) },
-             Dialog.Btn(label: "Cancel", role: .cancel) {}])
+        sheet = .share(title: "Share", message: "", fileName: fileName, gpx: gpx, save: nil)
     }
 
     /// A roadbook fetched by code: saved into Documents, then offered like any track.
