@@ -50,8 +50,14 @@ jobs:
         run: ios/fetch-vendor.sh && tools/fetch-voice.sh
       - name: The Xcode project
         run: brew install xcodegen && cd ios && xcodegen generate
-      # Signed for distribution from the start, with Apple's cloud-managed certificate: a development identity would
-      # make Xcode create a new certificate on every fresh runner, until the account reaches Apple's limit.
+      # Xcode's automatic signing makes an Apple Development certificate on every fresh runner, and an account holds
+      # only a few: note which exist now, and revoke the ones this run adds once it is done (tools/asc_certs.py).
+      - name: Certificates before the build
+        env: { KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
+        run: |
+          pip3 install --quiet --break-system-packages pyjwt cryptography 2>/dev/null || pip3 install --quiet pyjwt cryptography
+          ASC_KEY_ID="$KID" ASC_ISSUER_ID="$ISS" python3 tools/asc_certs.py list > "$RUNNER_TEMP/certs-before.txt"
+          echo "$(wc -l < "$RUNNER_TEMP/certs-before.txt") development certificates before the build"
       - name: Archive
         env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
         run: |
@@ -60,7 +66,7 @@ jobs:
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" \
             -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
             -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" \
-            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Distribution" archive > "$RUNNER_TEMP/archive.log" 2>&1 || {
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic archive > "$RUNNER_TEMP/archive.log" 2>&1 || {
               tail -n 120 "$RUNNER_TEMP/archive.log"
               # compiler errors go up as annotations too, so they can be read without the log
               grep -E "error:|\*\* ARCHIVE FAILED" "$RUNNER_TEMP/archive.log" | sort -u | head -15 | while read -r l; do echo "::error::${l:0:900}"; done
@@ -92,6 +98,12 @@ jobs:
               exit 70; }
           tail -n 100 "$RUNNER_TEMP/export.log"
           echo "Uploaded build $(git rev-list --count HEAD) of $(git rev-parse --short HEAD). ${{ inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Revoke the certificates this run made
+        if: always()
+        env: { KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
+        run: |
+          [ -f "$RUNNER_TEMP/certs-before.txt" ] || exit 0
+          ASC_KEY_ID="$KID" ASC_ISSUER_ID="$ISS" python3 tools/asc_certs.py prune "$RUNNER_TEMP/certs-before.txt" || echo "::warning::could not revoke this run's development certificate"
       - name: Forget the key
         if: always()
         run: rm -rf ~/private_keys
