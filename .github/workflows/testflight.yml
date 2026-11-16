@@ -72,6 +72,11 @@ jobs:
               grep -E "error:|\*\* ARCHIVE FAILED" "$RUNNER_TEMP/archive.log" | sort -u | head -15 | while read -r l; do echo "::error::${l:0:900}"; done
               exit 65; }
             tail -n 40 "$RUNNER_TEMP/archive.log"
+      - name: The voice is in the app
+        run: |
+          V="$RUNNER_TEMP/Roadbook.xcarchive/Products/Applications/Roadbook.app/voice"
+          [ -f "$V/model.int8.onnx" ] || { echo "::error::the app has no voice (Kokoro): tools/fetch-voice.sh did not run, or the voice folder is not in the bundle"; exit 1; }
+          echo "::notice::voice in the app: $(du -sh "$V" | cut -f1) ($(ls "$V" | tr '\n' ' '))"
       - name: Upload to App Store Connect
         env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
         run: |
