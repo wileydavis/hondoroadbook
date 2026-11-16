@@ -16,7 +16,8 @@ enum Library {
     static var site: String { Catalog.site }
 
     private static func request(_ url: String, method: String = "GET", body: Data? = nil, contentType: String? = nil) async throws -> (Data, HTTPURLResponse) {
-        guard let u = URL(string: url) else { throw Fail("Bad URL") }
+        // only our own site: a link that came back from the server (a library item, say) is not followed anywhere else
+        guard url.hasPrefix(site + "/"), let u = URL(string: url) else { throw Fail("Refusing a link outside \(site)") }
         var req = URLRequest(url: u); req.httpMethod = method; req.timeoutInterval = 30
         req.setValue("application/json, application/gpx+xml", forHTTPHeaderField: "Accept")
         if let b = body { req.httpBody = b; if let ct = contentType { req.setValue(ct, forHTTPHeaderField: "Content-Type") } }

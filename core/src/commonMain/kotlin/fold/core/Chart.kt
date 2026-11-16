@@ -19,14 +19,18 @@ import kotlin.math.min
 /** A small JSON reader for the rally fields: objects, arrays, strings, numbers, booleans, null. */
 object MiniJson {
     class Bad : Exception("bad json")
+    const val MAX_DEPTH = 32
     fun parse(s: String): Any? { val p = P(s); p.ws(); val v = p.value(); p.ws(); if (p.i != s.length) throw Bad(); return v }
     private class P(val s: String) {
         var i = 0
+        // the rally fields nest two or three deep; a file that nests deeper is refused, not followed down the stack
+        var depth = 0
         fun ws() { while (i < s.length && s[i].isWhitespace()) i++ }
+        fun nested(f: () -> Any?): Any? { if (++depth > MAX_DEPTH) throw Bad(); try { return f() } finally { depth-- } }
         fun value(): Any? {
             if (i >= s.length) throw Bad()
             return when (val c = s[i]) {
-                '{' -> obj(); '[' -> arr(); '"' -> str()
+                '{' -> nested { obj() }; '[' -> nested { arr() }; '"' -> str()
                 't' -> lit("true", true); 'f' -> lit("false", false); 'n' -> lit("null", null)
                 else -> if (c == '-' || c.isDigit()) num() else throw Bad()
             }

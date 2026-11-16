@@ -1,9 +1,13 @@
 import Foundation
+import CryptoKit
+import FoldCore
 
 /// Roadbook's one use of the network by itself: the pack catalog and the packs it points at, and only when
 /// the rider presses DOWNLOAD. catalog.json: { "packs": [ { id, name, region, group, kind, url, bytes, built, bbox, notes } ] }
 struct CatalogPack: Identifiable, Hashable {
     let id: String, name: String, region: String, group: String, kind: String, url: String, bytes: Int64, built: String, notes: String
+    /// the pack's SHA-256 as the signed catalog gives it; "" for a pack built before hashes were recorded
+    var sha256: String = ""
     var kindLabel: String { switch kind { case "roads": return "Roads"; case "terrain": return "Terrain"; case "imagery": return "Imagery"; case "names": return "Place names"; default: return kind.capitalizedFirst } }
     var blurb: String { switch kind { case "roads": return "roads, trails, routing, address search"; case "terrain": return "hillshade and contours under the roads"; case "imagery": return "aerial photos"; default: return "" } }
 }
@@ -18,7 +22,8 @@ enum Catalog {
         return arr.compactMap { o in
             guard let id = o["id"] as? String, let name = o["name"] as? String, let url = o["url"] as? String else { return nil }
             return CatalogPack(id: id, name: name, region: o["region"] as? String ?? name, group: o["group"] as? String ?? "", kind: o["kind"] as? String ?? "roads", url: url,
-                               bytes: (o["bytes"] as? NSNumber)?.int64Value ?? 0, built: o["built"] as? String ?? "", notes: o["notes"] as? String ?? "")
+                               bytes: (o["bytes"] as? NSNumber)?.int64Value ?? 0, built: o["built"] as? String ?? "", notes: o["notes"] as? String ?? "",
+                               sha256: ((o["sha256"] as? String)?.lowercased()).flatMap { CatalogTrust.shared.isHash(s: $0) ? $0 : nil } ?? "")
         }
     }
 
@@ -27,7 +32,25 @@ enum Catalog {
         var req = URLRequest(url: u); req.timeoutInterval = 20; req.setValue("application/json", forHTTPHeaderField: "Accept"); req.cachePolicy = .reloadIgnoringLocalCacheData
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let code = (resp as? HTTPURLResponse)?.statusCode, code == 200 else { throw Fail("Catalog: HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)") }
+        // used only if its signature is the packs workflow's (see CatalogTrust in the core)
+        var sreq = URLRequest(url: u.appendingPathExtension("sig")); sreq.timeoutInterval = 20; sreq.cachePolicy = .reloadIgnoringLocalCacheData
+        let signed = try? await URLSession.shared.data(for: sreq)
+        guard let signed, (signed.1 as? HTTPURLResponse)?.statusCode == 200 else { throw Fail("The catalog is not signed, so it was not used.") }
+        guard verified(data, signed.0) else { throw Fail("The catalog's signature does not match, so it was not used.") }
         return try parse(data)
+    }
+
+    static func verified(_ body: Data, _ sig: Data) -> Bool {
+        guard let der = Data(base64Encoded: CatalogTrust.shared.PUBLIC_KEY), let key = try? P256.Signing.PublicKey(derRepresentation: der),
+              let s = try? P256.Signing.ECDSASignature(derRepresentation: sig) else { return false }
+        return key.isValidSignature(s, for: body)
+    }
+
+    static func sha256(_ f: URL) throws -> String {
+        let h = try FileHandle(forReadingFrom: f); defer { try? h.close() }
+        var d = SHA256()
+        while let chunk = try h.read(upToCount: 1 << 20), !chunk.isEmpty { d.update(data: chunk) }
+        return d.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// "" / "installed" / "update"
@@ -72,7 +95,7 @@ final class Downloader: NSObject, URLSessionDataDelegate {
             onProgress = progress
             let cfg = URLSessionConfiguration.default; cfg.timeoutIntervalForRequest = 30; cfg.timeoutIntervalForResource = 6 * 3600
             session = URLSession(configuration: cfg, delegate: self, delegateQueue: nil)
-            guard let u = URL(string: p.url) else { throw Fail("Bad pack URL") }
+            guard p.url.hasPrefix(Catalog.site + "/"), let u = URL(string: p.url) else { throw Fail("The catalog points outside \(Catalog.site)") }
             var req = URLRequest(url: u)
             if have > 0 { req.setValue("bytes=\(have)-", forHTTPHeaderField: "Range") }
             var attempt = 0
@@ -97,6 +120,11 @@ final class Downloader: NSObject, URLSessionDataDelegate {
             }
             try? handle?.close(); handle = nil
             if total > 0 && have < total { throw Fail("Connection dropped — download again to resume") }
+        }
+        // not what the workflow built (tampered, or damaged on the way): thrown away, never unpacked
+        if !p.sha256.isEmpty {
+            DispatchQueue.main.async { progress("Checking…") }
+            if try Catalog.sha256(file) != p.sha256 { try? FileManager.default.removeItem(at: file); throw Fail("The download does not match the catalog, so it was not installed. Try again.") }
         }
         let done = dir.appendingPathComponent("\(p.id).mappack")
         try? FileManager.default.removeItem(at: done)

@@ -4,6 +4,7 @@ import UIKit
 import FoldCore
 import UniformTypeIdentifiers
 import AVFoundation
+import Compression
 import ZIPFoundation
 
 /// Routes a Sheet value to its view.
@@ -677,7 +678,39 @@ enum ShareCodeIO {
     static func bytes(_ a: KotlinByteArray) -> Data { var d = Data(count: Int(a.size)); for i in 0..<a.size { d[Int(i)] = UInt8(bitPattern: a.get(index: i)) }; return d }
     static func kotlin(_ d: Data) -> KotlinByteArray { let a = KotlinByteArray(size: Int32(d.count)); for (i, b) in d.enumerated() { a.set(index: Int32(i), value: Int8(bitPattern: b)) }; return a }
     static let deflate: (KotlinByteArray) -> KotlinByteArray? = { b in (try? (bytes(b) as NSData).compressed(using: .zlib)).map { kotlin($0 as Data) } }
-    static let inflate: (KotlinByteArray) -> KotlinByteArray? = { b in (try? (bytes(b) as NSData).decompressed(using: .zlib)).map { kotlin($0 as Data) } }
+    /// A share from another phone is untrusted: unpack it in a stream and stop at the core's limit, so a few frames of
+    /// highly compressed nonsense cannot unfold into gigabytes (NSData's one-shot decompress has no ceiling).
+    static let inflate: (KotlinByteArray) -> KotlinByteArray? = { b in inflateCapped(bytes(b), cap: Int(QrShare.shared.MAX_UNPACKED)).map { kotlin($0) } }
+
+    static func inflateCapped(_ input: Data, cap: Int) -> Data? {
+        if input.isEmpty { return nil }
+        let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
+        defer { stream.deallocate() }
+        guard compression_stream_init(stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else { return nil }
+        defer { compression_stream_destroy(stream) }
+        let size = 1 << 16
+        let dst = UnsafeMutablePointer<UInt8>.allocate(capacity: size)
+        defer { dst.deallocate() }
+        var out = Data()
+        return input.withUnsafeBytes { (raw: UnsafeRawBufferPointer) -> Data? in
+            guard let src = raw.bindMemory(to: UInt8.self).baseAddress else { return nil }
+            stream.pointee.src_ptr = src
+            stream.pointee.src_size = input.count
+            while true {
+                stream.pointee.dst_ptr = dst
+                stream.pointee.dst_size = size
+                let status = compression_stream_process(stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
+                let got = size - stream.pointee.dst_size
+                if got > 0 { out.append(dst, count: got) }
+                if out.count > cap { return nil }
+                switch status {
+                case COMPRESSION_STATUS_END: return out
+                case COMPRESSION_STATUS_OK: if got == 0 && stream.pointee.src_size == 0 { return nil }   // no progress: truncated
+                default: return nil
+                }
+            }
+        }
+    }
 }
 
 /// The code on screen: big, bright, a few frames a second until DONE.

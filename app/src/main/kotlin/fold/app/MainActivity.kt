@@ -1747,7 +1747,7 @@ class MainActivity : AppCompatActivity() {
             .setNeutralButton("READ THE TERMS") { _, _ -> openUrl("https://hondoroadbook.com/terms.html"); ui.postDelayed({ showTerms(then) }, 500) }
             .setCancelable(false).show()
     }
-    fun openUrl(url: String) { try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Throwable) { toast(url) } }
+    fun openUrl(url: String) { if (!url.startsWith("https://")) return; try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (_: Throwable) { toast(url) } }
 
     companion object {
         const val TERMS_SHORT = "Roadbook is a riding aid, not a substitute for your eyes, your judgment or the law.\n\nThe map is made by volunteers and can be wrong: roads close, gates lock, a track that is public on the map may be private on the ground, and a legal road may be unsafe for you today. A route is a suggestion; a cue is a reminder of what the data says. If a cue and the road disagree, the road wins.\n\nYou are responsible for riding safely and legally, for watching the road rather than the screen, and for carrying what you need where there is no help. Roadbook is free and provided as is, with no warranty, and Hondo Garage is not liable for what happens on the road.\n\nFull terms: hondoroadbook.com/terms.html"

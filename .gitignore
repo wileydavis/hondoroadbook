@@ -20,3 +20,5 @@ __pycache__/
 # fetched at build time: the voice (tools/fetch-voice.sh) and the iPhone app's speech engine (ios/fetch-vendor.sh)
 ios/Vendor/
 app/src/main/assets/tts/kokoro/
+# Jazzer's working corpus while fuzzing
+.cifuzz-corpus/

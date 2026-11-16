@@ -126,6 +126,7 @@ class PackStore(private val ctx: Context) {
             }
             zipFile.use { zip ->
                 val mfEntry = zip.getEntry(PackManifest.FILE) ?: throw IllegalStateException("Not a .mappack (no pack.txt)")
+                if (mfEntry.size !in 0..65536) throw IllegalStateException("Bad pack.txt")
                 val manifest = PackManifest.parse(zip.getInputStream(mfEntry).readBytes().toString(Charsets.UTF_8))
                     ?: throw IllegalStateException("Bad pack.txt")
                 if (manifest.format !in PackManifest.MIN_FORMAT..PackManifest.FORMAT) throw IllegalStateException(if (manifest.format < PackManifest.MIN_FORMAT) "This pack was made with an older packer — download it again" else "This pack is newer than the app — update Roadbook from hondoroadbook.com")

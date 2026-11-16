@@ -132,6 +132,7 @@ final class PackStore {
         let zip: Archive
         do { zip = try Archive(url: file, accessMode: .read) } catch { throw Fail("Could not open that file as a map pack (\(error.text))") }
         guard let mfEntry = zip["pack.txt"] else { throw Fail("Not a .mappack (no pack.txt)") }
+        guard mfEntry.uncompressedSize <= 65536 else { throw Fail("Bad pack.txt") }
         var mfData = Data(); _ = try zip.extract(mfEntry) { mfData.append($0) }
         guard let manifest = PackManifest.companion.parse(text: String(decoding: mfData, as: UTF8.self)) else { throw Fail("Bad pack.txt") }
         // (PackManifest.FORMAT / MIN_FORMAT in Pack.kt)

@@ -39,12 +39,12 @@ jobs:
   packer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with: { distribution: temurin, java-version: "21" }
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - run: ./gradlew --no-daemon -q :core:test :packer:test :packer:fatJar     # the tests gate every pack build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: { name: fold-packer, path: packer/build/libs/fold-packer.jar, retention-days: 7 }
       - name: Make sure the rolling release exists
         env: { GH_TOKEN: "${{ github.token }}" }
@@ -60,7 +60,7 @@ jobs:
       names: ${{ steps.m.outputs.names }}
       has_names: ${{ steps.m.outputs.has_names }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: m
         shell: bash
         run: |
@@ -93,10 +93,10 @@ jobs:
       max-parallel: 6          # be polite to Geofabrik and Protomaps
       matrix: ${{ fromJson(needs.plan.outputs.roads) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with: { distribution: temurin, java-version: "21" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { name: fold-packer }
       - name: Free disk
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
@@ -113,9 +113,9 @@ jobs:
           rm -f region.osm.pbf
           unzip -p "$r-roads.mappack" pack.txt > pack.txt
           IFS=, read -r minLat minLon maxLat maxLon <<< "$(grep '^bbox=' pack.txt | cut -d= -f2)"
-          jq -n --arg id "$path-$r-roads" --arg name "$name" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-roads.mappack" --argjson bytes "$(stat -c %s "$r-roads.mappack")" \
+          jq -n --arg id "$path-$r-roads" --arg name "$name" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-roads.mappack" --argjson bytes "$(stat -c %s "$r-roads.mappack")" --arg sha256 "$(sha256sum "$r-roads.mappack" | cut -d' ' -f1)" \
                 --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
-                '{id:$id, name:$name, region:$region, group:$group, kind:"roads", url:$url, bytes:$bytes, built:$built, bbox:$bbox}' > "$r-roads.json"
+                '{id:$id, name:$name, region:$region, group:$group, kind:"roads", url:$url, bytes:$bytes, sha256:$sha256, built:$built, bbox:$bbox}' > "$r-roads.json"
           cat "$r-roads.json"
       - name: Publish to the packs release
         env: { GH_TOKEN: "${{ github.token }}" }
@@ -149,8 +149,8 @@ jobs:
       max-parallel: 4          # the elevation tiles come from a public S3 bucket; keep it civil
       matrix: ${{ fromJson(needs.plan.outputs.terrain) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with: { python-version: "3.12" }
       - run: pip install -q numpy pillow pmtiles requests
       - name: Hillshade alignment test (a mountain shades its own tile)
@@ -182,9 +182,9 @@ jobs:
           echo "bbox $bbox zoom $zoom"
           python3 packer/terrain/build_terrain.py --name "$name terrain" --region "$name" --bbox="$bbox" --out "$r-terrain.mappack" --max-zoom "$zoom"
           IFS=, read -r minLon minLat maxLon maxLat <<< "$bbox"
-          jq -n --arg id "$path-$r-terrain" --arg name "$name terrain" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-terrain.mappack" --argjson bytes "$(stat -c %s "$r-terrain.mappack")" \
+          jq -n --arg id "$path-$r-terrain" --arg name "$name terrain" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-terrain.mappack" --argjson bytes "$(stat -c %s "$r-terrain.mappack")" --arg sha256 "$(sha256sum "$r-terrain.mappack" | cut -d' ' -f1)" \
                 --arg built "$(date -u +%F)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
-                '{id:$id, name:$name, region:$region, group:$group, kind:"terrain", url:$url, bytes:$bytes, built:$built, bbox:$bbox, notes:"hillshade; draws under the roads"}' > "$r-terrain.json"
+                '{id:$id, name:$name, region:$region, group:$group, kind:"terrain", url:$url, bytes:$bytes, sha256:$sha256, built:$built, bbox:$bbox, notes:"hillshade; draws under the roads"}' > "$r-terrain.json"
           cat "$r-terrain.json"
       - name: Publish to the packs release
         env: { GH_TOKEN: "${{ github.token }}" }
@@ -212,7 +212,7 @@ jobs:
     if: needs.plan.outputs.has_names == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: GNIS, cut by state (USGS Geographic Names Information System, public domain)
         run: |
           set -euo pipefail
@@ -223,7 +223,7 @@ jobs:
           mkdir -p dom all; unzip -q dom.zip -d dom; unzip -q all.zip -d all
           python3 tools/names_pack.py split "$(find dom -iname '*.txt' -size +10M | head -1)" "$(find all -iname '*.txt' -size +10M | head -1)" gnis
           ls gnis | wc -l
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: { name: gnis-by-state, path: gnis, retention-days: 3 }
 
   names:
@@ -244,8 +244,8 @@ jobs:
       RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         continue-on-error: true            # outside the US there is no GNIS: OpenStreetMap alone
         with: { name: gnis-by-state, path: gnis }
       - name: Build
@@ -266,9 +266,9 @@ jobs:
           python3 tools/names_pack.py build --name "$name place names" --region "$name" "${gnis[@]}" --osm extras.geojsonseq --out "$r-names.mappack"
           unzip -p "$r-names.mappack" pack.txt > pack.txt
           IFS=, read -r minLat minLon maxLat maxLon <<< "$(grep '^bbox=' pack.txt | cut -d= -f2)"
-          jq -n --arg id "$path-$r-names" --arg name "$name place names" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-names.mappack" --argjson bytes "$(stat -c %s "$r-names.mappack")" \
+          jq -n --arg id "$path-$r-names" --arg name "$name place names" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-names.mappack" --argjson bytes "$(stat -c %s "$r-names.mappack")" --arg sha256 "$(sha256sum "$r-names.mappack" | cut -d' ' -f1)" \
                 --arg built "$(grep '^created=' pack.txt | cut -d= -f2 | cut -c1-10)" --argjson bbox "[$minLon,$minLat,$maxLon,$maxLat]" \
-                '{id:$id, name:$name, region:$region, group:$group, kind:"names", url:$url, bytes:$bytes, built:$built, bbox:$bbox, notes:"passes, springs, peaks and other named places, for search"}' > "$r-names.json"
+                '{id:$id, name:$name, region:$region, group:$group, kind:"names", url:$url, bytes:$bytes, sha256:$sha256, built:$built, bbox:$bbox, notes:"passes, springs, peaks and other named places, for search"}' > "$r-names.json"
           cat "$r-names.json"
       - name: Publish to R2
         run: |
@@ -291,11 +291,12 @@ jobs:
       RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
       GH_TOKEN: ${{ github.token }}
+      SIGNING_KEY: ${{ secrets.CATALOG_SIGNING_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with: { distribution: temurin, java-version: "21" }
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: { name: fold-packer }
       - name: Continent overview tiles for the planner (zoom 0-7, one small file instead of fifty packs)
         run: |
@@ -310,10 +311,18 @@ jobs:
           if [ -n "$R2_KEY" ]; then command -v rclone >/dev/null || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null; rclone copy r2:$BUCKET meta/r2 --include "*/*-names.json"; fi
           find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
           jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
-          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber catalog.json
+          # signed for the apps, which use no catalog whose signature is not this key's (core/…/CatalogTrust.kt)
+          [ -n "$SIGNING_KEY" ] || { echo "::error::the CATALOG_SIGNING_KEY secret is missing: the apps would refuse an unsigned catalog, so none is published"; exit 1; }
+          umask 077; printf '%s\n' "$SIGNING_KEY" > "$RUNNER_TEMP/catalog.pem"
+          openssl dgst -sha256 -sign "$RUNNER_TEMP/catalog.pem" -out catalog.json.sig catalog.json
+          openssl ec -in "$RUNNER_TEMP/catalog.pem" -pubout -out "$RUNNER_TEMP/pub.pem" 2>/dev/null && openssl dgst -sha256 -verify "$RUNNER_TEMP/pub.pem" -signature catalog.json.sig catalog.json
+          rm -f "$RUNNER_TEMP/catalog.pem"
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber catalog.json catalog.json.sig
       - name: Mirror to R2 (when configured)
         if: ${{ env.R2_KEY != '' }}
         run: |
           command -v rclone >/dev/null || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null
+          # a phone that reads in the second between these two sees a mismatch and is told to try again
+          rclone copyto --ignore-times catalog.json.sig "r2:$BUCKET/catalog.json.sig"
           rclone copyto --ignore-times catalog.json "r2:$BUCKET/catalog.json"
           rclone copyto --ignore-times na-overview.pmtiles "r2:$BUCKET/na-overview.pmtiles"

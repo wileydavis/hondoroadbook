@@ -49,10 +49,17 @@ class MmapBytes private constructor(private val base: CPointer<ByteVar>, overrid
             } finally { close(fd) }
         }
     }
-    override fun u8(off: Long): Int = (base + off)!!.pointed.value.toInt() and 0xFF
-    override fun u16(off: Long): Int = (base + off)!!.reinterpret<ShortVar>().pointed.value.toInt() and 0xFFFF
-    override fun i32(off: Long): Int = (base + off)!!.reinterpret<IntVar>().pointed.value
-    override fun i64(off: Long): Long = (base + off)!!.reinterpret<LongVar>().pointed.value
+    // Every read is checked against the file: a pack's offsets come from a file that may be damaged or hostile (a
+    // .mappack can arrive by AirDrop or Mail), and a pointer read past the mapping would touch whatever memory lies
+    // there. A bad offset becomes an exception the caller handles, the same as the bounds-checked buffers on Android.
+    private fun at(off: Long, n: Int): CPointer<ByteVar> {
+        if (off < 0 || off > size - n) throw IndexOutOfBoundsException("read past end of file ($off + $n > $size)")
+        return (base + off)!!
+    }
+    override fun u8(off: Long): Int = at(off, 1).pointed.value.toInt() and 0xFF
+    override fun u16(off: Long): Int = at(off, 2).reinterpret<ShortVar>().pointed.value.toInt() and 0xFFFF
+    override fun i32(off: Long): Int = at(off, 4).reinterpret<IntVar>().pointed.value
+    override fun i64(off: Long): Long = at(off, 8).reinterpret<LongVar>().pointed.value
     override fun get(off: Long, dst: ByteArray) {
         require(off >= 0 && off + dst.size <= size) { "read past end of file (${off + dst.size} > $size)" }
         if (dst.isEmpty()) return

@@ -69,19 +69,20 @@ async function fetchPack(env, key, range) {
 const RELEASE = "https://github.com/wileydavis/hondoroadbook/releases/download/packs/";
 // Only the catalog and pack files are reachable here: parked and library objects share the bucket but are
 // served solely by /api, which knows about expiry and hiding.
-const PACK_KEY = /^(catalog\.json|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery|names)\.(mappack|json))$/;
+const PACK_KEY = /^(catalog\.json(\.sig)?|na-overview\.pmtiles|[a-z]{2}\/[a-z0-9-]+-(roads|terrain|imagery|names)\.(mappack|json))$/;
 async function servePackOrRelease(request, env, key) {
   if (!key || !PACK_KEY.test(key)) return new Response("not found", { status: 404 });
   if (env.PACKS) { const r = await servePack(request, env, key); if (r.status !== 404) return r; }
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("method not allowed", { status: 405 });
   const asset = key.split("/").pop();
   const isCatalog = asset === "catalog.json";
+  const short = isCatalog || asset === "catalog.json.sig";      // the signature changes with the catalog
   const fwd = new Headers(); const rng = request.headers.get("Range"); if (rng) fwd.set("Range", rng);
-  const upstream = await fetch(RELEASE + asset, { method: request.method, headers: fwd, redirect: "follow", cf: rng ? undefined : { cacheTtl: isCatalog ? 120 : 86400, cacheEverything: true } });
+  const upstream = await fetch(RELEASE + asset, { method: request.method, headers: fwd, redirect: "follow", cf: rng ? undefined : { cacheTtl: short ? 120 : 86400, cacheEverything: true } });
   if (!upstream.ok) return new Response(isCatalog ? '{"version":1,"packs":[]}' : "not found", { status: isCatalog ? 200 : 404, headers: { "Content-Type": isCatalog ? "application/json" : "text/plain", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
   const headers = new Headers({ "Accept-Ranges": "bytes", "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" });
   if (isCatalog) { headers.set("Content-Type", "application/json; charset=utf-8"); headers.set("Cache-Control", "public, max-age=120"); }
-  else { headers.set("Content-Type", "application/octet-stream"); headers.set("Cache-Control", "public, max-age=86400"); headers.set("Content-Disposition", `attachment; filename="${asset}"`); }
+  else { headers.set("Content-Type", "application/octet-stream"); headers.set("Cache-Control", short ? "public, max-age=120" : "public, max-age=86400"); headers.set("Content-Disposition", `attachment; filename="${asset}"`); }
   for (const h of ["Content-Length", "Content-Range", "ETag", "Last-Modified"]) { const v = upstream.headers.get(h); if (v) headers.set(h, v); }
   return new Response(request.method === "HEAD" ? null : upstream.body, { status: upstream.status, headers });
 }
@@ -121,6 +122,10 @@ async function servePack(request, env, key) {
   headers.set("Access-Control-Allow-Origin", "*");
   if (isCatalog) {
     headers.set("Content-Type", "application/json; charset=utf-8");
+    headers.set("Cache-Control", "public, max-age=300");
+  } else if (key === "catalog.json.sig") {
+    // the catalog's signature changes with it, so it is cached no longer than the catalog
+    headers.set("Content-Type", "application/octet-stream");
     headers.set("Cache-Control", "public, max-age=300");
   } else {
     if (!headers.get("Content-Type")) headers.set("Content-Type", "application/octet-stream");

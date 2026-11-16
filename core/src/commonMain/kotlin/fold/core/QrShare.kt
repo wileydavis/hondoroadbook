@@ -18,6 +18,11 @@ package fold.core
  */
 object QrShare {
     const val PREFIX = "RB1:"
+    /** limits a receiving phone holds a sender to (an encoder of ours never comes near them) */
+    const val MIN_CHUNK = 16
+    const val MAX_CHUNKS = 4096
+    /** the most a share may unpack to: the platforms' inflate stops here */
+    const val MAX_UNPACKED = 64 shl 20
     private const val HEAD = 13          // version 1, id 4, length 3, chunk size 2, frame index 3
 
     // ---- the track, packed ------------------------------------------------------------------------------------------
@@ -71,7 +76,9 @@ object QrShare {
     @Throws(Throwable::class) fun track(m: ByteArray, inflate: (ByteArray) -> ByteArray?): Gpx.Track {
         require(m.isNotEmpty())
         val body = m.copyOfRange(1, m.size)
-        return unpack(if (m[0].toInt() == 1) inflate(body) ?: error("could not unpack the share") else body)
+        val raw = if (m[0].toInt() == 1) inflate(body) ?: error("could not unpack the share") else body
+        require(raw.size <= MAX_UNPACKED) { "the share is too large" }
+        return unpack(raw)
     }
 
     private fun e6(v: Double) = kotlin.math.round(v * 1e6).toLong()
@@ -87,7 +94,7 @@ object QrShare {
         val k = maxOf(1, (message.size + this.chunk - 1) / this.chunk)
         val id = crc32(message)
         private val chunks = Array(k) { i -> ByteArray(this.chunk).also { message.copyInto(it, 0, i * this.chunk, minOf(message.size, (i + 1) * this.chunk)) } }
-        init { require(message.size < 1 shl 24) { "too large to share by code" } }
+        init { require(message.size < 1 shl 24 && k <= MAX_CHUNKS) { "too large to share by code" } }
         fun frame(i: Int): String {
             val body = ByteArray(chunk)
             if (i < k) chunks[i].copyInto(body)
@@ -119,7 +126,9 @@ object QrShare {
             val b = try { Base45.decode(text.substring(PREFIX.length)) } catch (_: Throwable) { return false }
             if (b.size <= HEAD || b[0].toInt() != 1) return false
             val fid = get(b, 1, 4).toInt(); val fsize = get(b, 5, 3).toInt(); val fchunk = get(b, 8, 2).toInt(); val i = get(b, 10, 3).toInt()
-            if (fchunk <= 0 || b.size != HEAD + fchunk) return false
+            // a frame from another phone is untrusted: a tiny chunk or a huge claimed size would make k (and the work
+            // and memory per frame) enormous, so anything no encoder of ours writes is ignored
+            if (fchunk < MIN_CHUNK || b.size != HEAD + fchunk || fsize <= 0 || (fsize + fchunk - 1) / fchunk > MAX_CHUNKS) return false
             if (id != fid) { // a new message (or the first): start over
                 id = fid; size = fsize; chunk = fchunk; k = maxOf(1, (fsize + fchunk - 1) / fchunk); rows.clear(); seen.clear()
             }

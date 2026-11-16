@@ -1,5 +1,7 @@
 package fold.app
 
+import fold.core.CatalogTrust
+
 import android.app.Activity
 import android.net.Uri
 import android.view.Gravity
@@ -23,7 +25,9 @@ import java.util.concurrent.Executors
  *
  * Downloads resume: a partial file in the cache keeps its bytes and the next attempt asks for the rest.
  */
-class CatalogPack(val id: String, val name: String, val region: String, val group: String, val kind: String, val url: String, val bytes: Long, val built: String, val notes: String) {
+class CatalogPack(val id: String, val name: String, val region: String, val group: String, val kind: String, val url: String, val bytes: Long, val built: String, val notes: String,
+                  /** the pack's SHA-256 as the signed catalog gives it; "" for a pack built before hashes were recorded */
+                  val sha256: String = "") {
     val kindLabel: String get() = when (kind) { "roads" -> "Roads"; "terrain" -> "Terrain"; "imagery" -> "Imagery"; "names" -> "Place names"; else -> kind.replaceFirstChar { it.uppercase() } }
     val blurb: String get() = when (kind) { "roads" -> "roads, trails, routing, address search"; "terrain" -> "hillshade and contours under the roads"; "imagery" -> "aerial photos"; else -> "" }
 }
@@ -39,15 +43,39 @@ object Catalog {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             val name = o.getString("name")
-            out.add(CatalogPack(o.getString("id"), name, o.optString("region", name), o.optString("group", ""), o.optString("kind", "roads"), o.getString("url"), o.optLong("bytes", 0L), o.optString("built", ""), o.optString("notes", "")))
+            out.add(CatalogPack(o.getString("id"), name, o.optString("region", name), o.optString("group", ""), o.optString("kind", "roads"), o.getString("url"), o.optLong("bytes", 0L), o.optString("built", ""), o.optString("notes", ""), o.optString("sha256", "").lowercase().takeIf { CatalogTrust.isHash(it) } ?: ""))
         }
         return out
     }
 
-    private fun fetch(url: String): String {
+    private fun fetchBytes(url: String, cap: Int): ByteArray {
         val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 15000; c.readTimeout = 20000; c.setRequestProperty("Accept", "application/json")
-        try { if (c.responseCode != 200) throw IllegalStateException("Catalog: HTTP ${c.responseCode}"); return c.inputStream.bufferedReader().readText() } finally { c.disconnect() }
+        c.connectTimeout = 15000; c.readTimeout = 20000
+        try {
+            if (c.responseCode != 200) throw IllegalStateException("Catalog: HTTP ${c.responseCode}")
+            val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(1 shl 16)
+            c.inputStream.use { ins -> while (true) { val n = ins.read(buf); if (n < 0) break; out.write(buf, 0, n); if (out.size() > cap) throw IllegalStateException("Catalog is too large") } }
+            return out.toByteArray()
+        } finally { c.disconnect() }
+    }
+
+    /** The catalog, used only if its signature is the packs workflow's (see CatalogTrust). */
+    private fun fetch(url: String): String {
+        val body = fetchBytes(url, 16 shl 20)
+        val sig = try { fetchBytes(url + CatalogTrust.SIGNATURE_SUFFIX, 1024) } catch (_: Throwable) { throw IllegalStateException("The catalog is not signed, so it was not used.") }
+        if (!verified(body, sig)) throw IllegalStateException("The catalog's signature does not match, so it was not used.")
+        return String(body, Charsets.UTF_8)
+    }
+
+    fun verified(body: ByteArray, sig: ByteArray): Boolean = try {
+        val key = java.security.KeyFactory.getInstance("EC").generatePublic(java.security.spec.X509EncodedKeySpec(android.util.Base64.decode(CatalogTrust.PUBLIC_KEY, android.util.Base64.DEFAULT)))
+        java.security.Signature.getInstance("SHA256withECDSA").run { initVerify(key); update(body); verify(sig) }
+    } catch (_: Throwable) { false }
+
+    private fun sha256(f: File): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256"); val buf = ByteArray(1 shl 20)
+        f.inputStream().use { ins -> while (true) { val n = ins.read(buf); if (n < 0) break; md.update(buf, 0, n) } }
+        return CatalogTrust.hex(md.digest())
     }
 
     fun show(act: Activity, packs: PackStore, onImported: () -> Unit) {
@@ -133,6 +161,7 @@ object Catalog {
                 var have = if (file.exists()) file.length() else 0L
                 if (p.bytes > 0 && have > p.bytes) { file.delete(); have = 0L }
                 if (have < p.bytes || p.bytes == 0L) {
+                    require(Library.ours(p.url)) { "The catalog points outside ${Library.site}" }
                     val c = URL(p.url).openConnection() as HttpURLConnection
                     c.connectTimeout = 15000; c.readTimeout = 30000
                     if (have > 0) c.setRequestProperty("Range", "bytes=$have-")
@@ -155,6 +184,11 @@ object Catalog {
                     }
                     c.disconnect()
                     if (total > 0 && have < total) throw IllegalStateException("Connection dropped — tap GET again to resume")
+                }
+                if (p.sha256.isNotEmpty()) {
+                    act.runOnUiThread { dlg.setMessage("Checking…"); dlg.setCancel(null, null) }
+                    // not what the workflow built (tampered, or damaged on the way): thrown away, never unpacked
+                    if (sha256(file) != p.sha256) { file.delete(); throw IllegalStateException("The download does not match the catalog, so it was not installed. Try again.") }
                 }
                 act.runOnUiThread { dlg.setMessage("Importing…"); dlg.setCancel(null, null) }
                 val done = File(dir, p.id + ".mappack"); done.delete(); file.renameTo(done)

@@ -19,6 +19,9 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read          # reads the release (mirror) or the repo (testflight); writes nothing on GitHub
+
 concurrency: { group: testflight, cancel-in-progress: false }
 
 jobs:
@@ -26,9 +29,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with: { fetch-depth: 0 }   # the build number is the commit count: a shallow clone would say 1
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with: { distribution: temurin, java-version: "17" }
       - name: The newest Xcode on the runner
         run: |
@@ -40,7 +43,7 @@ jobs:
           miss=""; for v in APPLE_TEAM_ID:TEAM ASC_KEY_ID:KID ASC_ISSUER_ID:ISS ASC_KEY_P8:P8; do n=${v#*:}; [ -n "${!n}" ] || miss="$miss ${v%%:*}"; done
           [ -z "$miss" ] || { echo "::error::repository secrets missing or empty:$miss (Settings → Secrets and variables → Actions → Repository secrets)"; exit 1; }
           mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with: { path: ios/Vendor, key: "sherpa-ios-${{ hashFiles('ios/fetch-vendor.sh') }}" }
       - name: The voice and its engine (Kokoro; sherpa-onnx, ONNX Runtime)
         env: { GH_TOKEN: "${{ github.token }}" }

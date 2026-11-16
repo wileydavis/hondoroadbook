@@ -601,7 +601,7 @@ final class AppModel: ObservableObject, MapEvents {
              Dialog.Btn(label: "Read the terms") { [self] in openURL("https://hondoroadbook.com/terms.html"); DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showTerms(then: then) } }],
             cancelable: false)
     }
-    func openURL(_ s: String) { if let u = URL(string: s) { UIApplication.shared.open(u) } }
+    func openURL(_ s: String) { if let u = URL(string: s), u.scheme == "https" { UIApplication.shared.open(u) } }
 
     // ---------------------------------------------------------------- toasts, dialogs
 

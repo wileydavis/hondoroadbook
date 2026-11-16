@@ -27,7 +27,11 @@ object Library {
     /** https://hondoroadbook.com, derived from the catalog URL so one setting names the site. */
     val site: String get() = BuildConfig.CATALOG_URL.substringBefore("/packs/").ifEmpty { "https://hondoroadbook.com" }
 
+    /** Only our own site: a link that came back from the server (a library item, say) is not followed anywhere else. */
+    fun ours(url: String) = url.startsWith("$site/")
+
     private fun open(url: String, method: String = "GET", body: ByteArray? = null, contentType: String? = null): HttpURLConnection {
+        require(ours(url)) { "Refusing a link outside $site" }
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 30000; c.requestMethod = method; c.instanceFollowRedirects = true
         c.setRequestProperty("Accept", "application/json, application/gpx+xml")

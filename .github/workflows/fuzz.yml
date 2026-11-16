@@ -1,0 +1,31 @@
+# Coverage-guided fuzzing (Jazzer) of every parser that reads other people's input: GPX, roll-chart JSON, share
+# codes, pack manifests, search indexes, routing graphs, spoken text (core/src/jvmTest/…/fuzz/ParserFuzzTest.kt).
+# The shared core is the same code on both phones. A crash fails the run and its input is kept as an artifact: add it
+# to the target's Inputs folder with the fix, so it is replayed by every test run after.
+name: fuzz
+
+on:
+  pull_request: { paths: ["core/**"] }
+  schedule: [{ cron: "7 9 * * 3" }]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: { target: [gpx, chartJson, shareFrames, packManifest, searchIndex, graph, spokenText] }
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with: { distribution: temurin, java-version: "17" }
+      - name: Fuzz ${{ matrix.target }}
+        env: { JAZZER_FUZZ: "1" }
+        run: ./gradlew --no-daemon :core:jvmTest --tests "fold.core.fuzz.ParserFuzzTest.${{ matrix.target }}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with: { name: "crash-${{ matrix.target }}", path: "core/src/jvmTest/resources/fold/core/fuzz/ParserFuzzTestInputs/${{ matrix.target }}/crash-*" }

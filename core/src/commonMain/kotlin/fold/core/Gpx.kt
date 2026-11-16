@@ -19,6 +19,15 @@ object Gpx {
         fun rteName(i: Int): String = rteNames.getOrNull(i) ?: ""
     }
 
+    // A GPX is untrusted (from the library, a fetch code, another phone, a stranger's AirDrop): whatever it holds, reading
+    // it stays bounded in memory and time. Far above any real ride; past them the rest is dropped, not followed.
+    const val MAX_POINTS = 2_000_000
+    const val MAX_ROUTE_POINTS = 100_000
+    const val MAX_WAYPOINTS = 20_000
+    const val MAX_TEXT = 1_000
+    /** route points × named waypoints compared when naming stops; past this the names are skipped */
+    private const val MAX_NAME_PAIRS = 20_000_000L
+
     @Throws(Throwable::class) fun parse(text: String): Track? {
         val lats = ArrayList<Double>(); val lons = ArrayList<Double>()
         val rl = ArrayList<Double>(); val ro = ArrayList<Double>()
@@ -38,15 +47,15 @@ object Gpx {
             i = gt + 1
             if (tag.startsWith("trkpt")) {
                 val lat = attr(tag, "lat"); val lon = attr(tag, "lon")
-                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) {
+                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0 && lats.size < MAX_POINTS) {
                     if (lat != lastLat || lon != lastLon) { lats.add(lat); lons.add(lon); lastLat = lat; lastLon = lon }
                 }
             } else if (tag.startsWith("wpt")) {
                 val lat = attr(tag, "lat"); val lon = attr(tag, "lon")
                 val close = text.indexOf("</wpt>", i)
-                if (lat != null && lon != null && close > 0) {
+                if (lat != null && lon != null && close > 0 && lat in -90.0..90.0 && lon in -180.0..180.0 && cues.size + wpName.size < MAX_WAYPOINTS) {
                     val body = text.substring(i, close)
-                    fun inner(t: String): String { val a = body.indexOf("<$t>"); if (a < 0) return ""; val b = body.indexOf("</$t>", a); return if (b < 0) "" else unesc(body.substring(a + t.length + 2, b).trim()) }
+                    fun inner(t: String): String { val a = body.indexOf("<$t>"); if (a < 0) return ""; val b = body.indexOf("</$t>", a); return if (b < 0) "" else unesc(body.substring(a + t.length + 2, minOf(b, a + t.length + 2 + if (t == "rally") 24_000 else MAX_TEXT * 8)).trim()).take(if (t == "rally") 4000 else MAX_TEXT) }
                     val rally = Cue.cleanRally(inner("rally").ifEmpty { null })
                     // a chart-only note (the planner's words live in the rally fields) is still a cue
                     val chartNote = rally != null && inner("type").trim().lowercase() == "note" && inner("desc").isEmpty()
@@ -58,10 +67,10 @@ object Gpx {
                 }
             } else if (tag.startsWith("rtept")) {
                 val lat = attr(tag, "lat"); val lon = attr(tag, "lon")
-                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0) { rl.add(lat); ro.add(lon) }
+                if (lat != null && lon != null && lat in -90.0..90.0 && lon in -180.0..180.0 && rl.size < MAX_ROUTE_POINTS) { rl.add(lat); ro.add(lon) }
             } else if (name.isEmpty() && tag == "name") {
                 val close = text.indexOf("</name>", i)
-                if (close > 0) { name = unesc(text.substring(i, close).trim()); i = close + 7 }
+                if (close > 0) { name = unesc(text.substring(i, minOf(close, i + MAX_TEXT * 8)).trim()).take(MAX_TEXT); i = close + 7 }
             } else if (tag == "chart") {
                 val close = text.indexOf("</chart>", i)
                 if (close > 0) { chart = Cue.cleanRally(unesc(text.substring(i, close))); i = close + 8 }
@@ -71,7 +80,7 @@ object Gpx {
             }
         }
         if (lats.size < 2 && rl.size < 2) return null
-        val names = if (wpName.isEmpty()) emptyList() else rl.indices.map { k ->
+        val names = if (wpName.isEmpty() || rl.size.toLong() * wpName.size > MAX_NAME_PAIRS) emptyList() else rl.indices.map { k ->
             var best = -1; var bd = 5.0
             for (w in wpLat.indices) { val d = Geo.fastDistance(rl[k], ro[k], wpLat[w], wpLon[w]); if (d < bd) { bd = d; best = w } }
             if (best >= 0) wpName[best] else ""

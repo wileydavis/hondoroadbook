@@ -1,0 +1,1 @@
+<gpx><trk><trkseg><trkpt lat="45" lon="-111"/><trkpt lat="45.1" lon="-111.1"/></trkseg></trk><wpt lat="45" lon="-111"><name>Left</name><type>cue:LEFT</type><rally>{"tulip":{"in":[0,1],"out":[[1,0]]},"km":1.2}</rally></wpt><rtept lat="45" lon="-111"/></gpx>

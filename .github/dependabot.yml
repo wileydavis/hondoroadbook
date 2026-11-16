@@ -1,0 +1,15 @@
+# Weekly: the GitHub Actions (pinned to commits), the Gradle libraries the apps are built from, and the site's npm tools.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }
+    groups: { actions: { patterns: ["*"] } }
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+  - package-ecosystem: npm
+    directory: "/"
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
