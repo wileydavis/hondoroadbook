@@ -74,7 +74,10 @@ enum Files {
     }
     static func shareURL(_ f: URL) {
         let vc = UIActivityViewController(activityItems: [f], applicationActivities: nil)
-        UIApplication.top?.present(vc, animated: true)
+        guard let top = UIApplication.top else { return }
+        // on an iPad the share sheet is a popover and must be anchored, or presenting it crashes
+        if let pop = vc.popoverPresentationController { pop.sourceView = top.view; pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 1, height: 1); pop.permittedArrowDirections = [] }
+        top.present(vc, animated: true)
     }
 
     /// Opens the rider's mail app with a feedback message started: version, phone, and the last crash if there
@@ -95,7 +98,7 @@ extension UIApplication {
     static var top: UIViewController? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard var vc = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow })?.rootViewController else { return nil }
-        while let p = vc.presentedViewController { vc = p }
+        while let p = vc.presentedViewController, !p.isBeingDismissed { vc = p }   // never a dialog that is closing
         return vc
     }
 }

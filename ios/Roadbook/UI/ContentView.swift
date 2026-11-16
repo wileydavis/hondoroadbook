@@ -62,7 +62,10 @@ struct ContentView: View {
                 .animation(.easeInOut(duration: 0.2), value: model.toast)
             }
             .alert(model.dialog?.title ?? "", isPresented: Binding(get: { model.dialog != nil }, set: { if !$0 { model.dialog = nil } }), presenting: model.dialog) { d in
-                ForEach(d.buttons) { b in Button(b.label, role: b.role, action: b.action) }
+                // a button's action runs once the alert is gone: iOS will not show the next dialog, sheet or share
+                // sheet over one that is still closing (it does nothing, or takes everything down with it), and an
+                // action that asks again would otherwise have its new dialog cleared by this one's dismissal
+                ForEach(d.buttons) { b in Button(b.label, role: b.role) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { b.action() } } }
             } message: { d in Text(d.message) }
             .sheet(item: $model.sheet) { s in SheetHost(sheet: s) }
         }
