@@ -41,7 +41,7 @@ dependencies {
     implementation("com.k2fsa.sherpa.onnx:sherpa-onnx:1.13.7@aar")
     implementation("org.maplibre.gl:android-sdk-opengl:13.7.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
-    implementation("androidx.core:core-ktx:1.16.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     // the share code: the camera (SCAN A CODE) and a QR reader; the codes themselves are drawn by the core
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
