@@ -7,6 +7,11 @@ dependencies {
     implementation("org.openstreetmap.osmosis:osmosis-core:0.49.2")
     implementation("org.openstreetmap.osmosis:osmosis-pbf:0.49.2")
     implementation("org.openstreetmap.osmosis:osmosis-xml:0.49.2")
+    // osmosis's own libraries, held at versions without known vulnerabilities (it reads OSM extracts in CI)
+    constraints {
+        implementation("com.google.protobuf:protobuf-java:3.25.8")
+        implementation("org.apache.commons:commons-compress:1.28.0")
+    }
 }
 application { mainClass.set("fold.packer.MainKt"); applicationDefaultJvmArgs = listOf("-Xmx6g") }
 tasks.register<Jar>("fatJar") {
