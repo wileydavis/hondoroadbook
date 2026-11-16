@@ -58,7 +58,12 @@ jobs:
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" \
             -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
             -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" \
-            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic archive | tail -n 200
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic archive > "$RUNNER_TEMP/archive.log" 2>&1 || {
+              tail -n 120 "$RUNNER_TEMP/archive.log"
+              # compiler errors go up as annotations too, so they can be read without the log
+              grep -E "error:|\*\* ARCHIVE FAILED" "$RUNNER_TEMP/archive.log" | sort -u | head -15 | while read -r l; do echo "::error::${l:0:900}"; done
+              exit 65; }
+            tail -n 40 "$RUNNER_TEMP/archive.log"
       - name: Upload to App Store Connect
         env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
         run: |
