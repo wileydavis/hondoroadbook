@@ -33,11 +33,10 @@ jobs:
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         if: env.SKIP != '1' && matrix.language != 'javascript-typescript'
         with: { distribution: temurin, java-version: "17" }
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-        if: env.SKIP != '1' && matrix.language == 'java-kotlin'
       - uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         if: env.SKIP != '1'
         with: { languages: "${{ matrix.language }}", build-mode: "${{ matrix.build }}", queries: security-and-quality }
+      # the Linux runner has the Android SDK already (ANDROID_HOME)
       - name: Build Kotlin (in-process, so CodeQL sees the compiler)
         if: env.SKIP != '1' && matrix.language == 'java-kotlin'
         run: ./gradlew --no-daemon --no-build-cache -Pkotlin.compiler.execution.strategy=in-process :core:compileKotlinJvm :app:compileDebugKotlin
