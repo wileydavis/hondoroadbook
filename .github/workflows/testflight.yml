@@ -50,6 +50,8 @@ jobs:
         run: ios/fetch-vendor.sh && tools/fetch-voice.sh
       - name: The Xcode project
         run: brew install xcodegen && cd ios && xcodegen generate
+      # Signed for distribution from the start, with Apple's cloud-managed certificate: a development identity would
+      # make Xcode create a new certificate on every fresh runner, until the account reaches Apple's limit.
       - name: Archive
         env: { TEAM: "${{ secrets.APPLE_TEAM_ID }}", KID: "${{ secrets.ASC_KEY_ID }}", ISS: "${{ secrets.ASC_ISSUER_ID }}" }
         run: |
@@ -58,7 +60,7 @@ jobs:
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Roadbook.xcarchive" \
             -allowProvisioningUpdates -authenticationKeyPath ~/private_keys/AuthKey_$KID.p8 \
             -authenticationKeyID "$KID" -authenticationKeyIssuerID "$ISS" \
-            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic archive > "$RUNNER_TEMP/archive.log" 2>&1 || {
+            DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Distribution" archive > "$RUNNER_TEMP/archive.log" 2>&1 || {
               tail -n 120 "$RUNNER_TEMP/archive.log"
               # compiler errors go up as annotations too, so they can be read without the log
               grep -E "error:|\*\* ARCHIVE FAILED" "$RUNNER_TEMP/archive.log" | sort -u | head -15 | while read -r l; do echo "::error::${l:0:900}"; done
