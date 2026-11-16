@@ -28,6 +28,10 @@ object Speech {
     fun prepare(text: String) { if (enabled && text.isNotBlank()) engine?.prepare(spoken(text)) }
     fun say(text: String) { if (enabled && text.isNotBlank()) engine?.say(spoken(text)) }
 
+    /** A ride is starting: for the next [seconds], the natural voice gets time to make its phrase rather than handing
+     *  the first cues to the built-in one (the rider is setting off; a moment's wait beats a robot voice). */
+    fun patient(seconds: Int = 20) { (engine as? PiperEngine)?.patientUntil = System.currentTimeMillis() + seconds * 1000L }
+
     fun stop() { engine?.stop() }
     fun shutdown() { engine?.shutdown(); engine = null }
 }

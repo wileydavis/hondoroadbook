@@ -5,6 +5,7 @@ import UIKit
 
 extension AppModel {
     func startNavigation(_ r: Route, track: Bool, resumed: NavController? = nil) {
+        Speech.shared.patient()
         route = r; isTrack = track
         // the ride itself — route, follower, what has been said — belongs to the session, so it outlives this screen
         let c = resumed ?? NavController(route: r, isTrack: track, destName: track ? trackName : destName, profileName: profile.name, sink: ride)

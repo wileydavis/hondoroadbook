@@ -42,9 +42,18 @@ final class Speech {
     private func loadNatural() {
         natQueue.async { [weak self] in
             let n = NaturalVoice()
+            // the model's first run is slow (its graph warming up): spend it now, silently, not on the first cue
+            _ = n?.wav("Ready.", sid: 0)
             DispatchQueue.main.async { self?.natural = n }
         }
     }
+
+    /// Until then, the natural voice may take `patientWait` to make a phrase before the system voice says it: the first
+    /// moments of a ride, when the rider is setting off and the first cue is due at once.
+    private var patientUntil = Date.distantPast
+    static let patientWait = 6.0
+    /// A ride is starting: for the next `seconds`, a moment's wait for the natural voice beats the system voice.
+    func patient(_ seconds: Double = 20) { onMain { self.patientUntil = Date().addingTimeInterval(seconds) } }
     var usingNatural: Bool { natural != nil }
 
     /// the written cue as it should be heard: "US-287" → "U S two eighty-seven", a roll chart's capitals as words
@@ -79,7 +88,7 @@ final class Speech {
         guard enabled else { return }
         let t = spoken(text)
         guard !t.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        onMain { self.speak(t, waitForNatural: Speech.wait) }
+        onMain { self.speak(t, waitForNatural: Date() < self.patientUntil ? Speech.patientWait : Speech.wait) }
     }
 
     private func onMain(_ f: @escaping () -> Void) { if Thread.isMainThread { f() } else { DispatchQueue.main.async(execute: f) } }

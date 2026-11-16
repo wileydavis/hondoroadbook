@@ -1365,6 +1365,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startNavigation(r: Route, track: Boolean, resumed: NavController? = null) {
+        Speech.patient()
         route = r; isTrack = track
         // the ride itself — route, follower, what has been said — belongs to the service, so it outlives this screen
         val c = resumed ?: NavController(r, track, if (track) trackName else destName, profile.name, NavService.sink).also { c -> lastFix?.let { c.update(it) } }

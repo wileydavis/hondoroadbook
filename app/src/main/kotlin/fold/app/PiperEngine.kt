@@ -43,9 +43,17 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
     init {
         worker.execute { load() }
         // after Piper's load has put espeak-ng-data on disk, which Kokoro shares
-        worker.execute { natWorker.execute { nat = loadNatural(); natSid = if (nat != null) 0 else -1 } }
+        worker.execute { natWorker.execute {
+            nat = loadNatural(); natSid = if (nat != null) 0 else -1
+            // the model's first run is slow (its graph warming up): spend it now, silently, not on the first cue
+            nat?.let { try { it.generate("Ready.", 0, 1.0f) } catch (_: Throwable) {} }
+        } }
     }
     val natural: Boolean get() = nat != null && natSid >= 0
+
+    /** Until this time (ms), the natural voice may take [PATIENT_MS] to make a phrase before the built-in one says it:
+     *  the first moments of a ride, when the rider is setting off and the first cue is due at once. */
+    @Volatile var patientUntil = 0L
 
     private fun loadNatural(): OfflineTts? = try {
         if (ctx.assets.list("tts/kokoro")?.contains("model.int8.onnx") != true) null else {
@@ -111,7 +119,8 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         val natFuture: Future<Pcm?>? = if (natural && cachedNatural(text) == null) natWorker.submit<Pcm?> { synthNatural(text) } else null
         worker.execute {
             if (gen != generation) return@execute                 // stale before it was even synthesised
-            val pcm = (if (natural) cachedNatural(text) ?: try { natFuture?.get(WAIT_MS, TimeUnit.MILLISECONDS) } catch (_: Throwable) { null } else null)
+            val wait = if (System.currentTimeMillis() < patientUntil) PATIENT_MS else WAIT_MS
+            val pcm = (if (natural) cachedNatural(text) ?: try { natFuture?.get(wait, TimeUnit.MILLISECONDS) } catch (_: Throwable) { null } else null)
                 ?: synth(text) ?: return@execute
             // a stop() or a newer say() since this was queued: drop it rather than talk over the rider. The check
             // and the start of playback sit under the same lock stop() takes, so once stop() returns nothing starts.
@@ -148,5 +157,5 @@ class PiperEngine(private val ctx: Context) : SpeechEngine {
         natWorker.execute { try { nat?.release() } catch (_: Throwable) {}; nat = null; natSid = -1 }
     }
 
-    companion object { const val VERSION = "lessac-low-int8-1"; const val WAIT_MS = 1200L }
+    companion object { const val VERSION = "lessac-low-int8-1"; const val WAIT_MS = 1200L; const val PATIENT_MS = 6000L }
 }
