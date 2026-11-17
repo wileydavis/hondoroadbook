@@ -186,9 +186,10 @@ export async function toolCall(name, args, deps) {
   const { call } = deps;
   if (name === "search_places") {
     const q = clean(args?.query, 120); if (!q) throw bad("query is required");
-    const r = await call("search", { q, lat: num(args?.near?.lat, 90), lon: num(args?.near?.lon, 180) });
+    const nlat = num(args?.near?.lat, 90), nlon = num(args?.near?.lon, 180), near = nlat != null && nlon != null;
+    const r = await call("search", near ? { q, lat: nlat, lon: nlon } : { q });
     if (!r.ok) throw bad(r.j?.error || "Search is not reachable right now", r.status);
-    const hits = (r.j.hits || []).map(h => ({ name: h.name, lat: h.lat, lon: h.lon, kind: h.context || undefined, region: h.region || undefined, km_away: h.distance != null ? round1(h.distance / 1000) : undefined }));
+    const hits = (r.j.hits || []).map(h => ({ name: h.name, lat: h.lat, lon: h.lon, kind: h.context || undefined, region: h.region || undefined, km_away: near && h.distance != null ? round1(h.distance / 1000) : undefined }));
     return { data: { hits }, text: hits.length ? hits.map(h => `${h.name} — ${[h.kind, h.region].filter(Boolean).join(", ")} (${h.lat.toFixed(5)}, ${h.lon.toFixed(5)})${h.km_away != null ? `, ${h.km_away} km away` : ""}`).join("\n") : "Nothing found. Try another spelling, a nearby town, or add the state or province." };
   }
   if (name === "plan_route") { const p = await planRoadbook(args, deps); return { data: p, text: planText(p) }; }
