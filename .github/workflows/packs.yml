@@ -263,7 +263,9 @@ jobs:
           rm -f region.osm.pbf
           osmium export -O -f geojsonseq -o extras.geojsonseq extras.osm.pbf
           gnis=(); [ "$path" = us ] && [ -f "gnis/$name.tsv" ] && gnis=(--gnis "gnis/$name.tsv")     # "New Hampshire.tsv" stays one argument
-          python3 tools/names_pack.py build --name "$name place names" --region "$name" "${gnis[@]}" --osm extras.geojsonseq --out "$r-names.mappack"
+          # a region cut by box ("place" names the province it was cut from) keeps the places inside its box
+          place=$(jq -r '.place // .name' <<< "$R"); box=(); bb=$(jq -r 'if .bbox then (.bbox | map(tostring) | join(",")) else "" end' <<< "$R"); [ -n "$bb" ] && box=(--bbox="$bb")
+          python3 tools/names_pack.py build --name "$name place names" --region "$place" "${gnis[@]}" "${box[@]}" --osm extras.geojsonseq --out "$r-names.mappack"
           unzip -p "$r-names.mappack" pack.txt > pack.txt
           IFS=, read -r minLat minLon maxLat maxLon <<< "$(grep '^bbox=' pack.txt | cut -d= -f2)"
           jq -n --arg id "$path-$r-names" --arg name "$name place names" --arg region "$name" --arg group "$group" --arg url "$SITE/$path/$r-names.mappack" --argjson bytes "$(stat -c %s "$r-names.mappack")" --arg sha256 "$(sha256sum "$r-names.mappack" | cut -d' ' -f1)" \
@@ -309,6 +311,12 @@ jobs:
           cd ..
           # the names packs' sidecars live in R2 only
           if [ -n "$R2_KEY" ]; then command -v rclone >/dev/null || curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 https://rclone.org/install.sh | sudo bash >/dev/null; rclone copy r2:$BUCKET meta/r2 --include "*/*-names.json"; fi
+          # a region gone from regions.json (split into boxes, say) leaves its old sidecars behind: they stay out of the catalog
+          jq -r 'keys[]' packer/regions.json > regions.txt
+          find meta -name '*.json' | while read -r f; do
+            b=$(basename "$f"); slug=$(sed -E 's/-(roads|terrain|names)\.json$//' <<< "$b")
+            [ "$slug" != "$b" ] && ! grep -qxF "$slug" regions.txt && { echo "retired: $b"; rm -f "$f"; }
+          done
           find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
           jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
           # signed for the apps, which use no catalog whose signature is not this key's (core/…/CatalogTrust.kt)

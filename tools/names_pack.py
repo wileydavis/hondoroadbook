@@ -116,18 +116,23 @@ def build(a):
     bbox = [90, 180, -90, -180]
     def grow(lat, lon): bbox[0] = min(bbox[0], lat); bbox[1] = min(bbox[1], lon); bbox[2] = max(bbox[2], lat); bbox[3] = max(bbox[3], lon)
     n_g = n_o = 0
+    # a region cut from a bigger extract by box (packer/regions.json "bbox": minLon,minLat,maxLon,maxLat) keeps only its own places
+    box = [float(v) for v in a.bbox.split(",")] if getattr(a, "bbox", None) else None
+    def inside(lat, lon): return box is None or (box[0] <= lon <= box[2] and box[1] <= lat <= box[3])
     if a.gnis and os.path.exists(a.gnis):
         with open(a.gnis, encoding="utf-8") as fh:
             for ln in fh:
                 f = ln.rstrip("\n").split("\t")
                 if len(f) < 7: continue
                 name, label, county, st, lat, lon, official = f[0], f[1], f[2], f[3], float(f[4]), float(f[5]), f[6]
+                if not inside(lat, lon): continue
                 where = ", ".join(x for x in (county and county + " County", st) if x)
                 base = f"{label} · {where}" if where else label
                 note(name, lat, lon)
                 out += lines(name, base + (f" · officially {official}" if official else ""), lat, lon, keyctx=base); grow(lat, lon); n_g += 1
     if a.osm and os.path.exists(a.osm):
         for name, label, lat, lon in osm_places(a.osm):
+            if not inside(lat, lon): continue
             if not note(name, lat, lon): continue            # GNIS has it already, by that name, right there
             out += lines(name, f"{label} · {a.region or a.name}", lat, lon); grow(lat, lon); n_o += 1
     if not out: sys.exit("nothing to index")
@@ -145,5 +150,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "split":
         split(sys.argv[2], sys.argv[3] if len(sys.argv) > 4 else None, sys.argv[-1])
     else:
-        p = argparse.ArgumentParser(); p.add_argument("build"); p.add_argument("--name", required=True); p.add_argument("--region"); p.add_argument("--gnis"); p.add_argument("--osm"); p.add_argument("--out", required=True)
+        p = argparse.ArgumentParser(); p.add_argument("build"); p.add_argument("--name", required=True); p.add_argument("--region"); p.add_argument("--gnis"); p.add_argument("--osm"); p.add_argument("--bbox"); p.add_argument("--out", required=True)
         build(p.parse_args())

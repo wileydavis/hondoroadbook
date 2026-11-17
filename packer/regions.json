@@ -12,9 +12,8 @@
     "path": "us",
     "pbf": "north-america/us/alaska-latest.osm.pbf",
     "geofabrik": "us/alaska",
-    "max_zoom": 13,
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: at 11 the job ran past the 170-minute limit"
+    "notes": "terrain at zoom 10: at 11 the job ran past the 170-minute limit; roads at the full zoom 15 fit one pack (about 1.5 GB)"
   },
   "arizona": {
     "name": "Arizona",
@@ -387,15 +386,37 @@
     "geofabrik": "canada/alberta",
     "terrain_zoom": 11
   },
-  "british-columbia": {
-    "name": "British Columbia",
+  "british-columbia-south": {
+    "name": "Southern British Columbia",
+    "place": "British Columbia",
     "group": "Canada",
     "path": "ca",
     "pbf": "north-america/canada/british-columbia-latest.osm.pbf",
     "geofabrik": "canada/british-columbia",
+    "bbox": [
+      -139.1,
+      48.2,
+      -114.0,
+      54.5
+    ],
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: a million km², like Alaska",
-    "max_zoom": 13
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "british-columbia-north": {
+    "name": "Northern British Columbia",
+    "place": "British Columbia",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/british-columbia-latest.osm.pbf",
+    "geofabrik": "canada/british-columbia",
+    "bbox": [
+      -139.1,
+      54.1,
+      -114.0,
+      60.1
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
   },
   "manitoba": {
     "name": "Manitoba",
@@ -420,15 +441,37 @@
     "geofabrik": "canada/newfoundland-and-labrador",
     "terrain_zoom": 11
   },
-  "northwest-territories": {
-    "name": "Northwest Territories",
+  "northwest-territories-south": {
+    "name": "Southern Northwest Territories",
+    "place": "Northwest Territories",
     "group": "Canada",
     "path": "ca",
     "pbf": "north-america/canada/northwest-territories-latest.osm.pbf",
     "geofabrik": "canada/northwest-territories",
+    "bbox": [
+      -136.5,
+      59.9,
+      -101.9,
+      67.8
+    ],
     "terrain_zoom": 10,
-    "notes": "terrain at zoom 10: 1.3 million km²",
-    "max_zoom": 13
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "northwest-territories-north": {
+    "name": "Northern Northwest Territories",
+    "place": "Northwest Territories",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/northwest-territories-latest.osm.pbf",
+    "geofabrik": "canada/northwest-territories",
+    "bbox": [
+      -136.5,
+      67.4,
+      -101.9,
+      78.8
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
   },
   "nova-scotia": {
     "name": "Nova Scotia",
@@ -444,18 +487,56 @@
     "pbf": "north-america/canada/nunavut-latest.osm.pbf",
     "geofabrik": "canada/nunavut",
     "terrain_zoom": 9,
-    "notes": "terrain at zoom 9: two million km² and almost no roads",
+    "notes": "terrain at zoom 9: two million km² and almost no roads; roads stop at zoom 12: zoom 15 would take six packs for a territory with almost no named roads",
     "max_zoom": 12
   },
-  "ontario": {
-    "name": "Ontario",
+  "ontario-south": {
+    "name": "Southern Ontario",
+    "place": "Ontario",
     "group": "Canada",
     "path": "ca",
     "pbf": "north-america/canada/ontario-latest.osm.pbf",
     "geofabrik": "canada/ontario",
-    "max_zoom": 13,
+    "bbox": [
+      -83.2,
+      41.6,
+      -74.3,
+      46.2
+    ],
     "terrain_zoom": 10,
-    "notes": "roads at zoom 13 to stay under the 2 GB release limit; terrain at 10 for the area"
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "ontario-northeast": {
+    "name": "Northeastern Ontario",
+    "place": "Ontario",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/ontario-latest.osm.pbf",
+    "geofabrik": "canada/ontario",
+    "bbox": [
+      -85.8,
+      45.8,
+      -74.3,
+      56.9
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "ontario-northwest": {
+    "name": "Northwestern Ontario",
+    "place": "Ontario",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/ontario-latest.osm.pbf",
+    "geofabrik": "canada/ontario",
+    "bbox": [
+      -95.2,
+      46.3,
+      -85.2,
+      56.9
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
   },
   "prince-edward-island": {
     "name": "Prince Edward Island",
@@ -464,15 +545,53 @@
     "pbf": "north-america/canada/prince-edward-island-latest.osm.pbf",
     "geofabrik": "canada/prince-edward-island"
   },
-  "quebec": {
-    "name": "Quebec",
+  "quebec-south": {
+    "name": "Southern Quebec (and Gaspé)",
+    "place": "Quebec",
     "group": "Canada",
     "path": "ca",
     "pbf": "north-america/canada/quebec-latest.osm.pbf",
     "geofabrik": "canada/quebec",
-    "max_zoom": 13,
+    "bbox": [
+      -79.8,
+      44.9,
+      -57.0,
+      49.4
+    ],
     "terrain_zoom": 10,
-    "notes": "roads at zoom 13 to stay under the 2 GB release limit; terrain at 10 for the area"
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "quebec-northwest": {
+    "name": "Northwestern Quebec (James Bay)",
+    "place": "Quebec",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/quebec-latest.osm.pbf",
+    "geofabrik": "canada/quebec",
+    "bbox": [
+      -79.8,
+      49.0,
+      -70.7,
+      62.6
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
+  },
+  "quebec-northeast": {
+    "name": "Northeastern Quebec (Côte-Nord)",
+    "place": "Quebec",
+    "group": "Canada",
+    "path": "ca",
+    "pbf": "north-america/canada/quebec-latest.osm.pbf",
+    "geofabrik": "canada/quebec",
+    "bbox": [
+      -71.3,
+      49.0,
+      -57.0,
+      62.6
+    ],
+    "terrain_zoom": 10,
+    "notes": "cut from the provincial extract by box so the roads reach zoom 15 (minor-road names) under the 2 GB release limit; neighbouring packs overlap a little"
   },
   "saskatchewan": {
     "name": "Saskatchewan",
