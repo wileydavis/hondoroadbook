@@ -3,8 +3,10 @@
 //   park, parked/<code>   -> a roadbook parked for 24 h under a six-letter code, for the phone to fetch
 //   roadbooks             -> the public library: D1 for the list, R2 for the GPX files
 //   web                   -> Brave web search for the inspect panel, when BRAVE_KEY is set
+//   plan                  -> stops in, a roadbook out, parked for the phone (web/assistant.js; also behind /mcp)
 // Nothing here identifies anyone: no accounts, no cookies, uploads keep only the line and the cues.
 import { parseGpx, measure, trimEnds, cuesOn, simplify, writeGpx, GpxError, dist, shiftRally } from "./gpx.js";
+import { servePlan } from "./assistant.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const MAX_GPX = 6 << 20;
@@ -17,6 +19,7 @@ export async function serveApi(request, env, path, ctx, routerFetch) {
     if (path === "search") return await search(request, env, url, routerFetch);
     if (path === "route" || path === "snap" || path === "junctions" || path === "warm" || path === "near") return await routerProxy(request, env, path, url, routerFetch);
     if (path === "park" && request.method === "POST") return await park(request, env, url);
+    if (path === "plan") return await servePlan(request, env, ctx, routerFetch, serveApi, assistantHelpers);
     if (path.startsWith("parked/")) return await parked(request, env, path.slice(7));
     if (path === "roadbooks") return request.method === "POST" ? await publish(request, env, url) : await list(request, env, url);
     if (path === "import" && request.method === "POST") return await importStaged(env);
@@ -129,27 +132,41 @@ async function park(request, env, url) {
   const name = cleanName(url.searchParams.get("name") || g.name || "Roadbook");
   const kept = cuesOn(pts, g.cues);
   const body = writeGpx(name, pts, kept, g.meta);
+  const { code, expires } = await parkGpx(env, body, name, 24 * 3600 * 1000);
+  return json({ code, name, expires, bytes: body.length, cues: kept.length, length: Math.round(length) });
+}
+
+/** A GPX parked under a fresh six-letter code until `keepMs` from now (the planner's a day, an assistant's plan a week). */
+export async function parkGpx(env, body, name, keepMs) {
+  if (!env.PACKS) throw bad("storage not configured", 503);
   let code;
   for (let tries = 0; tries < 5; tries++) {
     code = randomCode(6);
     if (!(await env.PACKS.head(`parked/${code}.gpx`))) break;
   }
-  const expires = Date.now() + 24 * 3600 * 1000;
+  const expires = Date.now() + keepMs;
   await env.PACKS.put(`parked/${code}.gpx`, body, { httpMetadata: { contentType: "application/gpx+xml" }, customMetadata: { expires: String(expires), name } });
   await sweepParked(env).catch(() => {});
-  return json({ code, name, expires, bytes: body.length, cues: kept.length, length: Math.round(length) });
+  return { code, expires };
 }
+export const assistantHelpers = { admit: (...a) => admit(...a), budget: (...a) => budget(...a), park: (...a) => parkGpx(...a) };
 
 // Each park sweeps out the codes that have expired, so a parked roadbook is actually gone after
 // 24 hours rather than lingering until someone asks for it. Parked files are few; one list suffices.
 async function sweepParked(env) {
   const now = Date.now();
-  const list = await env.PACKS.list({ prefix: "parked/", limit: 500, include: ["customMetadata"] });
-  const dead = list.objects.filter(o => {
-    const exp = Number(o.customMetadata?.expires || 0);
-    return exp ? now > exp : now - o.uploaded.getTime() > 24 * 3600 * 1000;
-  }).map(o => o.key);
-  if (dead.length) await env.PACKS.delete(dead);
+  // a week's plans from assistants can outnumber one listing: a few pages, a thousand deletions a call at most
+  let cursor;
+  for (let page = 0; page < 4; page++) {
+    const list = await env.PACKS.list({ prefix: "parked/", limit: 500, include: ["customMetadata"], cursor });
+    const dead = list.objects.filter(o => {
+      const exp = Number(o.customMetadata?.expires || 0);
+      return exp ? now > exp : now - o.uploaded.getTime() > 24 * 3600 * 1000;
+    }).map(o => o.key);
+    for (let i = 0; i < dead.length; i += 1000) await env.PACKS.delete(dead.slice(i, i + 1000));
+    if (!list.truncated) break;
+    cursor = list.cursor;
+  }
 }
 
 async function parked(request, env, code) {
@@ -161,7 +178,7 @@ async function parked(request, env, code) {
   const expires = Number(obj.customMetadata?.expires || 0);
   if (expires && Date.now() > expires) { await env.PACKS.delete(`parked/${code}.gpx`); return json({ error: "That code has expired" }, 410); }
   const name = obj.customMetadata?.name || "Roadbook";
-  return new Response(obj.body, { headers: cors({ "Content-Type": "application/gpx+xml; charset=utf-8", "Content-Disposition": `attachment; filename="${safeFile(name)}.gpx"`, "X-Name": encodeURIComponent(name), "Cache-Control": "no-store" }) });
+  return new Response(obj.body, { headers: cors({ "Content-Type": "application/gpx+xml; charset=utf-8", "Content-Disposition": `attachment; filename="${safeFile(name)}.gpx"`, "X-Name": encodeURIComponent(name), ...(expires ? { "X-Expires": String(expires) } : {}), "Cache-Control": "no-store" }) });
 }
 
 // ---- the library -------------------------------------------------------------------------------------
@@ -337,6 +354,6 @@ function safeFile(s) { return s.replace(/[^A-Za-z0-9 _.-]/g, "_").trim().slice(0
 function numOrNull(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function randomCode(n) { const b = new Uint8Array(n); crypto.getRandomValues(b); let s = ""; for (const x of b) s += CODE_ALPHABET[x % CODE_ALPHABET.length]; return s; }
 async function sha256(s) { const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join(""); }
-function cors(h = {}) { return { "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "X-Name, Content-Disposition", ...h }; }
+function cors(h = {}) { return { "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "X-Name, X-Expires, Content-Disposition", ...h }; }
 function withCors(res) { const h = new Headers(res.headers); h.set("Access-Control-Allow-Origin", "*"); return new Response(res.body, { status: res.status, headers: h }); }
 function json(o, status = 200, extra = {}) { return new Response(JSON.stringify(o), { status, headers: cors({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...extra }) }); }

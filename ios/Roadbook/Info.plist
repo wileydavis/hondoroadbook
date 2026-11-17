@@ -65,6 +65,18 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- roadbook://r/<code>: the Open in Roadbook button on hondoroadbook.com/r/<code> (the link itself opens the app as a universal link) -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.hondogarage.roadbook.link</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>roadbook</string>
+			</array>
+		</dict>
+	</array>
 	<!-- opens .gpx and .mappack from Mail, AirDrop, Files -->
 	<key>CFBundleDocumentTypes</key>
 	<array>

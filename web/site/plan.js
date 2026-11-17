@@ -79,7 +79,8 @@ async function init() {
   try { S.hasOverview = (await fetch("/tiles/overview/tiles.pmtiles", { method: "HEAD" })).ok; } catch {}
   buildModes();
   restoreHash();
-  if (!S.pts.length && !new URLSearchParams(location.hash.slice(1)).get("rb")) offerRestore();
+  const h0 = new URLSearchParams(location.hash.slice(1));
+  if (!S.pts.length && !h0.get("rb") && !h0.get("code")) offerRestore();
   status("Loading the map…", false, true);
   const slow = setTimeout(() => status("Still loading — the first visit to a region is the slow one; after that it is cached", false, true), 8000);
   map.once("idle", () => { clearTimeout(slow); $("#status").hidden = true; });
@@ -94,6 +95,16 @@ async function init() {
   if (S.pts.length >= 2) reroute();
   const rb = new URLSearchParams(location.hash.slice(1)).get("rb");
   if (rb) openLibraryItem(rb);
+  // #code=ABC234: a roadbook parked for the phone (hondoroadbook.com/r/<code>), opened here to look at or change
+  const code = (h0.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (code.length === 6) openParked(code);
+}
+async function openParked(code) {
+  try {
+    const r = await fetch(`/api/parked/${code}`);
+    if (!r.ok) { let e = ""; try { e = (await r.json()).error; } catch {} throw new Error(e || `the server answered ${r.status}`); }
+    loadGpxText(await r.text(), decodeURIComponent(r.headers.get("X-Name") || "Roadbook"));
+  } catch (e) { status(`Could not open roadbook ${code}: ${e.message}`, true); }
 }
 
 function roadsPacks() { return S.catalog.filter(p => (p.kind || "roads") === "roads"); }

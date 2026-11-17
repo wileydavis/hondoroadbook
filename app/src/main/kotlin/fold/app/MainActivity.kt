@@ -236,6 +236,28 @@ class MainActivity : AppCompatActivity() {
     }
     private val askLocation = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res -> if (res[Manifest.permission.ACCESS_FINE_LOCATION] == true) startLocation() else toast(getString(R.string.need_location)) }
 
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openLink(intent) }
+
+    /**
+     * hondoroadbook.com/r/<code> (a roadbook planned on the site or by an assistant, parked for the phone) or
+     * roadbook://r/<code> (that page's Open in Roadbook): fetch it, as FETCH CODE would. Once per intent.
+     */
+    private fun openLink(i: Intent?) {
+        val u = i?.data ?: return
+        if (i.action != Intent.ACTION_VIEW) return
+        val raw = when {
+            u.scheme == "https" && (u.host == "hondoroadbook.com" || u.host == "www.hondoroadbook.com") && u.pathSegments.firstOrNull() == "r" -> u.pathSegments.getOrNull(1)
+            u.scheme == "roadbook" && u.host == "r" -> u.pathSegments.firstOrNull()
+            else -> null
+        } ?: return
+        val code = Library.cleanCode(raw) ?: return
+        i.data = null
+        findViewById<View>(R.id.root).post {
+            if (mode == Mode.NAV) { toast("End the ride to open roadbook ${code.take(3)} ${code.drop(3)}: ≡ → TRACK → FETCH CODE", 8000); return@post }
+            Library.fetchByCode(this, code) { name, text -> onFetchedGpx(name, text) }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
@@ -429,6 +451,7 @@ class MainActivity : AppCompatActivity() {
             try { packs.multiRouter() } catch (_: Throwable) {}
         }
         ensureLocation()
+        if (savedInstanceState == null) openLink(intent)
     }
 
     // ---------------------------------------------------------------- style / overlays

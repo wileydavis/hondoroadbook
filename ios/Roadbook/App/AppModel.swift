@@ -758,8 +758,34 @@ final class AppModel: ObservableObject, MapEvents {
     // ---------------------------------------------------------------- open-with (a .gpx or .mappack from Files, Mail, AirDrop)
 
     func open(url: URL) {
+        if let code = Self.roadbookCode(url) { openLinked(code); return }
+        if url.scheme == "https" || url.scheme == "roadbook" { return }            // a link we do not handle is not a file
         let name = url.lastPathComponent.lowercased()
         if name.hasSuffix(".mappack") || name.hasSuffix(".zip") { importPacks([url]) }
         else { loadGpx(url) }
+    }
+
+    /// hondoroadbook.com/r/<code> (a roadbook planned on the site or by an assistant, parked for the phone) or
+    /// roadbook://r/<code> (that page's Open in Roadbook button): the code, or nil for any other link.
+    static func roadbookCode(_ url: URL) -> String? {
+        let path = url.pathComponents.filter { $0 != "/" }
+        let raw: String?
+        if url.scheme == "https", let h = url.host?.lowercased(), h == "hondoroadbook.com" || h == "www.hondoroadbook.com", path.first == "r" { raw = path.count > 1 ? path[1] : nil }
+        else if url.scheme == "roadbook", url.host == "r" { raw = path.first }
+        else { raw = nil }
+        guard let r = raw else { return nil }
+        let code = r.uppercased().filter { ("A"..."Z").contains($0) || ("0"..."9").contains($0) }
+        return code.count == 6 ? code : nil
+    }
+
+    /// Fetches a linked roadbook as FETCH CODE would; not in the middle of a ride.
+    func openLinked(_ code: String) {
+        let spaced = "\(code.prefix(3)) \(code.suffix(3))"
+        if mode == .nav { info("Roadbook \(spaced)", "End the ride to open it: ≡ → TRACK → FETCH CODE, and type \(spaced)."); return }
+        showToast("Fetching \(spaced)…")
+        Task {
+            do { let (name, text) = try await Library.fetchCode(code); await MainActor.run { self.onFetchedGpx(name, text) } }
+            catch { await MainActor.run { self.info("Nothing fetched", error.text) } }
+        }
     }
 }

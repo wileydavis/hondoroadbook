@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan with an AI assistant — Roadbook</title>
+<meta name="description" content="Connect Claude, ChatGPT or another AI assistant to Roadbook: it plans the ride on Roadbook's maps and hands you a link that opens in the app.">
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="/favicon.svg">
+<style>
+  .prose code, .prose pre { font-family: var(--mono); font-size: 14px; }
+  .prose pre { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
+  .url { font-family: var(--mono); font-size: 18px; background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 14px; display: inline-block; user-select: all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/"><span class="logo small" role="img" aria-label="Hondo Garage"></span><span>Roadbook<small>by Hondo Garage</small></span></a>
+    <nav class="top"><a href="/plan.html">Planner</a><a href="/#get">Get the app</a><a href="/guide.html">Guide</a><a href="/manual.html">Manual</a></nav>
+  </header>
+  <section class="prose">
+  <h1>Plan with an AI assistant</h1>
+  <p>Describe the ride and let an assistant plan it on Roadbook's own maps: “three days of dirt from Bishop through Saline Valley and Hunter Mountain, hot springs on the second night”. It looks up the places, routes each day with Roadbook's router, checks the distance and the dirt, and gives you a link for each day. Tap the link on your phone and the roadbook opens in the app, ready to ride offline.</p>
+
+  <h2>Connect your assistant</h2>
+  <p>Roadbook is a <em>Model Context Protocol</em> server. In any assistant that supports custom MCP connectors (Claude, ChatGPT and others), add a connector with this address. There is no sign-in.</p>
+  <p class="url">https://hondoroadbook.com/mcp</p>
+  <p>Then ask for a ride. A few ways in:</p>
+  <ul>
+    <li>“Plan a backroads day loop from Bozeman over Bear Trap Canyon and back, about five hours.”</li>
+    <li>“Find published dirt roadbooks near Moab and send me the best one.”</li>
+    <li>“Plan the Trans-America stretch from Cañon City to Salida on gravel, with fuel stops noted.”</li>
+  </ul>
+
+  <h2>What the assistant can do</h2>
+  <ul>
+    <li><b>search_places</b>: towns, roads, passes, hot springs, peaks, trailheads (OpenStreetMap, and USGS place names in the US).</li>
+    <li><b>plan_route</b>: route through stops in a mode (Backroads, Dirt, Fast, Towing, and three bicycle modes) and make a roadbook with turn cues and a note at each named stop. It returns the distance, riding time, paved and unpaved split, the main roads, and anything to check.</li>
+    <li><b>services_near</b>: fuel, food, camping, water, lodging and repair around a point.</li>
+    <li><b>find_roadbooks</b> and <b>send_roadbook_to_phone</b>: rides other riders published to the library.</li>
+  </ul>
+  <p>Assistants make mistakes. Look the route over before you ride it: open it in the <a href="/plan.html">planner</a> from its link page, and download the map pack for the area in the app before you lose signal.</p>
+
+  <h2>The links</h2>
+  <p>Each roadbook gets a link like <code>hondoroadbook.com/r/ABC234</code> and the six-letter code in it. With Roadbook installed, the link opens in the app; elsewhere it shows the ride with buttons for the app, the planner and a GPX file. In the app you can also type the code: <b>≡ → TRACK → FETCH CODE</b>. Links last a week.</p>
+
+  <h2>For developers</h2>
+  <p>The same planning is a plain HTTP call:</p>
+<pre>POST https://hondoroadbook.com/api/plan
+Content-Type: application/json
+
+{ "name": "Day 1 — Bishop to Saline Valley", "mode": "DIRT",
+  "stops": [ { "lat": 37.3636, "lon": -118.3951, "name": "Bishop" },
+             { "lat": 36.8053, "lon": -117.7731, "name": "Saline Valley Warm Springs", "note": "Camp" } ] }</pre>
+  <p>The answer carries <code>link</code>, <code>code</code>, <code>planner</code>, <code>gpx</code>, <code>km</code>, <code>hours</code>, <code>unpaved_share</code>, <code>legs</code>, <code>main_roads</code> and <code>warnings</code>. Search is <code>GET /api/search?q=…&amp;lat=…&amp;lon=…</code>. Please be gentle: planning is limited per day, and the router is shared with everyone using the planner.</p>
+
+  <h2>Privacy</h2>
+  <p>Roadbook receives only what the assistant sends it: place names to look up and the stops of a route. It keeps no record of who asked, and a planned roadbook is deleted a week after it was made. Your conversation itself is between you and your assistant's provider, under their terms. See the <a href="/privacy.html">privacy policy</a>.</p>
+  </section>
+  <footer>Map data © OpenStreetMap contributors; basemap © Protomaps. <a href="/">Roadbook</a> · <a href="/guide.html">Guide</a> · <a href="/manual.html">Manual</a> · <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a></footer>
+</div>
+</body>
+</html>

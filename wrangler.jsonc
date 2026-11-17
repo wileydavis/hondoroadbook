@@ -7,7 +7,7 @@
   "compatibility_date": "2025-09-01",
   // run_worker_first: without it, Cloudflare's static-assets layer answers browser navigations to
   // /download/* and /packs/* with the 404 page before the Worker ever runs (plain fetches were fine).
-  "assets": { "directory": "web/site", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/download/*", "/packs/*", "/tiles/*", "/api/*"] },
+  "assets": { "directory": "web/site", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/download/*", "/packs/*", "/tiles/*", "/api/*", "/mcp", "/mcp/", "/r/*", "/.well-known/apple-app-site-association", "/.well-known/assetlinks.json"] },
   "r2_buckets": [{ "binding": "PACKS", "bucket_name": "roadbook-packs" }],
   // The routing service: the phone's core in a container (server/Dockerfile), woken by the first
   // /api/route of the day and asleep twenty minutes after the last. Graphs download on demand from

@@ -4,10 +4,14 @@
 //   /download/<apk>       -> the app
 //   /tiles/<pack>/<file>  -> a file inside a pack, by byte range (the planner's map tiles)      web/tiles.js
 //   /api/*                -> routing, parked roadbooks, the library, web search               web/api.js
+//   /mcp                  -> the planner for AI assistants (Model Context Protocol)          web/assistant.js
+//   /r/<code>             -> a parked roadbook's page: open it in the app or the planner      web/site/open.html
+//   /.well-known/*        -> app links: Android's assetlinks.json, Apple's apple-app-site-association
 //   everything else       -> the static site in web/site
 import { Container, getContainer } from "@cloudflare/containers";
 import { serveTile } from "./tiles.js";
-import { serveApi } from "./api.js";
+import { serveApi, assistantHelpers } from "./api.js";
+import { serveMcp } from "./assistant.js";
 
 /** The routing service (server/Dockerfile). Two instances at most: one holds western graphs, one eastern. */
 export class RouterContainer extends Container {
@@ -24,6 +28,10 @@ export default {
     if (url.pathname.startsWith("/download/")) return serveApp(request, env, url.pathname.slice("/download/".length));
     if (url.pathname.startsWith("/tiles/")) return serveTile(request, env, url.pathname.slice("/tiles/".length), loadCatalog, fetchPack);
     if (url.pathname.startsWith("/api/")) return serveApi(request, env, url.pathname.slice("/api/".length), ctx, routerFetch(env));
+    if (url.pathname === "/mcp" || url.pathname === "/mcp/") return serveMcp(request, env, ctx, routerFetch(env), serveApi, assistantHelpers);
+    if (/^\/r\/[A-Za-z0-9]{6}\/?$/.test(url.pathname)) return withSiteHeaders(await env.ASSETS.fetch(new Request(new URL("/open", url), request)));
+    if (url.pathname === "/.well-known/apple-app-site-association") return appleAssociation(env);
+    if (url.pathname === "/.well-known/assetlinks.json") return new Response(ASSET_LINKS, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" } });
     return withSiteHeaders(await env.ASSETS.fetch(request));
   },
 };
@@ -42,6 +50,18 @@ function withSiteHeaders(res) {
   const h = new Headers(res.headers);
   h.set("Content-Security-Policy", CSP); h.set("X-Content-Type-Options", "nosniff"); h.set("Referrer-Policy", "strict-origin-when-cross-origin"); h.set("X-Frame-Options", "DENY");
   return new Response(res.body, { status: res.status, headers: h });
+}
+
+/** Android app links: hondoroadbook.com/r/<code> opens in Roadbook, the app signed with this certificate (keys/roadbook-release.jks). */
+const ASSET_LINKS = JSON.stringify([{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: "com.hondogarage.roadbook",
+  sha256_cert_fingerprints: ["8C:2E:87:93:0B:C2:A5:16:4B:6C:22:E2:3E:47:32:22:BC:54:AE:75:43:60:7B:CE:E1:2F:E2:32:2A:FB:48:F3"] } }]);
+
+/** Apple's app-site association, which names the app by team and bundle id: the TestFlight workflow writes it to the
+ *  bucket (the team id is a repository secret there), so it is served from R2 rather than the site's files. */
+async function appleAssociation(env) {
+  const o = env.PACKS && await env.PACKS.get("well-known/apple-app-site-association");
+  if (!o) return new Response("{}", { status: 404, headers: { "Content-Type": "application/json" } });
+  return new Response(o.body, { headers: { "Content-Type": "application/json", "Cache-Control": "public, max-age=3600" } });
 }
 
 /** A request into the routing container that holds the shard's graphs; the container wakes if asleep. */

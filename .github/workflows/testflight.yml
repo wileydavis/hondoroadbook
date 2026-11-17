@@ -43,6 +43,20 @@ jobs:
           miss=""; for v in APPLE_TEAM_ID:TEAM ASC_KEY_ID:KID ASC_ISSUER_ID:ISS ASC_KEY_P8:P8; do n=${v#*:}; [ -n "${!n}" ] || miss="$miss ${v%%:*}"; done
           [ -z "$miss" ] || { echo "::error::repository secrets missing or empty:$miss (Settings → Secrets and variables → Actions → Repository secrets)"; exit 1; }
           mkdir -p ~/private_keys; printf '%s\n' "$P8" > ~/private_keys/AuthKey_$KID.p8
+      - name: Apple's app-site association for hondoroadbook.com/r/ links
+        # the site serves it from the bucket (web/worker.js): it names the app by team id, which lives here as a secret
+        env:
+          TEAM: "${{ secrets.APPLE_TEAM_ID }}"
+          R2_KEY: "${{ secrets.R2_ACCESS_KEY_ID }}"
+          R2_SECRET: "${{ secrets.R2_SECRET_ACCESS_KEY }}"
+          R2_ACCOUNT: "${{ secrets.R2_ACCOUNT_ID }}"
+        run: |
+          [ -n "$R2_KEY" ] || { echo "::warning::no R2 secrets: roadbook links will open the web page, not the app"; exit 0; }
+          printf '{"applinks":{"details":[{"appIDs":["%s.com.hondogarage.roadbook"],"components":[{"/":"/r/*","comment":"a roadbook parked for the phone"}]}]}}\n' "$TEAM" > aasa.json
+          curl -fsS --retry 3 --aws-sigv4 "aws:amz:auto:s3" --user "$R2_KEY:$R2_SECRET" -H "Content-Type: application/json" \
+            -X PUT --data-binary @aasa.json "https://$R2_ACCOUNT.r2.cloudflarestorage.com/roadbook-packs/well-known/apple-app-site-association" \
+            || echo "::warning::could not write the app-site association"
+          rm -f aasa.json
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with: { path: ios/Vendor, key: "sherpa-ios-${{ hashFiles('ios/fetch-vendor.sh') }}" }
       - name: The voice and its engine (Kokoro; sherpa-onnx, ONNX Runtime)
