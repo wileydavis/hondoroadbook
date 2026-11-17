@@ -31,7 +31,7 @@ jobs:
       RCLONE_CONFIG_R2_NO_CHECK_BUCKET: "true"
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check the secrets are there
         run: |
           [ -n "${{ secrets.R2_ACCESS_KEY_ID }}" ] && [ -n "${{ secrets.R2_SECRET_ACCESS_KEY }}" ] && [ -n "${{ secrets.R2_ACCOUNT_ID }}" ] || { echo "Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_ACCOUNT_ID in the repository secrets first (web/README.md)"; exit 1; }
