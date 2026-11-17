@@ -48,32 +48,23 @@ object Library {
         val input = EditText(ctx).apply { hint = "ABC 123"; isSingleLine = true; textSize = 28f; letterSpacing = 0.25f; gravity = android.view.Gravity.CENTER
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; setPadding(ctx.dp(20), ctx.dp(16), ctx.dp(20), ctx.dp(16)) }
         val root = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.dp(20), ctx.dp(8), ctx.dp(20), 0)
-            addView(TextView(ctx).apply { textSize = 15f; text = "The code from the planner's SEND TO PHONE (it works for 24 hours) or from a roadbook link (a week)." }); addView(input) }
+            addView(TextView(ctx).apply { textSize = 15f; text = "The code the planner showed under SEND TO PHONE. It works for 24 hours." }); addView(input) }
         AlertDialog.Builder(ctx).setTitle("Fetch a roadbook").setView(root)
             .setPositiveButton("FETCH") { _, _ ->
-                val code = cleanCode(input.text.toString())
-                if (code == null) { android.widget.Toast.makeText(ctx, "A code is six letters and digits", android.widget.Toast.LENGTH_SHORT).show(); return@setPositiveButton }
-                fetchByCode(act, code, onGpx)
+                val code = input.text.toString().uppercase().replace(Regex("[^A-Z0-9]"), "")
+                if (code.length != 6) { android.widget.Toast.makeText(ctx, "A code is six letters and digits", android.widget.Toast.LENGTH_SHORT).show(); return@setPositiveButton }
+                val dlg = ProgressDialogLite(ctx, "Fetching $code…"); dlg.show()
+                worker.execute {
+                    val r = try {
+                        val c = open("$site/api/parked/$code")
+                        try { val text = readAll(c); if (c.responseCode != 200) throw IllegalStateException(errorOf(text, c.responseCode))
+                            val name = c.getHeaderField("X-Name")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: "Roadbook"
+                            Result.success(name to text) } finally { c.disconnect() }
+                    } catch (e: Throwable) { Result.failure(e) }
+                    act.runOnUiThread { dlg.dismiss(); r.onSuccess { (n, t) -> onGpx(n, t) }.onFailure { e -> AlertDialog.Builder(ctx).setTitle("Nothing fetched").setMessage(e.message ?: e.toString()).setPositiveButton("OK", null).show() } }
+                }
             }
             .setNegativeButton(R.string.cancel, null).show()
-    }
-
-    /** "abc 234" → "ABC234"; null unless six letters and digits. */
-    fun cleanCode(raw: String): String? = raw.uppercase().replace(Regex("[^A-Z0-9]"), "").takeIf { it.length == 6 }
-
-    /** The code's parked roadbook, fetched with a progress dialog: typed into FETCH CODE, or from a hondoroadbook.com/r/ link. */
-    fun fetchByCode(act: Activity, code: String, onGpx: (name: String, gpx: String) -> Unit) {
-        val ctx = act
-        val dlg = ProgressDialogLite(ctx, "Fetching $code…"); dlg.show()
-        worker.execute {
-            val r = try {
-                val c = open("$site/api/parked/$code")
-                try { val text = readAll(c); if (c.responseCode != 200) throw IllegalStateException(errorOf(text, c.responseCode))
-                    val name = c.getHeaderField("X-Name")?.let { java.net.URLDecoder.decode(it, "UTF-8") } ?: "Roadbook"
-                    Result.success(name to text) } finally { c.disconnect() }
-            } catch (e: Throwable) { Result.failure(e) }
-            act.runOnUiThread { dlg.dismiss(); r.onSuccess { (n, t) -> onGpx(n, t) }.onFailure { e -> AlertDialog.Builder(ctx).setTitle("Nothing fetched").setMessage(e.message ?: e.toString()).setPositiveButton("OK", null).show() } }
-        }
     }
 
     // ---- publish ---------------------------------------------------------------------------------------------------

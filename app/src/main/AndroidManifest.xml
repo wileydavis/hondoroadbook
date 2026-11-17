@@ -52,20 +52,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- hondoroadbook.com/r/<code>: a roadbook parked for the phone by the planner or an assistant (verified by
-                 the site's /.well-known/assetlinks.json), and roadbook://r/<code> from that page's Open in Roadbook button -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="hondoroadbook.com" android:pathPrefix="/r/" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="roadbook" android:host="r" />
-            </intent-filter>
         </activity>
         <activity android:name=".ShareCodeActivity" android:exported="false" android:screenOrientation="unspecified" />
         <activity android:name=".ScanCodeActivity" android:exported="false" android:screenOrientation="unspecified" />

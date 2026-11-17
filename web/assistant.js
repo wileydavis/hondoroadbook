@@ -2,8 +2,8 @@
 //   POST /api/plan  — stops in, a roadbook out: routed, cued, parked for the phone under a code and a link
 //   POST /mcp       — the same as a Model Context Protocol server (Streamable HTTP, stateless, no sign-in),
 //                     so an assistant such as Claude can search places, plan a ride and hand the rider a link
-// A planned roadbook is parked like the planner's SEND TO PHONE, for a week: hondoroadbook.com/r/<code> opens it in
-// the app (or the planner), and the code can be typed into FETCH CODE. Nothing identifies the caller; no accounts.
+// A planned roadbook is parked like the planner's SEND TO PHONE, for a week: the code goes into the app's FETCH CODE,
+// and hondoroadbook.com/r/<code> shows the ride, its notes and their links. Nothing identifies the caller; no accounts.
 import { writeGpx, measure, TURNS, MODES, GpxError } from "./gpx.js";
 
 const SITE = "https://hondoroadbook.com";
@@ -115,7 +115,7 @@ function planText(p) {
   const h = Math.floor(p.hours), m = Math.round((p.hours - h) * 60);
   const lines = [
     `Roadbook "${p.name}" (${p.mode}): ${p.km} km, about ${h} h ${m} min of riding; ${p.unpaved_km} km unpaved (${Math.round(p.unpaved_share * 100)}%). ${p.turns} turn cues, ${p.notes} notes.`,
-    `Open on the phone: ${p.link} — opens in the Roadbook app (or type code ${p.code.slice(0, 3)} ${p.code.slice(3)} in Roadbook: ≡ → TRACK → FETCH CODE). Kept until ${p.expires}.`,
+    `On the phone: in the Roadbook app, ≡ → TRACK → FETCH CODE, type ${p.code.slice(0, 3)} ${p.code.slice(3)}. The ride, its notes and links: ${p.link} (kept until ${p.expires}).`,
     `Adjust it in the planner: ${p.planner}`,
     `GPX for other apps: ${p.gpx}`,
     "", "Legs:", ...p.legs.map(l => `- ${l.from} → ${l.to}: ${l.km} km, ${l.hours} h`),
@@ -139,7 +139,7 @@ const TOOLS = [
   {
     name: "plan_route",
     title: "Plan a roadbook",
-    description: "Route through stops in order with Roadbook's own router and make a navigable roadbook: turn-by-turn cues, each named stop as a note on the line. Returns distance, riding time, paved/unpaved split, legs, the main roads used and warnings, plus a link (hondoroadbook.com/r/CODE) that opens the roadbook in the Roadbook phone app for offline navigation, a six-letter code to type in the app, a planner link to adjust it on a computer, and a GPX link. Always give the rider the link and the code. For a multi-day trip, call once per day. Check the result against the rider's intent (the unpaved share for a dirt ride, the hours for a day) and re-plan with different via points if it misses. Coverage: the US, Canada, Baja California and much of Europe.\n\nModes: " + Object.entries(MODE_HELP).map(([k, v]) => `${k} — ${v}`).join("; "),
+    description: "Route through stops in order with Roadbook's own router and make a navigable roadbook: turn-by-turn cues, each named stop as a note on the line. Returns distance, riding time, paved/unpaved split, legs, the main roads used and warnings, plus a six-letter code the rider types into the Roadbook phone app (≡ → TRACK → FETCH CODE) for offline navigation, a link (hondoroadbook.com/r/CODE) showing the ride with its notes and links, a planner link to adjust it on a computer, and a GPX link. Always give the rider the code and the link. For a multi-day trip, call once per day. Check the result against the rider's intent (the unpaved share for a dirt ride, the hours for a day) and re-plan with different via points if it misses. Coverage: the US, Canada, Baja California and much of Europe.\n\nModes: " + Object.entries(MODE_HELP).map(([k, v]) => `${k} — ${v}`).join("; "),
     inputSchema: {
       type: "object",
       properties: {
@@ -147,8 +147,8 @@ const TOOLS = [
         mode: { type: "string", enum: Object.keys(MODE_HELP), default: "BACKROADS" },
         stops: {
           type: "array", minItems: 2, maxItems: 60,
-          description: "Start, via points in order, finish. Via points steer the route: put them on the roads or places the ride should pass. name and note become a note the rider sees and hears when passing (\"Fuel — last for 120 km\").",
-          items: { type: "object", properties: { lat: { type: "number" }, lon: { type: "number" }, name: { type: "string" }, note: { type: "string", description: "Optional words for the rider at this stop" }, link: { type: "string", description: "Optional https link about the stop" } }, required: ["lat", "lon"] },
+          description: "Start, via points in order, finish. Via points steer the route: put them on the roads or places the ride should pass. name and note become a note the rider sees and hears when passing (\"Fuel — last for 120 km\"); link (https) is shown on the roadbook's page and in the planner, not spoken.",
+          items: { type: "object", properties: { lat: { type: "number" }, lon: { type: "number" }, name: { type: "string" }, note: { type: "string", description: "Optional words for the rider at this stop" }, link: { type: "string", description: "Optional https link with more about the stop (a page you found on the web)" } }, required: ["lat", "lon"] },
         },
       },
       required: ["stops"],
@@ -179,8 +179,8 @@ const TOOLS = [
 ];
 
 const INSTRUCTIONS = `Roadbook plans motorcycle, car and bicycle rides on its own offline maps and hands them to the Roadbook phone app for offline turn-by-turn navigation.
-To plan: look up every place with search_places (never guess coordinates), choose the mode that fits the ride, then plan_route with the stops in order. Via points steer the route; put them on roads or places the ride should use. For trips over several days, plan one roadbook per day, ending each where the rider sleeps (services_near finds camping, lodging and fuel). Check each result (hours, unpaved share, warnings) and re-plan if it misses what the rider asked for.
-Always give the rider each roadbook's link (hondoroadbook.com/r/…) and its code: the link opens it in the Roadbook app, and the code can be typed there. Links last a week. The app is free at hondoroadbook.com, and the rider downloads the map pack for the area in the app before riding out of signal.`;
+To plan: find places worth riding to (from the rider, your own web search, or Roadbook's library), look each one up with search_places to get its coordinates (never guess them), choose the mode that fits the ride, then plan_route with the stops in order, giving each stop a name, a short note for the rider, and a link to more about it when you have one. Via points steer the route; put them on roads or places the ride should use. For trips over several days, plan one roadbook per day, ending each where the rider sleeps (services_near finds camping, lodging and fuel). Check each result (hours, unpaved share, warnings) and re-plan if it misses what the rider asked for.
+Always give the rider each roadbook's code and link: the code goes into the Roadbook app (≡ → TRACK → FETCH CODE); the link (hondoroadbook.com/r/…) shows the ride, its notes and their links. Both last a week. The app is free at hondoroadbook.com, and the rider downloads the map pack for the area in the app before riding out of signal.`;
 
 export async function toolCall(name, args, deps) {
   const { call } = deps;
@@ -223,7 +223,7 @@ export async function toolCall(name, args, deps) {
     if (!obj) throw bad("No published roadbook with that id", 404);
     const p = await park(env, await obj.text(), row.name, KEEP_DAYS * 24 * 3600 * 1000);
     const link = `${SITE}/r/${p.code}`;
-    return { data: { name: row.name, code: p.code, link, expires: new Date(p.expires).toISOString().slice(0, 10) }, text: `"${row.name}": open on the phone with ${link} (or code ${p.code.slice(0, 3)} ${p.code.slice(3)} in Roadbook: ≡ → TRACK → FETCH CODE). Kept until ${new Date(p.expires).toISOString().slice(0, 10)}.` };
+    return { data: { name: row.name, code: p.code, link, expires: new Date(p.expires).toISOString().slice(0, 10) }, text: `"${row.name}": in the Roadbook app, ≡ → TRACK → FETCH CODE, type ${p.code.slice(0, 3)} ${p.code.slice(3)}. Page: ${link}. Kept until ${new Date(p.expires).toISOString().slice(0, 10)}.` };
   }
   throw Object.assign(new Error(`unknown tool ${name}`), { rpc: -32602 });
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plan with an AI assistant — Roadbook</title>
-<meta name="description" content="Connect Claude, ChatGPT or another AI assistant to Roadbook: it plans the ride on Roadbook's maps and hands you a link that opens in the app.">
+<meta name="description" content="Connect Claude, ChatGPT or another AI assistant to Roadbook: it plans the ride on Roadbook's maps and hands you a code to load it into the app.">
 <link rel="stylesheet" href="/style.css">
 <link rel="icon" href="/favicon.svg">
 <style>
@@ -21,7 +21,7 @@
   </header>
   <section class="prose">
   <h1>Plan with an AI assistant</h1>
-  <p>Describe the ride and let an assistant plan it on Roadbook's own maps: “three days of dirt from Bishop through Saline Valley and Hunter Mountain, hot springs on the second night”. It looks up the places, routes each day with Roadbook's router, checks the distance and the dirt, and gives you a link for each day. Tap the link on your phone and the roadbook opens in the app, ready to ride offline.</p>
+  <p>Describe the ride and let an assistant plan it on Roadbook's own maps: “three days of dirt from Bishop through Saline Valley and Hunter Mountain, hot springs on the second night”. It looks up the places, routes each day with Roadbook's router, checks the distance and the dirt, and gives you a link and a code for each day. Type the code into the app and the roadbook is on your phone, ready to ride offline.</p>
 
   <h2>Connect your assistant</h2>
   <p>Roadbook is a <em>Model Context Protocol</em> server. In any assistant that supports custom MCP connectors (Claude, ChatGPT and others), add a connector with this address. There is no sign-in.</p>
@@ -31,19 +31,20 @@
     <li>“Plan a backroads day loop from Bozeman over Bear Trap Canyon and back, about five hours.”</li>
     <li>“Find published dirt roadbooks near Moab and send me the best one.”</li>
     <li>“Plan the Trans-America stretch from Cañon City to Salida on gravel, with fuel stops noted.”</li>
+    <li>“Find the best hot springs and ghost towns between Ely and Tonopah, then string them into a two-day dirt ride, with a link about each one.”</li>
   </ul>
 
   <h2>What the assistant can do</h2>
   <ul>
     <li><b>search_places</b>: towns, roads, passes, hot springs, peaks, trailheads (OpenStreetMap, and USGS place names in the US).</li>
-    <li><b>plan_route</b>: route through stops in a mode (Backroads, Dirt, Fast, Towing, and three bicycle modes) and make a roadbook with turn cues and a note at each named stop. It returns the distance, riding time, paved and unpaved split, the main roads, and anything to check.</li>
+    <li><b>plan_route</b>: route through stops in a mode (Backroads, Dirt, Fast, Towing, and three bicycle modes) and make a roadbook with turn cues and a note at each named stop, which the app shows and speaks as you pass. An assistant that can search the web can find the places there, check them with search_places, and attach a link about each one. It returns the distance, riding time, paved and unpaved split, the main roads, and anything to check.</li>
     <li><b>services_near</b>: fuel, food, camping, water, lodging and repair around a point.</li>
     <li><b>find_roadbooks</b> and <b>send_roadbook_to_phone</b>: rides other riders published to the library.</li>
   </ul>
   <p>Assistants make mistakes. Look the route over before you ride it: open it in the <a href="/plan.html">planner</a> from its link page, and download the map pack for the area in the app before you lose signal.</p>
 
   <h2>The links</h2>
-  <p>Each roadbook gets a link like <code>hondoroadbook.com/r/ABC234</code> and the six-letter code in it. With Roadbook installed, the link opens in the app; elsewhere it shows the ride with buttons for the app, the planner and a GPX file. In the app you can also type the code: <b>≡ → TRACK → FETCH CODE</b>. Links last a week.</p>
+  <p>Each roadbook gets a link like <code>hondoroadbook.com/r/ABC234</code> and the six-letter code in it. The link shows the ride, its notes with their links, and buttons for the planner and a GPX file. To put it on the phone, in Roadbook: <b>≡ → TRACK → FETCH CODE</b>, and type the code. Links last a week.</p>
 
   <h2>For developers</h2>
   <p>The same planning is a plain HTTP call:</p>

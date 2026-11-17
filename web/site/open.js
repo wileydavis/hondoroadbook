@@ -1,9 +1,10 @@
 // hondoroadbook.com/r/<code>: a roadbook parked for the phone (by the planner's Send to phone, or planned by an assistant
-// through /mcp). With the app installed, the phone opens such links in Roadbook directly; this page is for everywhere else.
+// through /mcp): the code to type into the app's FETCH CODE, the ride's shape and its notes, the planner and the GPX.
 (function () {
   "use strict";
   const code = (location.pathname.match(/\/r\/([A-Za-z0-9]{6})/) || [])[1]?.toUpperCase();
   const box = document.getElementById("rb");
+  const unesc = s => String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&");
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const metric = !/^en-US$|^en-LR$|^my/.test(navigator.language || "");
   const fmt = m => metric ? `${(m / 1000).toFixed(m < 100000 ? 1 : 0)} km` : `${(m / 1609.344).toFixed(m < 160000 ? 1 : 0)} mi`;
@@ -19,7 +20,12 @@
 
   function show(name, expires, gpx) {
     const pts = [...gpx.matchAll(/<trkpt\s+lat="([-\d.]+)"\s+lon="([-\d.]+)"/g)].map(m => [Number(m[2]), Number(m[1])]);
-    const notes = [...gpx.matchAll(/<wpt\s+lat="([-\d.]+)"\s+lon="([-\d.]+)">[\s\S]*?<type>note<\/type>/g)].map(m => [Number(m[2]), Number(m[1])]);
+    // the notes: a stop's words, and a link about it when the plan carried one (shown here and in the planner)
+    const notes = [...gpx.matchAll(/<wpt\s+lat="([-\d.]+)"\s+lon="([-\d.]+)">([\s\S]*?)<\/wpt>/g)].filter(m => /<type>note<\/type>/.test(m[3])).map(m => {
+      const words = unesc((/<desc>([\s\S]*?)<\/desc>/.exec(m[3]) || /<name>([\s\S]*?)<\/name>/.exec(m[3]) || [, ""])[1]);
+      const href = unesc((/<link\s+href="([^"]*)"/.exec(m[3]) || [, ""])[1]);
+      return { at: [Number(m[2]), Number(m[1])], words, link: /^https:\/\/[^\s"'<>]+$/.test(href) ? href : "" };
+    });
     const turns = (gpx.match(/<type>cue:/g) || []).length;
     let len = 0; for (let i = 1; i < pts.length; i++) len += dist(pts[i - 1], pts[i]);
     const unpaved = Number((/<unpaved>(\d+)<\/unpaved>/.exec(gpx) || [])[1]);
@@ -31,18 +37,18 @@
       <p class="muted">A roadbook for the Roadbook app</p>
       <h1>${esc(name)}</h1>
       <p class="stats">${fmt(len)}${Number.isFinite(unpaved) && len ? ` · ${Math.round(100 * unpaved / len)}% unpaved` : ""}${mode ? ` · ${esc(mode.charAt(0) + mode.slice(1).toLowerCase())}` : ""} · ${turns} turns${notes.length ? ` · ${notes.length} notes` : ""}</p>
-      ${sketch(pts, notes)}
+      ${sketch(pts, notes.map(n => n.at))}
+      <div class="card">
+        <p><b>On the phone,</b> in Roadbook: <b>≡ → TRACK → FETCH CODE</b>, and type</p>
+        <p class="code">${spaced}</p>
+        <p>${until ? `The roadbook is kept here until ${esc(until)}; once it is in the app it is yours, offline.` : ""} Download the map pack for the area in the app (<b>MAPS</b>) before riding out of signal.</p>
+        <p>No Roadbook yet? It is free, with no account: <a href="/#get">get the app</a>.</p>
+      </div>
       <div class="ctas">
-        <a class="cta" href="roadbook://r/${code}">Open in Roadbook</a>
-        <a class="cta alt" href="/plan.html#code=${code}">Open in the planner</a>
+        <a class="cta" href="/plan.html#code=${code}">Open in the planner</a>
         <a class="cta alt" href="/api/parked/${code}" download>Download GPX</a>
       </div>
-      <div class="card">
-        <p><b>On the phone:</b> with Roadbook installed, the link opens in the app. Or in the app: <b>≡ → TRACK → FETCH CODE</b> and type</p>
-        <p class="code">${spaced}</p>
-        <p>${until ? `The roadbook is kept until ${esc(until)}; once it is in the app it is yours, offline.` : ""} Download the map pack for the area in the app (<b>MAPS</b>) before riding out of signal.</p>
-        <p>No Roadbook yet? It is free, with no account: <a href="/#get">get the app</a>.</p>
-      </div>`;
+      ${notes.length ? `<h2>Along the way</h2><ol class="stops">${notes.map(n => `<li>${esc(n.words)}${n.link ? ` · <a href="${esc(n.link)}" rel="noopener nofollow" target="_blank">more</a>` : ""}</li>`).join("")}</ol>` : ""}`;
   }
   function dist(a, b) { const r = Math.PI / 180, x = (b[0] - a[0]) * r * Math.cos((a[1] + b[1]) / 2 * r), y = (b[1] - a[1]) * r; return 6371000 * Math.hypot(x, y); }
   /** the line, drawn plain: enough to recognise the ride before opening it */
