@@ -315,7 +315,7 @@ jobs:
           jq -r 'keys[]' packer/regions.json > regions.txt
           find meta -name '*.json' | while read -r f; do
             b=$(basename "$f"); slug=$(sed -E 's/-(roads|terrain|names)\.json$//' <<< "$b")
-            [ "$slug" != "$b" ] && ! grep -qxF "$slug" regions.txt && { echo "retired: $b"; rm -f "$f"; }
+            if [ "$slug" != "$b" ] && ! grep -qxF "$slug" regions.txt; then echo "retired: $b"; rm -f "$f"; fi
           done
           find meta -name '*.json' -print0 | xargs -0 cat | jq -s --arg d "$(date -u +%F)" '{version: 1, updated: $d, packs: .}' > catalog.json
           jq -r '.packs[] | "\(.name)\t\(.kind)\t\(.bytes/1e6|floor) MB"' catalog.json
